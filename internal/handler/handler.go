@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -384,6 +385,15 @@ func (h *KnowledgeHandler) ReindexDocuments(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Query(c *gin.Context) {
+	h.streamChat(c, h.svc.QueryStream)
+}
+
+// AgentQuery POST /api/v1/chat/agent — ReAct 多步检索 SSE
+func (h *KnowledgeHandler) AgentQuery(c *gin.Context) {
+	h.streamChat(c, h.svc.AgentQueryStream)
+}
+
+func (h *KnowledgeHandler) streamChat(c *gin.Context, run func(context.Context, rag.QueryRequest, rag.StreamHandler) error) {
 	var req rag.QueryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
@@ -426,7 +436,7 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 		return nil
 	}
 
-	if err := h.svc.QueryStream(c.Request.Context(), req, writeEvent); err != nil {
+	if err := run(c.Request.Context(), req, writeEvent); err != nil {
 		if c.Request.Context().Err() != nil {
 			return
 		}

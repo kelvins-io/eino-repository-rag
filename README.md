@@ -9,7 +9,12 @@
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
+- **Query 改写 / 多路召回**：LLM 生成 N 条检索改写，与原问题分别召回后再 RRF；重排仍用原问题
+- **结构切分**：PDF/PPTX 按页、XLSX 按工作表、Markdown/HTML 按标题；超长段再 Recursive，保留 `page`/`section` meta
+- **引用后校验**：生成完成后校验 `[n]` 是否落在 sources 内，清洗幻觉引用
+- **Agent / Workflow**：Eino ReAct + `knowledge_retrieve` 多步检索（`POST /api/v1/chat/agent`）；标准线性 RAG 仍走 `/chat/query`
 - **Rerank**：OpenAI 兼容 Cross-Encoder 重排（如 SiliconFlow `BAAI/bge-reranker-v2-m3`）
+- **Golden Eval**：JSONL 评测集 + Hit@K / Recall@K / MRR（`cmd/eval`）
 - **大模型回答**：DeepSeek（`eino-ext/components/model/deepseek`）
 - **记忆机制**
   - 短期记忆：Redis List（会话级，带 TTL）
@@ -30,10 +35,12 @@ HTTP API (Gin) + JWT
   │                                      ├─ Embedding
   │                                      ├─ Vector Store（redis / milvus_lite）
   │                                      └─ BM25 sidecar（hybrid + milvus 时）
-  └─ 问答检索 → 短期/长期记忆
+  └─ 问答检索 →（可选）Query 改写多路召回
+               → 短期/长期记忆
                → Dense Retriever + BM25（可选 Hybrid/RRF）
-               → Rerank（可选）
+               → 跨路 RRF → Rerank（可选）
                → DeepSeek Generate → 回写记忆
+  └─ Agent 问答 → ReAct（knowledge_retrieve 多步）→ citation 校验 → 回写记忆
 ```
 
 索引队列：`kb:index:queue`（等待） / `kb:index:active`（在途，启动回灌） / `kb:index:dlq`（死信）；`rag.index_workers` 控制并发，失败按 `index_max_retries` 重试。
@@ -55,6 +62,8 @@ docker compose --profile milvus up -d
 cp .env.example .env
 # 编辑 .env，填入 DEEPSEEK_API_KEY 与 EMBEDDING_API_KEY
 ```
+
+> 容器内还支持 `REDIS_PASSWORD`（可置空覆盖本地 yaml）、`JWT_SECRET`、`VECTOR_INDEX_PROVIDER`、`MILVUS_ADDRESS` 等。
 
 > DeepSeek 不提供 Embedding，需配置 OpenAI 兼容 Embedding（OpenAI / SiliconFlow / 通义等）。  
 > 维度需与 `embedding.dimensions` 一致；Redis 模式对齐 `redis.vector_dim`，Milvus 模式对齐 `milvus.dimension`。
@@ -99,13 +108,80 @@ rerank:
 > milvus 模式下首次开启 Hybrid 后，需对已有文档执行一次 **重新索引**，以写入 BM25 sidecar。  
 > redis 向量模式直接复用索引上的 `content`/`title` TEXT 字段，无需额外同步。
 
+### 3.2 Query 改写 / 多路召回（可选，默认开启）
+
+```yaml
+rag:
+  query_expand_enabled: true
+  query_expand_n: 2                 # 额外改写条数（不含原问题）
+  query_expand_timeout_seconds: 20
+```
+
+关闭：`query_expand_enabled: false`。改写失败时自动回退为单路原问题检索。
+
+### 3.3 结构切分 + 引用后校验
+
+```yaml
+rag:
+  structure_split_enabled: true   # 页/表/标题结构切分
+  citation_validate_enabled: true # 清洗越界 [n]
+  citation_filter_sources: false  # true 时 done 仅保留被引用的 sources
+```
+
+结构切分变更后，需对已有文档执行 **重新索引** 才能生效。流式场景下 `delta` 为原始生成；`done.answer` 与写入记忆的内容为校验后的最终回答。
+
+### 3.4 Golden Eval（检索质量回归）
+
+将 `examples/kb_securities_*.md` 导入知识库并索引完成后，按实际 `knowledge_base_id` / `tenant_id` 编辑 `examples/eval/golden.jsonl`，然后：
+
+```bash
+make eval
+# 或
+go run ./cmd/eval -config configs/config.yaml \
+  -golden examples/eval/golden.jsonl -k 5 -out /tmp/eval-report.json
+```
+
+输出 Hit@K / Recall@K / MRR。样例相关性可用 `relevant_contains`（内容子串）、`relevant_doc_ids`、`relevant_titles` 任一标注。
+
+### 3.5 Agent 多步检索（可选）
+
+```yaml
+agent:
+  enabled: true   # false 时不注册 /chat/agent
+  max_steps: 4    # 约等于检索轮次上限（内部 MaxRunSteps = max_steps*3）
+  tool_top_k: 5
+```
+
+与线性 RAG（`/chat/query` 一次检索）不同，Agent 使用 Eino ReAct，由模型按需多次调用 `knowledge_retrieve`（仍走 Hybrid/Expand/Rerank），SSE 会额外推送 `step` / `tool_start` / `tool_result`。延迟与费用更高，适合需要多跳检索的问题。
+
 ### 4. 启动服务
+
+本地：
 
 ```bash
 go run ./cmd/server -config configs/config.yaml
+# 或
+make run
 ```
 
-默认监听 `:8080`，已启用 CORS（允许本地前端 `5173` / `3000` 跨域访问）。
+Docker（构建后端 + 前端镜像并与依赖一起启动，默认向量库为 Redis）：
+
+```bash
+make docker-up
+# 等价：docker compose --profile app up -d --build
+# 仅构建：make docker-build
+```
+
+- API：http://localhost:8080
+- Web：http://localhost:5173（nginx 静态资源；`/api`、`/health` 反代到 `app`）
+
+Milvus 模式：
+
+```bash
+VECTOR_INDEX_PROVIDER=milvus_lite docker compose --profile app --profile milvus up -d --build
+```
+
+后端镜像使用 `configs/config.docker.yaml`（服务名 `postgres`/`redis`，JSON 日志，`upload_dir=/app/storage/uploads`）。默认监听 `:8080`，已启用 CORS（允许本地前端 `5173` / `3000` 跨域访问）。
 
 ### 5. 认证（租户 + JWT）
 
@@ -144,6 +220,7 @@ npm run dev
 
 浏览器打开 http://localhost:5173 。开发模式下 Vite 会把 `/api`、`/health` 代理到后端；生产构建通过 `web/.env.production` 的 `VITE_API_BASE` 直连后端（依赖 CORS）。
 
+Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。
 前端能力：知识库 CRUD、目录树、文档导入/列表/删除/重新索引、带会话记忆的知识问答。
 
 ## API
@@ -258,6 +335,23 @@ curl -X POST http://localhost:8080/api/v1/chat/query \
 
 指定 `directory_id` 时会包含该目录及其子目录文档。同一 `session_id` 会自动带上短期/长期对话上下文。
 
+### Agent 多步问答
+
+需 `agent.enabled: true`。请求体与 `/chat/query` 相同：
+
+```bash
+curl -N -X POST http://localhost:8080/api/v1/chat/agent \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "s-agent-001",
+    "knowledge_base_id": 1,
+    "query": "对比合规红线与适当性评估各自关注什么？"
+  }'
+```
+
+SSE 事件：`meta` → `step` / `tool_start` / `tool_result`（可多轮）→ `delta` → `done`（含 sources）。
+
 ### 历史记录（长期记忆）
 
 ```bash
@@ -276,8 +370,10 @@ curl "http://localhost:8080/api/v1/chat/history?session_id=s-demo-001"
 | `milvus` | `provider=milvus_lite` 时的连接与集合配置 |
 | `deepseek` | 对话大模型 |
 | `embedding` | OpenAI 兼容向量模型 |
-| `rag` | 切分参数 / TopK / 上传目录 |
+| `rag` | 切分 / TopK / Hybrid / Query 改写 / 结构切分 / 引用校验 / 索引队列 |
+| `rerank` | Cross-Encoder 重排 |
 | `memory` | 短期 TTL、消息窗口大小 |
+| `agent` | ReAct Agent（enabled / max_steps / tool_top_k） |
 
 ## 目录结构
 

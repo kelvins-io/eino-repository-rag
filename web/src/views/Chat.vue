@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>知识库问答</h2>
-        <p class="sub">基于 RAG 检索 + 会话记忆回答问题</p>
+        <p class="sub">基于 RAG 检索 + 会话记忆回答问题；可选 Agent 多步检索</p>
       </div>
       <el-button @click="resetSession">新会话</el-button>
     </div>
@@ -12,6 +12,15 @@
       <el-col :span="6">
         <div class="panel side">
           <el-form label-position="top">
+            <el-form-item label="问答模式">
+              <el-radio-group v-model="chatMode" size="small">
+                <el-radio-button value="rag">标准 RAG</el-radio-button>
+                <el-radio-button value="agent">Agent</el-radio-button>
+              </el-radio-group>
+              <div class="session-hint">
+                Agent 可多轮调用知识库检索，延迟与费用更高。
+              </div>
+            </el-form-item>
             <el-form-item label="知识库">
               <el-select
                 v-model="kbId"
@@ -91,6 +100,16 @@
               <div class="chat-bubble" :class="m.role === 'user' ? 'user' : 'assistant'">
                 {{ m.content }}
               </div>
+              <div v-if="m.steps?.length" class="agent-steps">
+                <div
+                  v-for="(s, si) in m.steps"
+                  :key="si"
+                  class="agent-step"
+                >
+                  <span class="step-badge">{{ s.kind }}</span>
+                  <span>{{ s.text }}</span>
+                </div>
+              </div>
               <div v-if="m.sources?.length" class="sources">
                 <el-collapse>
                   <el-collapse-item :name="idx">
@@ -159,6 +178,7 @@ const messages = ref([])
 const query = ref('')
 const asking = ref(false)
 const listRef = ref()
+const chatMode = ref('rag')
 
 function formatTime(v) {
   if (!v) return ''
@@ -272,7 +292,7 @@ async function ask() {
 
   messages.value.push({ role: 'user', content: q })
   query.value = ''
-  messages.value.push({ role: 'assistant', content: '', sources: [] })
+  messages.value.push({ role: 'assistant', content: '', sources: [], steps: [] })
   const assistantIdx = messages.value.length - 1
   await scrollBottom()
 
@@ -286,13 +306,33 @@ async function ask() {
     if (directoryId.value) {
       payload.directory_id = directoryId.value
     }
-    await api.chatQueryStream(payload, {
+    const streamFn =
+      chatMode.value === 'agent' ? api.chatAgentStream : api.chatQueryStream
+    const pushStep = (kind, text) => {
+      if (!messages.value[assistantIdx].steps) {
+        messages.value[assistantIdx].steps = []
+      }
+      messages.value[assistantIdx].steps.push({ kind, text })
+    }
+    await streamFn(payload, {
       onMeta: (evt) => {
         if (evt.session_id) {
           sessionId.value = evt.session_id
           setSessionId(evt.session_id)
         }
-        messages.value[assistantIdx].sources = evt.sources || []
+        if (evt.sources?.length) {
+          messages.value[assistantIdx].sources = evt.sources
+        }
+      },
+      onStep: (evt) => {
+        pushStep('step', evt.message || `步骤 ${evt.step}`)
+      },
+      onToolStart: (evt) => {
+        const qText = evt.tool_query ? `：${evt.tool_query}` : ''
+        pushStep('tool', `检索中${qText}`)
+      },
+      onToolResult: (evt) => {
+        pushStep('result', `检索完成（${evt.tool_count ?? 0} 条）`)
       },
       onDelta: async (chunk) => {
         messages.value[assistantIdx].content += chunk
@@ -432,6 +472,31 @@ onMounted(async () => {
 
 .sources-title {
   font-weight: 500;
+}
+
+.agent-steps {
+  margin: 6px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-step {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.step-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #475569;
 }
 
 .composer {

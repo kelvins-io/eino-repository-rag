@@ -49,9 +49,9 @@ http.interceptors.response.use(
 )
 
 /**
- * 消费 POST /api/v1/chat/query 的 SSE 流。
+ * 消费聊天 SSE 流（标准 RAG 或 Agent）。
  */
-export async function chatQueryStream(data, handlers = {}, signal) {
+async function consumeChatStream(url, data, handlers = {}, signal) {
   const base = import.meta.env.VITE_API_BASE || ''
   const token = getToken()
   const headers = {
@@ -60,7 +60,7 @@ export async function chatQueryStream(data, handlers = {}, signal) {
   }
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(`${base}/api/v1/chat/query`, {
+  const res = await fetch(`${base}${url}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(data),
@@ -106,6 +106,15 @@ export async function chatQueryStream(data, handlers = {}, signal) {
       case 'error':
         handlers.onError?.(evt.message || '流式回答失败')
         throw new Error(evt.message || '流式回答失败')
+      case 'step':
+        handlers.onStep?.(evt)
+        break
+      case 'tool_start':
+        handlers.onToolStart?.(evt)
+        break
+      case 'tool_result':
+        handlers.onToolResult?.(evt)
+        break
       default:
         break
     }
@@ -138,6 +147,20 @@ export async function chatQueryStream(data, handlers = {}, signal) {
   }
 
   return doneEvent
+}
+
+/**
+ * 消费 POST /api/v1/chat/query 的 SSE 流。
+ */
+export async function chatQueryStream(data, handlers = {}, signal) {
+  return consumeChatStream('/api/v1/chat/query', data, handlers, signal)
+}
+
+/**
+ * 消费 POST /api/v1/chat/agent 的 SSE 流（ReAct 多步检索）。
+ */
+export async function chatAgentStream(data, handlers = {}, signal) {
+  return consumeChatStream('/api/v1/chat/agent', data, handlers, signal)
 }
 
 export const api = {
@@ -176,6 +199,7 @@ export const api = {
 
   // 问答（SSE 流式）
   chatQueryStream,
+  chatAgentStream,
   chatHistory: (sessionId) =>
     http.get('/api/v1/chat/history', { params: { session_id: sessionId } }),
   listChatSessions: (params) =>

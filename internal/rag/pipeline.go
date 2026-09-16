@@ -34,10 +34,12 @@ type Pipeline struct {
 	cfg        *config.Config
 	embedder   embedding.Embedder
 	chat       einomodel.BaseChatModel
+	toolChat   einomodel.ToolCallingChatModel // Agent 用；DeepSeek 实现此接口
 	splitter   document.Transformer
 	store      VectorStore
 	bm25       *redisBM25
 	reranker   Reranker
+	expander   QueryExpander
 	docRepo    *repository.DocumentRepo
 	mem        *memory.Manager
 	indexQueue *IndexQueue
@@ -105,8 +107,15 @@ func NewPipeline(
 		reranker = newHTTPReranker(cfg.Rerank)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v",
-		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled)
+	var expander QueryExpander
+	if cfg.RAG.QueryExpandEnabled {
+		expander = newLLMQueryExpander(chat, cfg.RAG.QueryExpandTimeoutSeconds)
+	}
+
+	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v",
+		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled,
+		cfg.RAG.QueryExpandEnabled, cfg.RAG.QueryExpandN,
+		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled)
 
 	if cfg.Memory.SummaryEnabled {
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
@@ -116,10 +125,12 @@ func NewPipeline(
 		cfg:      cfg,
 		embedder: emb,
 		chat:     chat,
+		toolChat: chat, // deepseek.ChatModel 实现 ToolCallingChatModel
 		splitter: splitter,
 		store:    store,
 		bm25:     bm25,
 		reranker: reranker,
+		expander: expander,
 		docRepo:  docRepo,
 		mem:      mem,
 	}
@@ -147,24 +158,15 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		return fmt.Errorf("parse file: %s", errMsg)
 	}
 
-	baseDocs := []*schema.Document{{
-		ID:      fmt.Sprintf("doc-%d", doc.ID),
-		Content: parsed.Text,
-		MetaData: map[string]any{
-			"doc_id":       strconv.FormatUint(uint64(doc.ID), 10),
-			"tenant_id":    uintToMeta(doc.TenantID),
-			"user_id":      doc.UserID,
-			"kb_id":        uintToMeta(doc.KnowledgeBaseID),
-			"directory_id": ptrUintToMeta(doc.DirectoryID),
-			"title":        doc.Title,
-			"format":       parsed.Format,
-		},
-	}}
-
-	chunks, err := p.splitter.Transform(ctx, baseDocs)
+	chunks, err := splitDocument(ctx, p.splitter, parsed.Text, parsed.Format, p.cfg.RAG.ChunkSize, p.cfg.RAG.StructureSplitEnabled)
 	if err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
 		return fmt.Errorf("split document: %w", err)
+	}
+	if len(chunks) == 0 {
+		errMsg := "split produced no chunks"
+		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, errMsg)
+		return fmt.Errorf("split document: %s", errMsg)
 	}
 
 	for i, chunk := range chunks {
@@ -180,8 +182,10 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		chunk.MetaData["title"] = doc.Title
 		chunk.MetaData["format"] = parsed.Format
 		chunk.MetaData["chunk_index"] = i
-		if page := inferPageFromContent(chunk.Content); page > 0 {
-			chunk.MetaData["page"] = page
+		if page := metaInt(chunk.MetaData, "page"); page <= 0 {
+			if page = inferPageFromContent(chunk.Content); page > 0 {
+				chunk.MetaData["page"] = page
+			}
 		}
 	}
 
@@ -305,6 +309,7 @@ type SourceDocument struct {
 	ChunkIndex int     `json:"chunk_index"`
 	Page       int     `json:"page,omitempty"` // PDF/PPTX 页码；0 表示未知
 	Title      string  `json:"title,omitempty"`
+	Section    string  `json:"section,omitempty"` // 结构切分得到的章节/页/工作表名
 	Format     string  `json:"format,omitempty"`
 	Content    string  `json:"content"`
 	Score      float64 `json:"score,omitempty"`
@@ -312,13 +317,16 @@ type SourceDocument struct {
 
 // StreamEventType SSE 事件类型
 const (
-	StreamEventMeta  = "meta"
-	StreamEventDelta = "delta"
-	StreamEventDone  = "done"
-	StreamEventError = "error"
+	StreamEventMeta       = "meta"
+	StreamEventDelta      = "delta"
+	StreamEventDone       = "done"
+	StreamEventError      = "error"
+	StreamEventStep       = "step"
+	StreamEventToolStart  = "tool_start"
+	StreamEventToolResult = "tool_result"
 )
 
-// StreamEvent chat/query 流式事件
+// StreamEvent chat/query / chat/agent 流式事件
 type StreamEvent struct {
 	Type            string           `json:"type"`
 	Content         string           `json:"content,omitempty"`
@@ -328,6 +336,10 @@ type StreamEvent struct {
 	DirectoryID     *uint            `json:"directory_id,omitempty"`
 	Sources         []SourceDocument `json:"sources,omitempty"`
 	Message         string           `json:"message,omitempty"`
+	Step            int              `json:"step,omitempty"`
+	Tool            string           `json:"tool,omitempty"`
+	ToolQuery       string           `json:"tool_query,omitempty"`
+	ToolCount       int              `json:"tool_count,omitempty"`
 }
 
 // StreamHandler 流式事件回调；返回 error 时中止生成（如客户端断开）
@@ -411,6 +423,18 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 		return err
 	}
 
+	finalSources := sources
+	if p.cfg.RAG.CitationValidateEnabled {
+		check := validateCitations(answer, len(sources))
+		if check.Changed {
+			log.Printf("[rag] citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
+			answer = check.Answer
+			if p.cfg.RAG.CitationFilterSources {
+				finalSources = filterSourcesByCited(sources, check.ValidCited)
+			}
+		}
+	}
+
 	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
 		log.Printf("[rag] append user memory failed: %v", err)
 	}
@@ -424,22 +448,83 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 		SessionID:       req.SessionID,
 		KnowledgeBaseID: req.KnowledgeBaseID,
 		DirectoryID:     req.DirectoryID,
-		Sources:         sources,
+		Sources:         finalSources,
 	})
 }
 
-// retrieve 稠密召回 →（可选）BM25 + RRF →（可选）Rerank → TopK
+// Retrieve 仅检索不生成（供评测 / 调试）；走完整 expand → hybrid → rerank 路径。
+func (p *Pipeline) Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
+	return p.retrieve(ctx, query, filter)
+}
+
+// retrieve 可选 Query 改写多路召回 → 每路 Dense(+BM25/RRF) → 跨路 RRF →（可选）Rerank → TopK
 func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
 	topK := p.cfg.RAG.TopK
 	if topK <= 0 {
 		topK = 5
 	}
-	needPool := p.cfg.RAG.HybridEnabled || p.cfg.Rerank.Enabled
+	needPool := p.cfg.RAG.HybridEnabled || p.cfg.Rerank.Enabled || p.cfg.RAG.QueryExpandEnabled
 	poolK := topK
 	if needPool {
 		poolK = candidateK(topK, p.cfg.RAG.CandidateK)
 	}
 
+	queries := []string{strings.TrimSpace(query)}
+	if p.cfg.RAG.QueryExpandEnabled && p.expander != nil {
+		n := p.cfg.RAG.QueryExpandN
+		if n <= 0 {
+			n = 2
+		}
+		variants, err := p.expander.Expand(ctx, query, n)
+		if err != nil {
+			log.Printf("[rag] query expand failed, fallback single query: %v", err)
+		} else if len(variants) > 0 {
+			queries = buildExpandQueries(query, variants)
+			log.Printf("[rag] query expand original=%q variants=%v", query, variants)
+		}
+	}
+
+	lists := make([][]*schema.Document, 0, len(queries))
+	for _, q := range queries {
+		docs, err := p.retrieveOne(ctx, q, filter, poolK)
+		if err != nil {
+			return nil, err
+		}
+		if len(docs) > 0 {
+			lists = append(lists, docs)
+		}
+	}
+	if len(lists) == 0 {
+		return nil, nil
+	}
+
+	fused := lists[0]
+	if len(lists) > 1 {
+		fused = fuseRRF(lists, p.cfg.RAG.RRFK)
+		log.Printf("[rag] multi-query fuse paths=%d fused=%d", len(lists), len(fused))
+	}
+
+	if p.cfg.Rerank.Enabled && p.reranker != nil && len(fused) > 0 {
+		rerankTopN := p.cfg.Rerank.TopN
+		if rerankTopN <= 0 {
+			rerankTopN = topK
+		}
+		// 重排始终用原始用户问题，避免改写偏移意图
+		candidates := truncateDocs(fused, poolK)
+		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
+		if rerr != nil {
+			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
+			return truncateDocs(fused, topK), nil
+		}
+		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
+		return reranked, nil
+	}
+
+	return truncateDocs(fused, topK), nil
+}
+
+// retrieveOne 单路：稠密召回 →（可选）BM25 + RRF
+func (p *Pipeline) retrieveOne(ctx context.Context, query string, filter *RetrieveFilter, poolK int) ([]*schema.Document, error) {
 	dense, err := p.store.Retrieve(ctx, query, filter, poolK)
 	if err != nil {
 		return nil, err
@@ -455,24 +540,7 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 			log.Printf("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
 		}
 	}
-
-	if p.cfg.Rerank.Enabled && p.reranker != nil && len(fused) > 0 {
-		rerankTopN := p.cfg.Rerank.TopN
-		if rerankTopN <= 0 {
-			rerankTopN = topK
-		}
-		// 重排输入截断到候选池，避免过长请求
-		candidates := truncateDocs(fused, poolK)
-		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
-		if rerr != nil {
-			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
-			return truncateDocs(fused, topK), nil
-		}
-		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
-		return reranked, nil
-	}
-
-	return truncateDocs(fused, topK), nil
+	return fused, nil
 }
 
 func (p *Pipeline) buildMessages(
@@ -493,6 +561,9 @@ func (p *Pipeline) buildMessages(
 			if page > 0 {
 				loc += fmt.Sprintf(" page=%d", page)
 			}
+			if sec := metaString(d.MetaData, "section"); sec != "" {
+				loc += fmt.Sprintf(" section=%s", sec)
+			}
 			fmt.Fprintf(&ctxBuilder, "[%d] 标题:%s (%s)\n%s\n\n",
 				i+1, metaString(d.MetaData, "title"), loc, d.Content)
 		}
@@ -503,7 +574,7 @@ func (p *Pipeline) buildMessages(
 			Role: schema.System,
 			Content: `你是企业知识库助手。请仅依据提供的「知识库上下文」与「历史对话」回答用户问题。
 若上下文不足以回答，请明确说明「根据现有知识库无法确定」，不要编造。
-回答使用简洁中文，必要时引用片段编号如 [1]（对应上下文中的编号）。`,
+回答使用简洁中文。引用时只能使用上下文中已有的片段编号，格式为 [1]、[2]……；禁止引用不存在的编号，禁止编造来源。`,
 		},
 	}
 

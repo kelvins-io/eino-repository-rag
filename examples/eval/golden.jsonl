@@ -1,0 +1,14 @@
+# Golden Eval 检索评测集（JSONL，一行一条）
+# 使用前请先将 examples/kb_securities_*.md 导入目标知识库，并按实际 knowledge_base_id / tenant_id 改写下方字段。
+# tenant_id: 1 通常对应启动时 EnsureDefault 的 default 租户；若不同请查库后修改。
+#
+# go run ./cmd/eval -config configs/config.yaml -golden examples/eval/golden.jsonl -k 5 -out /tmp/eval-report.json
+
+{"id":"compliance-redlines","query":"从业人员有哪些合规红线？","relevant_contains":["不得利用未公开信息","不得承诺客户投资收益","不得以个人名义接受客户委托"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"compliance-wall","query":"信息隔离墙有什么要求？","relevant_contains":["物理与系统隔离","跨墙沟通须履行审批"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"suitability-assess","query":"投资者适当性评估要做哪些事？","relevant_contains":["风险承受能力测评","客户等级 ≥ 产品等级"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"account-open","query":"开户需要哪些材料？","relevant_contains":["有效身份证件","法定代表人身份证明"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"margin-risk","query":"融资融券有哪些风险控制？","relevant_contains":["维持担保比例","强制平仓"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"aml-report","query":"可疑交易如何报告？","relevant_contains":["可疑交易线索单","反洗钱监测分析中心"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"cs-complaint","query":"客户投诉处理时限是多久？","relevant_contains":["一般投诉","3 个工作日内答复"],"knowledge_base_id":1,"tenant_id":1}
+{"id":"it-security","query":"生产系统权限如何管控？","relevant_contains":["最小必要原则","双人复核"],"knowledge_base_id":1,"tenant_id":1}

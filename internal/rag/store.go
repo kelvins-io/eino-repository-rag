@@ -18,7 +18,7 @@ type RetrieveFilter struct {
 	// TenantID 必填：租户隔离（向量 meta tenant_id）
 	TenantID string
 	// UserID 可选：进一步按上传者收窄（私有 ACL）；共享知识库检索通常不填
-	UserID string
+	UserID          string
 	KnowledgeBaseID string
 	DirectoryIDs    []string // 为空表示不按目录过滤；多个 ID 为 OR
 }

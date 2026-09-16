@@ -21,6 +21,17 @@ type Config struct {
 	RAG         RAGConfig         `yaml:"rag"`
 	Rerank      RerankConfig      `yaml:"rerank"`
 	Memory      MemoryConfig      `yaml:"memory"`
+	Agent       AgentConfig       `yaml:"agent"`
+}
+
+// AgentConfig ReAct Agent 问答（多步检索）
+type AgentConfig struct {
+	// Enabled 为 true 时注册 POST /api/v1/chat/agent
+	Enabled bool `yaml:"enabled"`
+	// MaxSteps 约等于允许的「模型+工具」轮次上限；内部映射为 compose MaxRunSteps = MaxSteps*3
+	MaxSteps int `yaml:"max_steps"`
+	// ToolTopK knowledge_retrieve 每次召回条数；0 表示使用 rag.top_k
+	ToolTopK int `yaml:"tool_top_k"`
 }
 
 // JWTConfig 登录签发配置
@@ -144,6 +155,20 @@ type RAGConfig struct {
 	IndexDLQKey string `yaml:"index_dlq_key"`
 	// IndexDedupKey Redis 去重 Set（排队/执行中的 doc_id）
 	IndexDedupKey string `yaml:"index_dedup_key"`
+
+	// QueryExpandEnabled 启用 LLM Query 改写 / 多路召回（原 query + N 条改写后分别检索再 RRF）
+	QueryExpandEnabled bool `yaml:"query_expand_enabled"`
+	// QueryExpandN 额外改写条数（不含原 query）；0 表示默认 2
+	QueryExpandN int `yaml:"query_expand_n"`
+	// QueryExpandTimeoutSeconds 改写 LLM 超时；0 表示 20s
+	QueryExpandTimeoutSeconds int `yaml:"query_expand_timeout_seconds"`
+
+	// StructureSplitEnabled 按页/工作表/标题做结构切分，超长段再 Recursive
+	StructureSplitEnabled bool `yaml:"structure_split_enabled"`
+	// CitationValidateEnabled 生成后校验 [n] 是否落在 sources 范围内，清洗幻觉引用
+	CitationValidateEnabled bool `yaml:"citation_validate_enabled"`
+	// CitationFilterSources 校验后仅在 done 事件中保留被引用的 sources（默认 false，保留全部召回）
+	CitationFilterSources bool `yaml:"citation_filter_sources"`
 }
 
 // RerankConfig Cross-Encoder / API 重排（OpenAI 兼容，如 SiliconFlow）
@@ -214,6 +239,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("REDIS_ADDR"); v != "" {
 		c.Redis.Addr = v
+	}
+	if v, ok := os.LookupEnv("REDIS_PASSWORD"); ok {
+		c.Redis.Password = v
 	}
 	if v := os.Getenv("SERVER_ADDR"); v != "" {
 		c.Server.Addr = v
@@ -345,6 +373,12 @@ func (c *Config) setDefaults() {
 	if c.RAG.IndexDedupKey == "" {
 		c.RAG.IndexDedupKey = "kb:index:queued"
 	}
+	if c.RAG.QueryExpandN <= 0 {
+		c.RAG.QueryExpandN = 2
+	}
+	if c.RAG.QueryExpandTimeoutSeconds <= 0 {
+		c.RAG.QueryExpandTimeoutSeconds = 20
+	}
 	if c.Rerank.APIKey == "" {
 		c.Rerank.APIKey = c.Embedding.APIKey
 	}
@@ -374,5 +408,14 @@ func (c *Config) setDefaults() {
 	}
 	if c.Memory.SummaryTriggerMessages == 0 {
 		c.Memory.SummaryTriggerMessages = 8
+	}
+	if c.Agent.MaxSteps <= 0 {
+		c.Agent.MaxSteps = 4
+	}
+	if c.Agent.ToolTopK <= 0 {
+		c.Agent.ToolTopK = c.RAG.TopK
+		if c.Agent.ToolTopK <= 0 {
+			c.Agent.ToolTopK = 5
+		}
 	}
 }

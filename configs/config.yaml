@@ -81,6 +81,15 @@ rag:
   index_active_key: "kb:index:active"
   index_dlq_key: "kb:index:dlq"
   index_dedup_key: "kb:index:queued"
+  # Query 改写 / 多路召回：LLM 生成 N 条改写，与原 query 分别检索后 RRF 融合
+  query_expand_enabled: true
+  query_expand_n: 2
+  query_expand_timeout_seconds: 20
+  # 结构切分：PDF/PPTX 按页、XLSX 按工作表、MD/HTML 按标题；超长段再 Recursive
+  structure_split_enabled: true
+  # 引用后校验：清洗越界 [n]；可选仅保留被引用的 sources
+  citation_validate_enabled: true
+  citation_filter_sources: false
 
 # Cross-Encoder 重排（OpenAI 兼容，如 SiliconFlow /v1/rerank）
 # api_key / base_url 为空时回退 embedding 配置
@@ -104,3 +113,9 @@ memory:
   summary_enabled: true
   # 活跃历史超过该条数时，将更早部分折叠进摘要
   summary_trigger_messages: 8
+
+# ReAct Agent：多步 knowledge_retrieve；enabled=false 时不注册 /chat/agent
+agent:
+  enabled: true
+  max_steps: 4
+  tool_top_k: 5

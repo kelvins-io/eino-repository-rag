@@ -98,7 +98,7 @@ func main() {
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
 	kh := handler.NewKnowledgeHandler(svc)
-	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr)
+	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr, cfg.Agent.Enabled)
 
 	go func() {
 		logger.L().Info("eino knowledge base RAG listening", zap.String("addr", cfg.Server.Addr))

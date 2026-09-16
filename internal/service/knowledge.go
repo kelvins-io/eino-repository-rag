@@ -837,6 +837,13 @@ func (s *KnowledgeService) QueryStream(ctx context.Context, req rag.QueryRequest
 	return s.rag.QueryStream(ctx, req, onEvent)
 }
 
+func (s *KnowledgeService) AgentQueryStream(ctx context.Context, req rag.QueryRequest, onEvent rag.StreamHandler) error {
+	if err := s.prepareQueryRequest(&req); err != nil {
+		return err
+	}
+	return s.rag.AgentQueryStream(ctx, req, onEvent)
+}
+
 func (s *KnowledgeService) GetHistory(sessionID, userID string, tenantID uint) ([]model.Message, error) {
 	if sessionID == "" {
 		return nil, fmt.Errorf("session_id is required")

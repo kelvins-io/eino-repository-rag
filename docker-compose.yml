@@ -94,9 +94,64 @@ services:
       timeout: 10s
       retries: 10
 
+  # 应用服务：docker compose --profile app up -d --build
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: eino-repository-rag:latest
+    container_name: eino-rag-app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag123
+      POSTGRES_DB: eino_rag
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      SERVER_ADDR: ":8080"
+      # 默认 redis 向量库；Milvus：VECTOR_INDEX_PROVIDER=milvus_lite + --profile milvus
+      VECTOR_INDEX_PROVIDER: ${VECTOR_INDEX_PROVIDER:-redis}
+      MILVUS_ADDRESS: ${MILVUS_ADDRESS:-milvus:19530}
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads:/app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # 前端：nginx 静态资源 + 反代 /api、/health → app
+  web:
+    profiles: ["app"]
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-}
+    image: eino-repository-rag-web:latest
+    container_name: eino-rag-web
+    ports:
+      - "5173:80"
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   pgdata:
   redisdata:
   etcddata:
   miniodata:
   milvusdata:
+  uploads:

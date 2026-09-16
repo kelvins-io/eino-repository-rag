@@ -1,0 +1,98 @@
+server:
+  addr: ":8080"
+  mode: "release"
+
+log:
+  level: "info"
+  encoding: "json"
+  output_paths:
+    - "stdout"
+  error_output_paths:
+    - "stderr"
+
+jwt:
+  secret: "eino-rag-dev-secret-change-me"
+  expire_hours: 72
+  issuer: "eino-repository-rag"
+
+postgres:
+  host: "postgres"
+  port: 5432
+  user: "rag"
+  password: "rag123"
+  dbname: "eino_rag"
+  sslmode: "disable"
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+  index_name: "kb_index"
+  key_prefix: "kb:doc:"
+  vector_field: "content_vector"
+  vector_dim: 1024
+
+vector_index:
+  provider: "redis"
+
+milvus:
+  address: "milvus:19530"
+  username: ""
+  password: ""
+  collection: "kb_docs"
+  metric_type: "COSINE"
+  dimension: 1024
+
+deepseek:
+  api_key: ""
+  model: "deepseek-v4-flash"
+  base_url: "https://api.deepseek.com"
+  max_tokens: 2048
+  temperature: 0.3
+
+embedding:
+  api_key: ""
+  model: "BAAI/bge-m3"
+  base_url: "https://api.siliconflow.cn/v1"
+  dimensions: 0
+
+rag:
+  chunk_size: 800
+  overlap_size: 100
+  top_k: 5
+  hybrid_enabled: true
+  candidate_k: 20
+  rrf_k: 60
+  bm25_index_name: "kb_bm25_index"
+  bm25_key_prefix: "kb:bm25:"
+  upload_dir: "/app/storage/uploads"
+  index_workers: 5
+  index_max_retries: 3
+  index_job_timeout_minutes: 10
+  index_queue_key: "kb:index:queue"
+  index_active_key: "kb:index:active"
+  index_dlq_key: "kb:index:dlq"
+  index_dedup_key: "kb:index:queued"
+  query_expand_enabled: true
+  query_expand_n: 2
+  query_expand_timeout_seconds: 20
+  structure_split_enabled: true
+  citation_validate_enabled: true
+  citation_filter_sources: false
+
+rerank:
+  enabled: true
+  api_key: ""
+  model: "BAAI/bge-reranker-v2-m3"
+  base_url: "https://api.siliconflow.cn/v1"
+  top_n: 5
+  timeout_seconds: 30
+
+memory:
+  short_term_ttl_minutes: 60
+  short_term_max_messages: 20
+  long_term_max_messages: 50
+  context_token_budget: 3000
+  keep_recent_messages: 6
+  summary_enabled: true
+  summary_trigger_messages: 8

@@ -11,7 +11,7 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
-func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandler, tm *auth.TokenManager) *gin.Engine {
+func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandler, tm *auth.TokenManager, agentEnabled bool) *gin.Engine {
 	gin.SetMode(mode)
 	r := gin.New()
 	r.Use(logger.GinLogger(), logger.GinRecovery(true))
@@ -71,6 +71,9 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 			chat := protected.Group("/chat")
 			{
 				chat.POST("/query", kh.Query)
+				if agentEnabled {
+					chat.POST("/agent", kh.AgentQuery)
+				}
 				chat.GET("/history", kh.History)
 				chat.GET("/sessions", kh.ListSessions)
 			}
