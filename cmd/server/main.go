@@ -90,6 +90,12 @@ func main() {
 		logger.L().Fatal("init rag pipeline failed", zap.Error(err))
 	}
 
+	queueCtx, queueCancel := context.WithCancel(context.Background())
+	defer queueCancel()
+	if err := pipeline.StartIndexQueue(queueCtx); err != nil {
+		logger.L().Fatal("start index queue failed", zap.Error(err))
+	}
+
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
 	kh := handler.NewKnowledgeHandler(svc)
 	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr)
@@ -105,5 +111,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.L().Info("shutting down...")
+	queueCancel()
+	pipeline.StopIndexQueue()
 	_ = rdb.Close()
 }

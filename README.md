@@ -5,7 +5,7 @@
 ## 能力
 
 - **用户认证**：租户（`tenants`）+ 用户注册/登录；JWT（HS256）鉴权；注册/登录须填写租户 ID，不存在则拦截提示
-- **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后**自动异步构建向量索引**
+- **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后经 **Redis 索引队列**异步构建向量索引（可限流、重试、崩溃回灌）
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
@@ -24,7 +24,7 @@
   ▼
 HTTP API (Gin) + JWT
   ├─ 公开：创建租户 / 注册 / 登录 / health
-  ├─ 文档导入 → 落盘 + PostgreSQL 记录 → 异步 Index Pipeline
+  ├─ 文档导入 → 落盘 + PostgreSQL 记录 → Redis 索引队列 → Index Pipeline
   │                                      ├─ Parser（PDF/Office/文本）
   │                                      ├─ Recursive Splitter
   │                                      ├─ Embedding
@@ -36,6 +36,7 @@ HTTP API (Gin) + JWT
                → DeepSeek Generate → 回写记忆
 ```
 
+索引队列：`kb:index:queue`（等待） / `kb:index:active`（在途，启动回灌） / `kb:index:dlq`（死信）；`rag.index_workers` 控制并发，失败按 `index_max_retries` 重试。
 ## 快速开始
 
 ### 1. 启动依赖

@@ -118,6 +118,19 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 	return r.db.Model(&model.Document{}).Where("id = ?", id).Updates(updates).Error
 }
 
+// ListIDsByStatuses 按状态列出文档 ID（启动时回收 pending/indexing）
+func (r *DocumentRepo) ListIDsByStatuses(statuses ...model.DocumentStatus) ([]uint, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	var ids []uint
+	err := r.db.Model(&model.Document{}).
+		Where("status IN ?", statuses).
+		Order("id asc").
+		Pluck("id", &ids).Error
+	return ids, err
+}
+
 func (r *DocumentRepo) Delete(id uint) error {
 	return r.db.Delete(&model.Document{}, id).Error
 }
@@ -182,7 +195,7 @@ func (r *KnowledgeBaseRepo) GetOrCreateDefault(tenantID uint, userID string) (*m
 	if err == nil {
 		return &kb, nil
 	}
-	if err != gorm.ErrRecordNotFound {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 	kb = model.KnowledgeBase{
@@ -336,7 +349,7 @@ func (r *ConversationRepo) GetOrCreate(
 		}
 		return &conv, nil
 	}
-	if err != gorm.ErrRecordNotFound {
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 	conv = model.Conversation{

@@ -129,6 +129,21 @@ type RAGConfig struct {
 	BM25IndexName string `yaml:"bm25_index_name"`
 	// BM25KeyPrefix milvus sidecar 文本索引的 key 前缀
 	BM25KeyPrefix string `yaml:"bm25_key_prefix"`
+
+	// IndexWorkers 索引队列并发 worker 数
+	IndexWorkers int `yaml:"index_workers"`
+	// IndexMaxRetries 单文档索引失败最大重试次数（不含首次）
+	IndexMaxRetries int `yaml:"index_max_retries"`
+	// IndexJobTimeoutMinutes 单个索引任务超时（分钟）
+	IndexJobTimeoutMinutes int `yaml:"index_job_timeout_minutes"`
+	// IndexQueueKey Redis 等待队列 List
+	IndexQueueKey string `yaml:"index_queue_key"`
+	// IndexActiveKey Redis 在途队列 List（BLMOVE 目标，用于崩溃回灌）
+	IndexActiveKey string `yaml:"index_active_key"`
+	// IndexDLQKey Redis 死信队列 List
+	IndexDLQKey string `yaml:"index_dlq_key"`
+	// IndexDedupKey Redis 去重 Set（排队/执行中的 doc_id）
+	IndexDedupKey string `yaml:"index_dedup_key"`
 }
 
 // RerankConfig Cross-Encoder / API 重排（OpenAI 兼容，如 SiliconFlow）
@@ -308,6 +323,27 @@ func (c *Config) setDefaults() {
 	}
 	if c.RAG.BM25KeyPrefix == "" {
 		c.RAG.BM25KeyPrefix = "kb:bm25:"
+	}
+	if c.RAG.IndexWorkers <= 0 {
+		c.RAG.IndexWorkers = 2
+	}
+	if c.RAG.IndexMaxRetries <= 0 {
+		c.RAG.IndexMaxRetries = 3
+	}
+	if c.RAG.IndexJobTimeoutMinutes <= 0 {
+		c.RAG.IndexJobTimeoutMinutes = 10
+	}
+	if c.RAG.IndexQueueKey == "" {
+		c.RAG.IndexQueueKey = "kb:index:queue"
+	}
+	if c.RAG.IndexActiveKey == "" {
+		c.RAG.IndexActiveKey = "kb:index:active"
+	}
+	if c.RAG.IndexDLQKey == "" {
+		c.RAG.IndexDLQKey = "kb:index:dlq"
+	}
+	if c.RAG.IndexDedupKey == "" {
+		c.RAG.IndexDedupKey = "kb:index:queued"
 	}
 	if c.Rerank.APIKey == "" {
 		c.Rerank.APIKey = c.Embedding.APIKey

@@ -73,6 +73,14 @@ rag:
   bm25_index_name: "kb_bm25_index"
   bm25_key_prefix: "kb:bm25:"
   upload_dir: "./storage/uploads"
+  # Redis 持久化索引队列
+  index_workers: 5
+  index_max_retries: 3
+  index_job_timeout_minutes: 10
+  index_queue_key: "kb:index:queue"
+  index_active_key: "kb:index:active"
+  index_dlq_key: "kb:index:dlq"
+  index_dedup_key: "kb:index:queued"
 
 # Cross-Encoder 重排（OpenAI 兼容，如 SiliconFlow /v1/rerank）
 # api_key / base_url 为空时回退 embedding 配置

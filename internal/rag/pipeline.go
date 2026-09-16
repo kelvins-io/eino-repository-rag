@@ -31,15 +31,16 @@ import (
 
 // Pipeline 基于 Eino 的企业知识库 RAG 流水线
 type Pipeline struct {
-	cfg      *config.Config
-	embedder embedding.Embedder
-	chat     einomodel.BaseChatModel
-	splitter document.Transformer
-	store    VectorStore
-	bm25     *redisBM25
-	reranker Reranker
-	docRepo  *repository.DocumentRepo
-	mem      *memory.Manager
+	cfg        *config.Config
+	embedder   embedding.Embedder
+	chat       einomodel.BaseChatModel
+	splitter   document.Transformer
+	store      VectorStore
+	bm25       *redisBM25
+	reranker   Reranker
+	docRepo    *repository.DocumentRepo
+	mem        *memory.Manager
+	indexQueue *IndexQueue
 }
 
 func NewPipeline(
@@ -111,7 +112,7 @@ func NewPipeline(
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
 	}
 
-	return &Pipeline{
+	p := &Pipeline{
 		cfg:      cfg,
 		embedder: emb,
 		chat:     chat,
@@ -121,7 +122,9 @@ func NewPipeline(
 		reranker: reranker,
 		docRepo:  docRepo,
 		mem:      mem,
-	}, nil
+	}
+	p.indexQueue = NewIndexQueue(cfg, rdb, p, docRepo)
+	return p, nil
 }
 
 // IndexDocument 对已落库文档进行切分、向量化并写入向量索引
@@ -247,15 +250,32 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 	return nil
 }
 
-// IndexDocumentAsync 导入完成后异步触发索引构建
+// IndexDocumentAsync 将文档加入 Redis 索引队列（异步构建）
 func (p *Pipeline) IndexDocumentAsync(docID uint) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancel()
-		if err := p.IndexDocument(ctx, docID); err != nil {
-			log.Printf("[rag] async index failed doc_id=%d err=%v", docID, err)
-		}
-	}()
+	if p.indexQueue == nil {
+		log.Printf("[rag] index queue not ready, skip doc_id=%d", docID)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := p.indexQueue.Enqueue(ctx, docID); err != nil {
+		log.Printf("[rag] index enqueue failed doc_id=%d err=%v", docID, err)
+	}
+}
+
+// StartIndexQueue 启动索引队列 worker（含崩溃回灌）
+func (p *Pipeline) StartIndexQueue(ctx context.Context) error {
+	if p.indexQueue == nil {
+		return nil
+	}
+	return p.indexQueue.Start(ctx)
+}
+
+// StopIndexQueue 停止索引队列 worker
+func (p *Pipeline) StopIndexQueue() {
+	if p.indexQueue != nil {
+		p.indexQueue.Stop()
+	}
 }
 
 // QueryRequest RAG 问答请求
