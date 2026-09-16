@@ -149,6 +149,13 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		chunk.MetaData["chunk_index"] = i
 	}
 
+	// 写入前先清掉旧向量，避免 reindex 残留污染检索
+	docIDStr := strconv.FormatUint(uint64(doc.ID), 10)
+	if err := p.store.DeleteByDocID(ctx, docIDStr); err != nil {
+		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		return fmt.Errorf("delete old vectors: %w", err)
+	}
+
 	if err := p.store.Store(ctx, chunks); err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
 		return err
@@ -158,6 +165,34 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		return err
 	}
 	log.Printf("[rag] indexed document id=%d chunks=%d provider=%s", docID, len(chunks), p.cfg.VectorIndex.Provider)
+	return nil
+}
+
+// DeleteDocument 级联删除：向量索引 → 本地文件 → 数据库记录
+func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
+	doc, err := p.docRepo.GetByID(docID)
+	if err != nil {
+		return err
+	}
+	if doc.Status == dbmodel.DocumentStatusIndexing {
+		return fmt.Errorf("文档正在索引中，请稍后再删除")
+	}
+
+	docIDStr := strconv.FormatUint(uint64(doc.ID), 10)
+	if err := p.store.DeleteByDocID(ctx, docIDStr); err != nil {
+		return fmt.Errorf("delete vectors: %w", err)
+	}
+
+	if doc.FilePath != "" {
+		if err := os.Remove(doc.FilePath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[rag] remove file failed doc_id=%d path=%s err=%v", docID, doc.FilePath, err)
+		}
+	}
+
+	if err := p.docRepo.Delete(docID); err != nil {
+		return fmt.Errorf("delete document record: %w", err)
+	}
+	log.Printf("[rag] deleted document id=%d (vectors+file+db)", docID)
 	return nil
 }
 

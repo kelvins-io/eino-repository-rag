@@ -23,6 +23,8 @@ type RetrieveFilter struct {
 type VectorStore interface {
 	Store(ctx context.Context, docs []*schema.Document) error
 	Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error)
+	// DeleteByDocID 按文档 ID 删除其全部向量 chunk（doc 不存在时视为成功）
+	DeleteByDocID(ctx context.Context, docID string) error
 }
 
 func newVectorStore(ctx context.Context, cfg *config.Config, rdb *redis.Client, emb embedding.Embedder) (VectorStore, error) {

@@ -148,6 +148,20 @@ curl "http://localhost:8080/api/v1/documents?user_id=u001&knowledge_base_id=1&di
 curl "http://localhost:8080/api/v1/documents/1"
 ```
 
+### 删除文档
+
+删除文档会**级联清理**：向量索引中的全部 chunk → 本地上传文件 → PostgreSQL 记录。索引中（`indexing`）的文档会拒绝删除。重新索引前也会先删旧向量，避免残留污染检索。
+
+```bash
+# 单文档
+curl -X DELETE http://localhost:8080/api/v1/documents/1
+
+# 批量
+curl -X POST http://localhost:8080/api/v1/documents/delete \
+  -H "Content-Type: application/json" \
+  -d '{"ids":[1,2,3]}'
+```
+
 ### 重新索引
 
 对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、或请求内重复的 ID 会跳过。

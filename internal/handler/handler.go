@@ -302,6 +302,40 @@ func (h *KnowledgeHandler) GetDocument(c *gin.Context) {
 	ok(c, doc)
 }
 
+// DeleteDocument DELETE /api/v1/documents/:id
+func (h *KnowledgeHandler) DeleteDocument(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "无效的文档 ID")
+		return
+	}
+	if err := h.svc.DeleteDocument(c.Request.Context(), uint(id)); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	ok(c, gin.H{"deleted": true, "id": uint(id)})
+}
+
+type deleteDocsReq struct {
+	IDs []uint `json:"ids"`
+}
+
+// DeleteDocuments POST /api/v1/documents/delete
+// body: {"ids":[1,2,3]}
+func (h *KnowledgeHandler) DeleteDocuments(c *gin.Context) {
+	var req deleteDocsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+	result, err := h.svc.DeleteDocuments(c.Request.Context(), req.IDs)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	ok(c, result)
+}
+
 type reindexReq struct {
 	IDs []uint `json:"ids"`
 }

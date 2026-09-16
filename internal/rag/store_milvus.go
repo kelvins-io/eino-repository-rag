@@ -93,6 +93,20 @@ func (s *milvusVectorStore) Store(ctx context.Context, docs []*schema.Document) 
 	return nil
 }
 
+// DeleteByDocID 按 metadata.doc_id 表达式删除该文档全部向量
+func (s *milvusVectorStore) DeleteByDocID(ctx context.Context, docID string) error {
+	docID = strings.TrimSpace(docID)
+	if docID == "" {
+		return fmt.Errorf("doc_id is required")
+	}
+	expr := fmt.Sprintf(`metadata["doc_id"] == %q`, docID)
+	_, err := s.client.Delete(ctx, milvusclient.NewDeleteOption(s.cfg.Milvus.Collection).WithExpr(expr))
+	if err != nil {
+		return fmt.Errorf("milvus delete vectors doc_id=%s: %w", docID, err)
+	}
+	return nil
+}
+
 func (s *milvusVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
 	expr := buildMilvusFilter(filter)
 	var (

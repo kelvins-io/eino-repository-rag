@@ -111,6 +111,10 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 	return r.db.Model(&model.Document{}).Where("id = ?", id).Updates(updates).Error
 }
 
+func (r *DocumentRepo) Delete(id uint) error {
+	return r.db.Delete(&model.Document{}, id).Error
+}
+
 type KnowledgeBaseRepo struct {
 	db *gorm.DB
 }

@@ -36,8 +36,10 @@ func NewRouter(mode string, h *handler.KnowledgeHandler) *gin.Engine {
 		{
 			docs.POST("/import", h.ImportDocument)
 			docs.POST("/reindex", h.ReindexDocuments)
+			docs.POST("/delete", h.DeleteDocuments)
 			docs.GET("", h.ListDocuments)
 			docs.GET("/:id", h.GetDocument)
+			docs.DELETE("/:id", h.DeleteDocument)
 		}
 
 		chat := api.Group("/chat")

@@ -415,6 +415,97 @@ func (s *KnowledgeService) GetDocument(id uint) (*model.Document, error) {
 	return s.docRepo.GetByID(id)
 }
 
+// DeleteDocument 删除文档并级联清理向量索引与本地文件
+func (s *KnowledgeService) DeleteDocument(ctx context.Context, id uint) error {
+	if id == 0 {
+		return fmt.Errorf("无效的文档 ID")
+	}
+	if _, err := s.docRepo.GetByID(id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("文档不存在")
+		}
+		return err
+	}
+	return s.rag.DeleteDocument(ctx, id)
+}
+
+// DeleteDocuments 批量删除文档（单项失败不中断，结果汇总返回）
+func (s *KnowledgeService) DeleteDocuments(ctx context.Context, ids []uint) (*DeleteDocumentsResult, error) {
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("ids 不能为空")
+	}
+
+	result := &DeleteDocumentsResult{
+		Items: make([]DeleteDocumentItemResult, 0, len(ids)),
+		Total: len(ids),
+	}
+	seen := make(map[uint]struct{}, len(ids))
+
+	for _, id := range ids {
+		if id == 0 {
+			result.Items = append(result.Items, DeleteDocumentItemResult{
+				ID:      id,
+				Skipped: true,
+				Message: "无效的文档 ID",
+			})
+			result.Skipped++
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			result.Items = append(result.Items, DeleteDocumentItemResult{
+				ID:      id,
+				Skipped: true,
+				Message: "请求内重复 ID，已跳过",
+			})
+			result.Skipped++
+			continue
+		}
+		seen[id] = struct{}{}
+
+		if err := s.DeleteDocument(ctx, id); err != nil {
+			result.Items = append(result.Items, DeleteDocumentItemResult{
+				ID:      id,
+				Skipped: true,
+				Message: err.Error(),
+			})
+			result.Skipped++
+			continue
+		}
+		result.Items = append(result.Items, DeleteDocumentItemResult{
+			ID:      id,
+			Skipped: false,
+			Message: "已删除（含向量与文件）",
+		})
+		result.Deleted++
+	}
+
+	switch {
+	case result.Deleted > 0 && result.Skipped > 0:
+		result.Message = fmt.Sprintf("已删除 %d 个，跳过 %d 个", result.Deleted, result.Skipped)
+	case result.Deleted > 0:
+		result.Message = fmt.Sprintf("已删除 %d 个文档", result.Deleted)
+	default:
+		result.Message = fmt.Sprintf("未删除任何文档（跳过 %d 个）", result.Skipped)
+	}
+	return result, nil
+}
+
+// DeleteDocumentItemResult 单个文档删除结果
+type DeleteDocumentItemResult struct {
+	ID      uint   `json:"id"`
+	Skipped bool   `json:"skipped"`
+	Message string `json:"message"`
+}
+
+// DeleteDocumentsResult 批量删除结果
+type DeleteDocumentsResult struct {
+	Items   []DeleteDocumentItemResult `json:"items"`
+	Total   int                        `json:"total"`
+	Deleted int                        `json:"deleted"`
+	Skipped int                        `json:"skipped"`
+	Message string                     `json:"message"`
+}
+
 // ReindexItemResult 单个文档重新索引结果
 type ReindexItemResult struct {
 	ID       uint            `json:"id"`
