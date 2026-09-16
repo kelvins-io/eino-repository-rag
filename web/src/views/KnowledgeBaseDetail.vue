@@ -158,12 +158,16 @@
             ref="uploadRef"
             drag
             multiple
+            accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.json"
             :auto-upload="false"
             :on-change="onFileChange"
             :on-remove="onFileRemove"
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">拖拽或 <em>点击选择</em> 文件</div>
+            <template #tip>
+              <div class="el-upload__tip">支持 PDF / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）</div>
+            </template>
           </el-upload>
         </el-form-item>
       </el-form>

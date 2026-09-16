@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
 	"github.com/cloudwego/eino-ext/components/embedding/openai"
@@ -25,6 +26,7 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
+	docparser "github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 )
 
@@ -132,21 +134,29 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 
 	_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusIndexing, 0, "")
 
-	content, err := os.ReadFile(doc.FilePath)
+	parsed, err := docparser.ExtractFile(doc.FilePath, doc.ContentType)
 	if err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
-		return fmt.Errorf("read file: %w", err)
+		return fmt.Errorf("parse document: %w", err)
+	}
+	content := strings.TrimSpace(parsed.Text)
+	if content == "" {
+		err := fmt.Errorf("parsed document text is empty")
+		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		return err
 	}
 
 	baseDocs := []*schema.Document{{
 		ID:      fmt.Sprintf("doc-%d", doc.ID),
-		Content: string(content),
+		Content: content,
 		MetaData: map[string]any{
 			"doc_id":       strconv.FormatUint(uint64(doc.ID), 10),
 			"user_id":      doc.UserID,
 			"kb_id":        uintToMeta(doc.KnowledgeBaseID),
 			"directory_id": ptrUintToMeta(doc.DirectoryID),
 			"title":        doc.Title,
+			"format":       parsed.Format,
+			"content_type": parsed.ContentType,
 		},
 	}}
 
@@ -369,6 +379,12 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(answer) == "" {
+		answer = emptyAnswerFallback(docs)
+		if err := onEvent(StreamEvent{Type: StreamEventDelta, Content: answer}); err != nil {
+			return err
+		}
+	}
 
 	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
 		log.Printf("[rag] append user memory failed: %v", err)
@@ -563,6 +579,51 @@ func metaString(m map[string]any, key string) string {
 	default:
 		return fmt.Sprintf("%v", t)
 	}
+}
+
+func emptyAnswerFallback(docs []*schema.Document) string {
+	if len(docs) == 0 {
+		return "根据现有知识库无法确定。"
+	}
+	garbled := 0
+	for _, d := range docs {
+		if looksLikeGarbledChunk(d.Content) {
+			garbled++
+		}
+	}
+	if garbled*2 >= len(docs) {
+		return "检索到的知识库片段无法阅读（多为 PDF 字体未正确解码）。请对该 PDF 执行「重新索引」后再提问。"
+	}
+	return "根据现有知识库无法确定。"
+}
+
+func looksLikeGarbledChunk(s string) bool {
+	if s == "" {
+		return true
+	}
+	ctrl := 0
+	han := 0
+	total := 0
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		total++
+		if r < 0x20 {
+			ctrl++
+		}
+		if unicode.Is(unicode.Han, r) {
+			han++
+		}
+	}
+	if total == 0 {
+		return true
+	}
+	if ctrl > 5 {
+		return true
+	}
+	// 来源标题常见中文 PDF，正文几乎无汉字
+	return han == 0 && total > 40
 }
 
 func truncate(s string, n int) string {

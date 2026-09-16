@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -650,15 +651,27 @@ func (s *KnowledgeService) GetHistory(sessionID string) ([]model.Message, error)
 }
 
 func guessContentType(name string) string {
-	switch filepath.Ext(name) {
+	switch strings.ToLower(filepath.Ext(name)) {
 	case ".md", ".markdown":
 		return "text/markdown"
-	case ".txt":
+	case ".txt", ".log", ".text":
 		return "text/plain"
 	case ".json":
 		return "application/json"
 	case ".html", ".htm":
 		return "text/html"
+	case ".csv":
+		return "text/csv"
+	case ".pdf":
+		return "application/pdf"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".doc":
+		return "application/msword"
+	case ".xlsx", ".xlsm":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	default:
 		return "application/octet-stream"
 	}

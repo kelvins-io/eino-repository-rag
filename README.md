@@ -5,6 +5,7 @@
 ## 能力
 
 - **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后**自动异步构建向量索引**
+- **企业文档解析**：PDF / DOCX / XLSX / PPTX / HTML / Markdown / TXT / CSV / JSON；索引前按格式提取纯文本（扫描件 PDF 暂不支持 OCR；旧版 `.doc` 请转 DOCX）。中文 PDF 使用支持 CJK/ToUnicode 的解析器；已导入的乱码 PDF 需 **重新索引**
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
@@ -23,6 +24,7 @@
   ▼
 HTTP API (Gin)
   ├─ 文档导入 → 落盘 + PostgreSQL 记录 → 异步 Index Pipeline
+  │                                      ├─ 文档解析（PDF/DOCX/XLSX/PPTX/HTML/…）
   │                                      ├─ Recursive Splitter（递归分割）
   │                                      ├─ Embedding
   │                                      ├─ Vector Store（redis / milvus_lite）
