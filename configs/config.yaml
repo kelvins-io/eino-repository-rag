@@ -17,7 +17,7 @@ jwt:
 
 postgres:
   host: "localhost"
-  port: 15432
+  port: 15433
   user: "rag"
   password: "rag123"
   dbname: "eino_rag"
