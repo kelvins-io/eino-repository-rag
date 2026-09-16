@@ -241,9 +241,9 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 		}
 	}
 
-	if doc.FilePath != "" {
-		if err := os.Remove(doc.FilePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("[rag] remove file failed doc_id=%d path=%s err=%v", docID, doc.FilePath, err)
+	if path := strings.TrimSpace(doc.FilePath); path != "" {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("delete local file %s: %w", path, err)
 		}
 	}
 
@@ -655,9 +655,9 @@ func (p *Pipeline) generateStream(
 	return full.String(), nil
 }
 
-// SaveUpload 将上传文件持久化到本地
-func (p *Pipeline) SaveUpload(userID, title, fileName string, data []byte) (string, error) {
-	dir := filepath.Join(p.cfg.RAG.UploadDir, userID)
+// SaveUpload 将上传文件持久化到本地：{upload_dir}/{TenantID}/{KnowledgeBaseID}/{纳秒时间戳}_{原始文件名}
+func (p *Pipeline) SaveUpload(tenantID, knowledgeBaseID uint, fileName string, data []byte) (string, error) {
+	dir := filepath.Join(p.cfg.RAG.UploadDir, fmt.Sprintf("%d", tenantID), fmt.Sprintf("%d", knowledgeBaseID))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -666,7 +666,6 @@ func (p *Pipeline) SaveUpload(userID, title, fileName string, data []byte) (stri
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return "", err
 	}
-	_ = title
 	return path, nil
 }
 

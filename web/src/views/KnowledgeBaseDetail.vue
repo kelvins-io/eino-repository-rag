@@ -81,7 +81,6 @@
           >
             <el-table-column type="selection" width="48" />
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="title" label="标题" min-width="160" show-overflow-tooltip />
             <el-table-column prop="file_name" label="文件名" min-width="140" show-overflow-tooltip />
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
@@ -91,19 +90,17 @@
               </template>
             </el-table-column>
             <el-table-column prop="chunk_count" label="分块" width="70" />
-            <el-table-column label="上次索引" width="170">
+            <el-table-column label="上次索引时间" width="170">
               <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
-            </el-table-column>
-            <el-table-column label="错误原因" min-width="160" show-overflow-tooltip>
-              <template #default="{ row }">
-                <span v-if="row.status === 'failed' && row.error_msg" class="error-msg">
-                  {{ row.error_msg }}
-                </span>
-                <span v-else>-</span>
-              </template>
             </el-table-column>
             <el-table-column prop="file_size" label="大小" width="90">
               <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="170">
+              <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
+            </el-table-column>
+            <el-table-column label="创建时间" width="170">
+              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="160" fixed="right">
               <template #default="{ row }">
@@ -196,13 +193,14 @@
           <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
           <el-descriptions-item label="标题">{{ docDetail.title }}</el-descriptions-item>
           <el-descriptions-item label="文件名">{{ docDetail.file_name }}</el-descriptions-item>
+          <el-descriptions-item label="上传用户">{{ docDetail.user_id || '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusType(docDetail.status)" size="small">
               {{ statusLabel(docDetail.status) }}
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
-          <el-descriptions-item label="上次索引">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
+          <el-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
           <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
           <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
           <el-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">

@@ -526,7 +526,7 @@ func (s *KnowledgeService) importOneFile(
 		title = fileHeader.Filename
 	}
 
-	path, err := s.rag.SaveUpload(actor.UserID, title, fileHeader.Filename, data)
+	path, err := s.rag.SaveUpload(tenantID, kbID, fileHeader.Filename, data)
 	if err != nil {
 		return nil, fmt.Errorf("save upload: %w", err)
 	}

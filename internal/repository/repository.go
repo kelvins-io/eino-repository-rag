@@ -121,7 +121,8 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 		now := time.Now()
 		updates["last_indexed_at"] = now
 	}
-	return r.db.Model(&model.Document{}).Where("id = ?", id).Updates(updates).Error
+	// UpdateColumns 不触发 updated_at 自动刷新，避免索引构建改动更新时间
+	return r.db.Model(&model.Document{}).Where("id = ?", id).UpdateColumns(updates).Error
 }
 
 // ListIDsByStatuses 按状态列出文档 ID（启动时回收 pending/indexing）
