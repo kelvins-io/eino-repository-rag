@@ -10,6 +10,7 @@ import (
 
 type Config struct {
 	Server      ServerConfig      `yaml:"server"`
+	Log         LogConfig         `yaml:"log"`
 	Postgres    PostgresConfig    `yaml:"postgres"`
 	Redis       RedisConfig       `yaml:"redis"`
 	VectorIndex VectorIndexConfig `yaml:"vector_index"`
@@ -19,6 +20,18 @@ type Config struct {
 	RAG         RAGConfig         `yaml:"rag"`
 	Rerank      RerankConfig      `yaml:"rerank"`
 	Memory      MemoryConfig      `yaml:"memory"`
+}
+
+// LogConfig zap 日志配置
+type LogConfig struct {
+	// Level: debug | info | warn | error
+	Level string `yaml:"level"`
+	// Encoding: json | console
+	Encoding string `yaml:"encoding"`
+	// OutputPaths 输出路径：stdout / stderr / 文件路径
+	OutputPaths []string `yaml:"output_paths"`
+	// ErrorOutputPaths 错误输出路径
+	ErrorOutputPaths []string `yaml:"error_output_paths"`
 }
 
 // VectorIndexProvider 向量索引后端
@@ -202,6 +215,26 @@ func (c *Config) setDefaults() {
 	}
 	if c.Server.Mode == "" {
 		c.Server.Mode = "release"
+	}
+	if c.Log.Level == "" {
+		if c.Server.Mode == "debug" {
+			c.Log.Level = "debug"
+		} else {
+			c.Log.Level = "info"
+		}
+	}
+	if c.Log.Encoding == "" {
+		if c.Server.Mode == "debug" {
+			c.Log.Encoding = "console"
+		} else {
+			c.Log.Encoding = "json"
+		}
+	}
+	if len(c.Log.OutputPaths) == 0 {
+		c.Log.OutputPaths = []string{"stdout"}
+	}
+	if len(c.Log.ErrorOutputPaths) == 0 {
+		c.Log.ErrorOutputPaths = []string{"stderr"}
 	}
 	if c.Postgres.SSLMode == "" {
 		c.Postgres.SSLMode = "disable"

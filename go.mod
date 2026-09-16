@@ -19,6 +19,7 @@ require (
 	github.com/milvus-io/milvus/client/v2 v2.6.5
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/xuri/excelize/v2 v2.11.0
+	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.59.0
 	golang.org/x/text v0.42.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -162,7 +163,6 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/automaxprocs v1.5.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect

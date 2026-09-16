@@ -2,6 +2,16 @@ server:
   addr: ":8080"
   mode: "debug"
 
+# zap 日志：level=debug|info|warn|error；encoding=console|json
+# debug 模式默认 console+debug；release 默认 json+info
+log:
+  level: "debug"
+  encoding: "console"
+  output_paths:
+    - "stdout"
+  error_output_paths:
+    - "stderr"
+
 postgres:
   host: "localhost"
   port: 15432

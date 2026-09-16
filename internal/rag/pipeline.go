@@ -5,13 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"go.uber.org/zap"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
 	"github.com/cloudwego/eino-ext/components/embedding/openai"
@@ -24,6 +25,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
 	docparser "github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
@@ -105,8 +107,11 @@ func NewPipeline(
 		reranker = newHTTPReranker(cfg.Rerank)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v",
-		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled)
+	logger.L().Info("rag pipeline ready",
+		zap.String("vector_index.provider", cfg.VectorIndex.Provider),
+		zap.Bool("hybrid", cfg.RAG.HybridEnabled),
+		zap.Bool("rerank", cfg.Rerank.Enabled),
+	)
 
 	if cfg.Memory.SummaryEnabled {
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
@@ -206,7 +211,11 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	if err := p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusReady, len(chunks), ""); err != nil {
 		return err
 	}
-	log.Printf("[rag] indexed document id=%d chunks=%d provider=%s", docID, len(chunks), p.cfg.VectorIndex.Provider)
+	logger.L().Info("indexed document",
+		zap.Uint("doc_id", docID),
+		zap.Int("chunks", len(chunks)),
+		zap.String("provider", p.cfg.VectorIndex.Provider),
+	)
 	return nil
 }
 
@@ -232,14 +241,18 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 
 	if doc.FilePath != "" {
 		if err := os.Remove(doc.FilePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("[rag] remove file failed doc_id=%d path=%s err=%v", docID, doc.FilePath, err)
+			logger.L().Warn("remove document file failed",
+				zap.Uint("doc_id", docID),
+				zap.String("path", doc.FilePath),
+				zap.Error(err),
+			)
 		}
 	}
 
 	if err := p.docRepo.Delete(docID); err != nil {
 		return fmt.Errorf("delete document record: %w", err)
 	}
-	log.Printf("[rag] deleted document id=%d (vectors+file+db)", docID)
+	logger.L().Info("deleted document", zap.Uint("doc_id", docID))
 	return nil
 }
 
@@ -249,7 +262,7 @@ func (p *Pipeline) IndexDocumentAsync(docID uint) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		if err := p.IndexDocument(ctx, docID); err != nil {
-			log.Printf("[rag] async index failed doc_id=%d err=%v", docID, err)
+			logger.L().Error("async index failed", zap.Uint("doc_id", docID), zap.Error(err))
 		}
 	}()
 }
@@ -387,10 +400,10 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	}
 
 	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
-		log.Printf("[rag] append user memory failed: %v", err)
+		logger.L().Warn("append user memory failed", zap.Error(err))
 	}
 	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer); err != nil {
-		log.Printf("[rag] append assistant memory failed: %v", err)
+		logger.L().Warn("append assistant memory failed", zap.Error(err))
 	}
 
 	return onEvent(StreamEvent{
@@ -424,10 +437,14 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 	if p.cfg.RAG.HybridEnabled && p.bm25 != nil {
 		sparse, serr := p.bm25.Search(ctx, query, filter, poolK)
 		if serr != nil {
-			log.Printf("[rag] bm25 search failed, fallback dense-only: %v", serr)
+			logger.L().Warn("bm25 search failed, fallback dense-only", zap.Error(serr))
 		} else if len(sparse) > 0 {
 			fused = fuseRRF([][]*schema.Document{dense, sparse}, p.cfg.RAG.RRFK)
-			log.Printf("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
+			logger.L().Info("hybrid fuse",
+				zap.Int("dense", len(dense)),
+				zap.Int("bm25", len(sparse)),
+				zap.Int("fused", len(fused)),
+			)
 		}
 	}
 
@@ -440,10 +457,13 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 		candidates := truncateDocs(fused, poolK)
 		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
 		if rerr != nil {
-			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
+			logger.L().Warn("rerank failed, fallback fused top_k", zap.Error(rerr))
 			return truncateDocs(fused, topK), nil
 		}
-		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
+		logger.L().Info("reranked",
+			zap.Int("candidates", len(candidates)),
+			zap.Int("result", len(reranked)),
+		)
 		return reranked, nil
 	}
 

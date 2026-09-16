@@ -3,7 +3,6 @@ package rag
 import (
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
@@ -13,8 +12,10 @@ import (
 	einoretriever "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 type redisVectorStore struct {
@@ -34,7 +35,7 @@ func newRedisVectorStore(ctx context.Context, cfg *config.Config, rdb *redis.Cli
 func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 	exists, err := s.rdb.Do(ctx, "FT.INFO", s.cfg.Redis.IndexName).Result()
 	if err == nil && exists != nil {
-		log.Printf("[rag] redis vector index %s already exists", s.cfg.Redis.IndexName)
+		logger.L().Info("redis vector index already exists", zap.String("index", s.cfg.Redis.IndexName))
 		// 兼容旧索引：尝试补充分类字段
 		_, _ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "kb_id", "TAG").Result()
 		_, _ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "directory_id", "TAG").Result()
@@ -63,7 +64,7 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 		}
 		return fmt.Errorf("create redis vector index: %w", err)
 	}
-	log.Printf("[rag] created redis vector index %s", s.cfg.Redis.IndexName)
+	logger.L().Info("created redis vector index", zap.String("index", s.cfg.Redis.IndexName))
 	return nil
 }
 

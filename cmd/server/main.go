@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,9 +10,11 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/handler"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
@@ -22,6 +23,8 @@ import (
 )
 
 func main() {
+	defer logger.Sync()
+
 	configPath := flag.String("config", "configs/config.yaml", "config file path")
 	flag.Parse()
 
@@ -29,30 +32,39 @@ func main() {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		logger.L().Fatal("load config failed", zap.Error(err))
+	}
+
+	if err := logger.Init(logger.Config{
+		Level:            cfg.Log.Level,
+		Encoding:         cfg.Log.Encoding,
+		OutputPaths:      cfg.Log.OutputPaths,
+		ErrorOutputPaths: cfg.Log.ErrorOutputPaths,
+	}); err != nil {
+		logger.L().Fatal("init logger failed", zap.Error(err))
 	}
 
 	if err := os.MkdirAll(cfg.RAG.UploadDir, 0o755); err != nil {
-		log.Fatalf("create upload dir: %v", err)
+		logger.L().Fatal("create upload dir failed", zap.Error(err))
 	}
 
 	db, err := repository.NewPostgres(cfg.Postgres)
 	if err != nil {
-		log.Fatalf("postgres: %v", err)
+		logger.L().Fatal("connect postgres failed", zap.Error(err))
 	}
 
 	// Redis：Protocol=2 + UnstableResp3 是向量检索前置条件
 	rdb := redis.NewClient(&redis.Options{
-		Addr:           cfg.Redis.Addr,
-		Password:       cfg.Redis.Password,
-		DB:             cfg.Redis.DB,
-		Protocol:       2,
-		UnstableResp3:  true,
+		Addr:          cfg.Redis.Addr,
+		Password:      cfg.Redis.Password,
+		DB:            cfg.Redis.DB,
+		Protocol:      2,
+		UnstableResp3: true,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis ping: %v", err)
+		logger.L().Fatal("redis ping failed", zap.Error(err))
 	}
 
 	docRepo := repository.NewDocumentRepo(db)
@@ -65,7 +77,7 @@ func main() {
 
 	pipeline, err := rag.NewPipeline(context.Background(), cfg, rdb, docRepo, memMgr)
 	if err != nil {
-		log.Fatalf("init rag pipeline: %v", err)
+		logger.L().Fatal("init rag pipeline failed", zap.Error(err))
 	}
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
@@ -73,15 +85,15 @@ func main() {
 	router := server.NewRouter(cfg.Server.Mode, h)
 
 	go func() {
-		log.Printf("eino knowledge base RAG listening on %s", cfg.Server.Addr)
+		logger.L().Info("eino knowledge base RAG listening", zap.String("addr", cfg.Server.Addr))
 		if err := router.Run(cfg.Server.Addr); err != nil {
-			log.Fatalf("server stopped: %v", err)
+			logger.L().Fatal("server stopped", zap.Error(err))
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Println("shutting down...")
+	logger.L().Info("shutting down...")
 	_ = rdb.Close()
 }

@@ -3,14 +3,15 @@ package rag
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"unicode"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 // redisBM25 基于 RediSearch TEXT 字段的 BM25 稀疏召回。
@@ -49,7 +50,7 @@ func newRedisBM25(ctx context.Context, cfg *config.Config, rdb *redis.Client) (*
 func (b *redisBM25) ensureSidecarIndex(ctx context.Context) error {
 	exists, err := b.rdb.Do(ctx, "FT.INFO", b.indexName).Result()
 	if err == nil && exists != nil {
-		log.Printf("[rag] redis bm25 sidecar index %s already exists", b.indexName)
+		logger.L().Info("redis bm25 sidecar index already exists", zap.String("index", b.indexName))
 		return nil
 	}
 	_, err = b.rdb.Do(ctx,
@@ -70,7 +71,7 @@ func (b *redisBM25) ensureSidecarIndex(ctx context.Context) error {
 		}
 		return fmt.Errorf("create redis bm25 index: %w", err)
 	}
-	log.Printf("[rag] created redis bm25 sidecar index %s", b.indexName)
+	logger.L().Info("created redis bm25 sidecar index", zap.String("index", b.indexName))
 	return nil
 }
 

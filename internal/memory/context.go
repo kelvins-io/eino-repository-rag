@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 // Summarizer 将较早的多轮对话压缩为摘要（由 RAG 层注入 LLM 实现）。
@@ -111,16 +113,25 @@ func (m *Manager) BuildContextForPrompt(ctx context.Context, sessionID string) (
 
 		newSummary, sumErr := m.summarizer.Summarize(ctx, summaryContent, toFold)
 		if sumErr != nil {
-			log.Printf("[memory] summarize failed session=%s err=%v; fallback to trim", sessionID, sumErr)
+			logger.L().Warn("summarize failed, fallback to trim",
+				zap.String("session", sessionID),
+				zap.Error(sumErr),
+			)
 			turns = recent
 		} else {
 			summaryContent = newSummary
 			turns = recent
 			if saveErr := m.saveSummary(ctx, sessionID, summaryContent); saveErr != nil {
-				log.Printf("[memory] save summary failed session=%s err=%v", sessionID, saveErr)
+				logger.L().Warn("save summary failed",
+					zap.String("session", sessionID),
+					zap.Error(saveErr),
+				)
 			}
 			if trimErr := m.trimShortTerm(ctx, sessionID, keepRecent); trimErr != nil {
-				log.Printf("[memory] trim short-term failed session=%s err=%v", sessionID, trimErr)
+				logger.L().Warn("trim short-term failed",
+					zap.String("session", sessionID),
+					zap.Error(trimErr),
+				)
 			}
 		}
 	}

@@ -9,7 +9,7 @@
         <p class="sub">{{ kb?.description || '管理目录树与文档导入' }}</p>
       </div>
       <div class="actions">
-        <el-button :icon="Upload" type="primary" @click="importVisible = true">导入文档</el-button>
+        <el-button :icon="Upload" type="primary" @click="openImport">导入文档</el-button>
         <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
       </div>
     </div>
@@ -357,6 +357,14 @@ function onFileChange(_file, files) {
 
 function onFileRemove(_file, files) {
   fileList.value = files
+}
+
+function openImport() {
+  importForm.title = ''
+  importForm.directory_id = currentDir.value?.id
+  fileList.value = []
+  uploadRef.value?.clearFiles()
+  importVisible.value = true
 }
 
 async function doImport() {
