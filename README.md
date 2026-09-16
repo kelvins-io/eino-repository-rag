@@ -4,8 +4,8 @@
 
 ## 能力
 
+- **用户认证**：租户（`tenants`）+ 用户注册/登录；JWT（HS256）鉴权；注册/登录须填写租户 ID，不存在则拦截提示
 - **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后**自动异步构建向量索引**
-- **企业文档解析**：PDF / DOCX / XLSX / PPTX / HTML / Markdown / TXT / CSV / JSON；索引前按格式提取纯文本（扫描件 PDF 暂不支持 OCR；旧版 `.doc` 请转 DOCX）。中文 PDF 使用支持 CJK/ToUnicode 的解析器；已导入的乱码 PDF 需 **重新索引**
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
@@ -22,17 +22,18 @@
 客户端
   │
   ▼
-HTTP API (Gin)
+HTTP API (Gin) + JWT
+  ├─ 公开：创建租户 / 注册 / 登录 / health
   ├─ 文档导入 → 落盘 + PostgreSQL 记录 → 异步 Index Pipeline
-  │                                      ├─ 文档解析（PDF/DOCX/XLSX/PPTX/HTML/…）
-  │                                      ├─ Recursive Splitter（递归分割）
+  │                                      ├─ Parser（PDF/Office/文本）
+  │                                      ├─ Recursive Splitter
   │                                      ├─ Embedding
   │                                      ├─ Vector Store（redis / milvus_lite）
   │                                      └─ BM25 sidecar（hybrid + milvus 时）
   └─ 问答检索 → 短期/长期记忆
                → Dense Retriever + BM25（可选 Hybrid/RRF）
                → Rerank（可选）
-               → DeepSeek Stream → 回写记忆
+               → DeepSeek Generate → 回写记忆
 ```
 
 ## 快速开始
@@ -105,7 +106,31 @@ go run ./cmd/server -config configs/config.yaml
 
 默认监听 `:8080`，已启用 CORS（允许本地前端 `5173` / `3000` 跨域访问）。
 
-### 5. 启动 Web 前端（可选）
+### 5. 认证（租户 + JWT）
+
+启动时会自动确保存在租户 `default`。注册/登录都必须填写**已存在的租户 ID**（`tenant_id`），否则返回「租户 ID 不存在」。
+
+```bash
+# 可选：创建新租户
+curl -X POST http://localhost:8080/api/v1/tenants \
+  -H "Content-Type: application/json" \
+  -d '{"code":"acme","name":"Acme 公司"}'
+
+# 注册（租户须已存在）
+curl -X POST http://localhost:8080/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"default","username":"alice","password":"secret1"}'
+
+# 登录
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"default","username":"alice","password":"secret1"}'
+# 响应 data.token → 后续请求头: Authorization: Bearer <token>
+```
+
+业务 API（知识库/文档/问答）均需携带 JWT；身份从 token 解析，客户端不可伪造 `user_id`。
+
+### 6. 启动 Web 前端（可选）
 
 前后端分离：后端 API `:8080`，前端 Vite 开发服 `:5173`。
 
@@ -216,21 +241,11 @@ curl -X POST http://localhost:8080/api/v1/documents/reindex \
   -d '{"ids":[1,2,3]}'
 ```
 
-### 知识库问答（SSE 流式，带记忆，可按分类过滤）
-
-`POST /api/v1/chat/query` 返回 `text/event-stream`，事件类型：
-
-| type | 说明 |
-|------|------|
-| `meta` | 会话 ID、检索来源 `sources` |
-| `delta` | 增量文本 `content` |
-| `done` | 完整回答 `answer` 与来源 |
-| `error` | 失败信息 `message` |
+### 知识库问答（带记忆，可按分类过滤）
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/chat/query \
+curl -X POST http://localhost:8080/api/v1/chat/query \
   -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
   -d '{
     "user_id": "u001",
     "session_id": "s-demo-001",

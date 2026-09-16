@@ -30,20 +30,16 @@
       <el-header class="header" height="56px">
         <div class="header-left">{{ pageTitle }}</div>
         <div class="header-right">
-          <span class="label">用户 ID</span>
-          <el-input
-            v-model="userId"
-            size="small"
-            style="width: 140px"
-            @change="onUserChange"
-          />
+          <el-tag effect="plain" size="small">租户 {{ tenantCode }}</el-tag>
+          <span class="user">{{ displayName }}</span>
           <el-tag :type="healthOk ? 'success' : 'danger'" effect="plain" size="small">
             {{ healthOk ? 'API 正常' : 'API 异常' }}
           </el-tag>
+          <el-button size="small" @click="logout">退出</el-button>
         </div>
       </el-header>
       <el-main class="main">
-        <router-view :key="userId" />
+        <router-view />
       </el-main>
     </el-container>
   </el-container>
@@ -51,14 +47,19 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
-import { getUserId, setUserId } from '@/utils/helpers'
+import { clearAuth, getAuthTenant, getAuthUser } from '@/utils/auth'
 
 const route = useRoute()
-const userId = ref(getUserId())
+const router = useRouter()
 const healthOk = ref(false)
 let healthTimer
+
+const user = getAuthUser()
+const tenant = getAuthTenant()
+const displayName = computed(() => user?.display_name || user?.username || '用户')
+const tenantCode = computed(() => tenant?.code || '-')
 
 const active = computed(() => {
   if (route.path.startsWith('/chat')) return '/chat'
@@ -67,9 +68,9 @@ const active = computed(() => {
 
 const pageTitle = computed(() => route.meta.title || 'Eino RAG')
 
-function onUserChange(val) {
-  setUserId(val)
-  userId.value = getUserId()
+function logout() {
+  clearAuth()
+  router.replace('/login')
 }
 
 async function checkHealth() {
@@ -150,8 +151,8 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.header-right .label {
-  color: #64748b;
+.user {
+  color: #334155;
   font-size: 13px;
 }
 

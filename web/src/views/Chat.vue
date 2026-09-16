@@ -42,9 +42,6 @@
             <el-form-item label="Session ID">
               <el-input v-model="sessionId" readonly />
             </el-form-item>
-            <el-form-item label="User ID">
-              <el-input :model-value="userId" readonly />
-            </el-form-item>
           </el-form>
         </div>
       </el-col>
@@ -104,9 +101,8 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
-import { getSessionId, getUserId, newSessionId } from '@/utils/helpers'
+import { getSessionId, newSessionId } from '@/utils/helpers'
 
-const userId = getUserId()
 const sessionId = ref(getSessionId())
 const kbs = ref([])
 const kbId = ref()
@@ -118,7 +114,7 @@ const asking = ref(false)
 const listRef = ref()
 
 async function loadKbs() {
-  kbs.value = (await api.listKnowledgeBases(userId)) || []
+  kbs.value = (await api.listKnowledgeBases()) || []
   if (kbs.value.length && !kbId.value) {
     kbId.value = kbs.value[0].id
     await onKbChange()
@@ -178,7 +174,6 @@ async function ask() {
   asking.value = true
   try {
     const payload = {
-      user_id: userId,
       session_id: sessionId.value,
       knowledge_base_id: kbId.value,
       query: q,

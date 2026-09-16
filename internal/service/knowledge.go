@@ -21,6 +21,9 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 )
 
+// ErrForbidden 资源存在但不属于当前 user_id
+var ErrForbidden = errors.New("无权访问该资源")
+
 type KnowledgeService struct {
 	docRepo *repository.DocumentRepo
 	kbRepo  *repository.KnowledgeBaseRepo
@@ -46,6 +49,56 @@ func NewKnowledgeService(
 		mem:     mem,
 		rag:     pipeline,
 	}
+}
+
+func requireUserID(userID string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", fmt.Errorf("user_id is required")
+	}
+	return userID, nil
+}
+
+func (s *KnowledgeService) requireKBOwner(kbID uint, userID string) (*model.KnowledgeBase, error) {
+	kb, err := s.kbRepo.GetByID(kbID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("知识库不存在")
+		}
+		return nil, err
+	}
+	if kb.UserID != userID {
+		return nil, ErrForbidden
+	}
+	return kb, nil
+}
+
+func (s *KnowledgeService) requireDocOwner(docID uint, userID string) (*model.Document, error) {
+	doc, err := s.docRepo.GetByID(docID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("文档不存在")
+		}
+		return nil, err
+	}
+	if doc.UserID != userID {
+		return nil, ErrForbidden
+	}
+	return doc, nil
+}
+
+func (s *KnowledgeService) requireDirOwner(dirID uint, userID string) (*model.Directory, error) {
+	dir, err := s.dirRepo.GetByID(dirID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("目录不存在")
+		}
+		return nil, err
+	}
+	if _, err := s.requireKBOwner(dir.KnowledgeBaseID, userID); err != nil {
+		return nil, err
+	}
+	return dir, nil
 }
 
 // ImportFileResult 单个文件的导入结果
@@ -74,8 +127,9 @@ type ImportOptions struct {
 
 // CreateKnowledgeBase 创建知识库
 func (s *KnowledgeService) CreateKnowledgeBase(userID, name, description string) (*model.KnowledgeBase, error) {
-	if userID == "" {
-		userID = "anonymous"
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
 	}
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -92,15 +146,27 @@ func (s *KnowledgeService) CreateKnowledgeBase(userID, name, description string)
 }
 
 func (s *KnowledgeService) ListKnowledgeBases(userID string) ([]model.KnowledgeBase, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
 	return s.kbRepo.ListByUser(userID)
 }
 
-func (s *KnowledgeService) GetKnowledgeBase(id uint) (*model.KnowledgeBase, error) {
-	return s.kbRepo.GetByID(id)
+func (s *KnowledgeService) GetKnowledgeBase(id uint, userID string) (*model.KnowledgeBase, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.requireKBOwner(id, userID)
 }
 
-func (s *KnowledgeService) UpdateKnowledgeBase(id uint, name, description string) (*model.KnowledgeBase, error) {
-	kb, err := s.kbRepo.GetByID(id)
+func (s *KnowledgeService) UpdateKnowledgeBase(id uint, userID, name, description string) (*model.KnowledgeBase, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	kb, err := s.requireKBOwner(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +180,14 @@ func (s *KnowledgeService) UpdateKnowledgeBase(id uint, name, description string
 	return kb, nil
 }
 
-func (s *KnowledgeService) DeleteKnowledgeBase(id uint) error {
+func (s *KnowledgeService) DeleteKnowledgeBase(id uint, userID string) error {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.requireKBOwner(id, userID); err != nil {
+		return err
+	}
 	n, err := s.docRepo.CountByKnowledgeBase(id)
 	if err != nil {
 		return err
@@ -133,6 +206,7 @@ func (s *KnowledgeService) DeleteKnowledgeBase(id uint) error {
 }
 
 type CreateDirectoryInput struct {
+	UserID          string
 	KnowledgeBaseID uint
 	ParentID        *uint
 	Name            string
@@ -141,19 +215,21 @@ type CreateDirectoryInput struct {
 }
 
 func (s *KnowledgeService) CreateDirectory(in CreateDirectoryInput) (*model.Directory, error) {
+	userID, err := requireUserID(in.UserID)
+	if err != nil {
+		return nil, err
+	}
 	if in.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	kb, err := s.kbRepo.GetByID(in.KnowledgeBaseID)
-	if err != nil {
-		return nil, fmt.Errorf("knowledge base not found: %w", err)
+	if _, err := s.requireKBOwner(in.KnowledgeBaseID, userID); err != nil {
+		return nil, err
 	}
-	_ = kb
 
 	if in.ParentID != nil {
-		parent, err := s.dirRepo.GetByID(*in.ParentID)
+		parent, err := s.requireDirOwner(*in.ParentID, userID)
 		if err != nil {
-			return nil, fmt.Errorf("parent directory not found: %w", err)
+			return nil, fmt.Errorf("parent directory: %w", err)
 		}
 		if parent.KnowledgeBaseID != in.KnowledgeBaseID {
 			return nil, fmt.Errorf("parent directory 不属于该知识库")
@@ -173,9 +249,13 @@ func (s *KnowledgeService) CreateDirectory(in CreateDirectoryInput) (*model.Dire
 	return dir, nil
 }
 
-func (s *KnowledgeService) ListDirectoryTree(kbID uint) ([]*model.DirectoryNode, error) {
-	if _, err := s.kbRepo.GetByID(kbID); err != nil {
-		return nil, fmt.Errorf("knowledge base not found: %w", err)
+func (s *KnowledgeService) ListDirectoryTree(kbID uint, userID string) ([]*model.DirectoryNode, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.requireKBOwner(kbID, userID); err != nil {
+		return nil, err
 	}
 	dirs, err := s.dirRepo.ListByKnowledgeBase(kbID)
 	if err != nil {
@@ -184,8 +264,12 @@ func (s *KnowledgeService) ListDirectoryTree(kbID uint) ([]*model.DirectoryNode,
 	return repository.BuildDirectoryTree(dirs), nil
 }
 
-func (s *KnowledgeService) UpdateDirectory(id uint, name, description string, parentID *uint, sortOrder *int) (*model.Directory, error) {
-	dir, err := s.dirRepo.GetByID(id)
+func (s *KnowledgeService) UpdateDirectory(id uint, userID, name, description string, parentID *uint, sortOrder *int) (*model.Directory, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := s.requireDirOwner(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,9 +284,9 @@ func (s *KnowledgeService) UpdateDirectory(id uint, name, description string, pa
 			if *parentID == id {
 				return nil, fmt.Errorf("目录不能将自己设为父目录")
 			}
-			parent, err := s.dirRepo.GetByID(*parentID)
+			parent, err := s.requireDirOwner(*parentID, userID)
 			if err != nil {
-				return nil, fmt.Errorf("parent directory not found: %w", err)
+				return nil, fmt.Errorf("parent directory: %w", err)
 			}
 			if parent.KnowledgeBaseID != dir.KnowledgeBaseID {
 				return nil, fmt.Errorf("parent directory 不属于同一知识库")
@@ -229,7 +313,14 @@ func (s *KnowledgeService) UpdateDirectory(id uint, name, description string, pa
 	return dir, nil
 }
 
-func (s *KnowledgeService) DeleteDirectory(id uint) error {
+func (s *KnowledgeService) DeleteDirectory(id uint, userID string) error {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.requireDirOwner(id, userID); err != nil {
+		return err
+	}
 	nDoc, err := s.docRepo.CountByDirectory(id)
 	if err != nil {
 		return err
@@ -257,9 +348,9 @@ func (s *KnowledgeService) ImportDocuments(
 		return nil, fmt.Errorf("缺少上传文件")
 	}
 
-	userID := opts.UserID
-	if userID == "" {
-		userID = "anonymous"
+	userID, err := requireUserID(opts.UserID)
+	if err != nil {
+		return nil, err
 	}
 
 	kbID := opts.KnowledgeBaseID
@@ -269,14 +360,14 @@ func (s *KnowledgeService) ImportDocuments(
 			return nil, fmt.Errorf("resolve default knowledge base: %w", err)
 		}
 		kbID = kb.ID
-	} else if _, err := s.kbRepo.GetByID(kbID); err != nil {
-		return nil, fmt.Errorf("knowledge base not found: %w", err)
+	} else if _, err := s.requireKBOwner(kbID, userID); err != nil {
+		return nil, err
 	}
 
 	if opts.DirectoryID != nil {
-		dir, err := s.dirRepo.GetByID(*opts.DirectoryID)
+		dir, err := s.requireDirOwner(*opts.DirectoryID, userID)
 		if err != nil {
-			return nil, fmt.Errorf("directory not found: %w", err)
+			return nil, err
 		}
 		if dir.KnowledgeBaseID != kbID {
 			return nil, fmt.Errorf("directory 不属于指定知识库")
@@ -403,6 +494,21 @@ func (s *KnowledgeService) importOneFile(
 }
 
 func (s *KnowledgeService) ListDocuments(filter repository.DocumentListFilter, page, pageSize int) ([]model.Document, int64, error) {
+	userID, err := requireUserID(filter.UserID)
+	if err != nil {
+		return nil, 0, err
+	}
+	filter.UserID = userID
+	if filter.KnowledgeBaseID > 0 {
+		if _, err := s.requireKBOwner(filter.KnowledgeBaseID, userID); err != nil {
+			return nil, 0, err
+		}
+	}
+	if filter.DirectoryID != nil && *filter.DirectoryID > 0 {
+		if _, err := s.requireDirOwner(*filter.DirectoryID, userID); err != nil {
+			return nil, 0, err
+		}
+	}
 	if page <= 0 {
 		page = 1
 	}
@@ -412,28 +518,37 @@ func (s *KnowledgeService) ListDocuments(filter repository.DocumentListFilter, p
 	return s.docRepo.List(filter, pageSize, (page-1)*pageSize)
 }
 
-func (s *KnowledgeService) GetDocument(id uint) (*model.Document, error) {
-	return s.docRepo.GetByID(id)
+func (s *KnowledgeService) GetDocument(id uint, userID string) (*model.Document, error) {
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.requireDocOwner(id, userID)
 }
 
 // DeleteDocument 删除文档并级联清理向量索引与本地文件
-func (s *KnowledgeService) DeleteDocument(ctx context.Context, id uint) error {
+func (s *KnowledgeService) DeleteDocument(ctx context.Context, id uint, userID string) error {
 	if id == 0 {
 		return fmt.Errorf("无效的文档 ID")
 	}
-	if _, err := s.docRepo.GetByID(id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("文档不存在")
-		}
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.requireDocOwner(id, userID); err != nil {
 		return err
 	}
 	return s.rag.DeleteDocument(ctx, id)
 }
 
 // DeleteDocuments 批量删除文档（单项失败不中断，结果汇总返回）
-func (s *KnowledgeService) DeleteDocuments(ctx context.Context, ids []uint) (*DeleteDocumentsResult, error) {
+func (s *KnowledgeService) DeleteDocuments(ctx context.Context, ids []uint, userID string) (*DeleteDocumentsResult, error) {
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("ids 不能为空")
+	}
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
 	}
 
 	result := &DeleteDocumentsResult{
@@ -463,7 +578,7 @@ func (s *KnowledgeService) DeleteDocuments(ctx context.Context, ids []uint) (*De
 		}
 		seen[id] = struct{}{}
 
-		if err := s.DeleteDocument(ctx, id); err != nil {
+		if err := s.DeleteDocument(ctx, id, userID); err != nil {
 			result.Items = append(result.Items, DeleteDocumentItemResult{
 				ID:      id,
 				Skipped: true,
@@ -525,9 +640,13 @@ type ReindexResult struct {
 }
 
 // ReindexDocuments 批量触发已导入文档的重新索引构建（异步）
-func (s *KnowledgeService) ReindexDocuments(ids []uint) (*ReindexResult, error) {
+func (s *KnowledgeService) ReindexDocuments(ids []uint, userID string) (*ReindexResult, error) {
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("ids 不能为空")
+	}
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
 	}
 
 	result := &ReindexResult{
@@ -557,12 +676,12 @@ func (s *KnowledgeService) ReindexDocuments(ids []uint) (*ReindexResult, error) 
 		}
 		seen[id] = struct{}{}
 
-		doc, err := s.docRepo.GetByID(id)
+		doc, err := s.requireDocOwner(id, userID)
 		if err != nil {
 			result.Items = append(result.Items, ReindexItemResult{
 				ID:      id,
 				Skipped: true,
-				Message: "文档不存在",
+				Message: err.Error(),
 			})
 			result.Skipped++
 			continue
@@ -603,18 +722,26 @@ func (s *KnowledgeService) prepareQueryRequest(req *rag.QueryRequest) error {
 	if req.Query == "" {
 		return fmt.Errorf("query is required")
 	}
+	userID, err := requireUserID(req.UserID)
+	if err != nil {
+		return err
+	}
+	req.UserID = userID
 	if req.SessionID == "" {
 		req.SessionID = uuid.NewString()
 	}
 
-	filter := &rag.RetrieveFilter{}
+	filter := &rag.RetrieveFilter{UserID: userID}
 	if req.KnowledgeBaseID > 0 {
-		if _, err := s.kbRepo.GetByID(req.KnowledgeBaseID); err != nil {
-			return fmt.Errorf("knowledge base not found: %w", err)
+		if _, err := s.requireKBOwner(req.KnowledgeBaseID, userID); err != nil {
+			return err
 		}
 		filter.KnowledgeBaseID = strconv.FormatUint(uint64(req.KnowledgeBaseID), 10)
 	}
 	if req.DirectoryID != nil && *req.DirectoryID > 0 {
+		if _, err := s.requireDirOwner(*req.DirectoryID, userID); err != nil {
+			return err
+		}
 		ids, err := s.dirRepo.CollectSelfAndDescendantIDs(*req.DirectoryID)
 		if err != nil {
 			return fmt.Errorf("directory not found: %w", err)
@@ -623,9 +750,7 @@ func (s *KnowledgeService) prepareQueryRequest(req *rag.QueryRequest) error {
 			filter.DirectoryIDs = append(filter.DirectoryIDs, strconv.FormatUint(uint64(id), 10))
 		}
 	}
-	if filter.KnowledgeBaseID != "" || len(filter.DirectoryIDs) > 0 {
-		req.Filter = filter
-	}
+	req.Filter = filter
 	return nil
 }
 
@@ -643,11 +768,32 @@ func (s *KnowledgeService) QueryStream(ctx context.Context, req rag.QueryRequest
 	return s.rag.QueryStream(ctx, req, onEvent)
 }
 
-func (s *KnowledgeService) GetHistory(sessionID string) ([]model.Message, error) {
+func (s *KnowledgeService) GetHistory(sessionID, userID string) ([]model.Message, error) {
 	if sessionID == "" {
 		return nil, fmt.Errorf("session_id is required")
 	}
-	return s.mem.GetLongTerm(context.Background(), sessionID)
+	userID, err := requireUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	msgs, err := s.mem.GetLongTerm(context.Background(), sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(msgs) == 0 {
+		return msgs, nil
+	}
+	// 会话首条消息即归属用户；拒绝跨用户读取
+	if msgs[0].UserID != userID {
+		return nil, ErrForbidden
+	}
+	out := make([]model.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.UserID == userID {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 func guessContentType(name string) string {

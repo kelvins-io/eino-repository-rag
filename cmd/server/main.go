@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/auth"
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/handler"
 	"github.com/kelvins-io/eino-repository-rag/internal/logger"
@@ -53,6 +54,15 @@ func main() {
 		logger.L().Fatal("connect postgres failed", zap.Error(err))
 	}
 
+	tenantRepo := repository.NewTenantRepo(db)
+	if _, err := tenantRepo.EnsureDefault(); err != nil {
+		logger.L().Fatal("ensure default tenant failed", zap.Error(err))
+	}
+	userRepo := repository.NewUserRepo(db)
+	tokenMgr := auth.NewTokenManager(cfg.JWT)
+	authSvc := service.NewAuthService(tenantRepo, userRepo, tokenMgr)
+	authHandler := handler.NewAuthHandler(authSvc)
+
 	// Redis：Protocol=2 + UnstableResp3 是向量检索前置条件
 	rdb := redis.NewClient(&redis.Options{
 		Addr:          cfg.Redis.Addr,
@@ -81,8 +91,8 @@ func main() {
 	}
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
-	h := handler.NewKnowledgeHandler(svc)
-	router := server.NewRouter(cfg.Server.Mode, h)
+	kh := handler.NewKnowledgeHandler(svc)
+	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr)
 
 	go func() {
 		logger.L().Info("eino knowledge base RAG listening", zap.String("addr", cfg.Server.Addr))

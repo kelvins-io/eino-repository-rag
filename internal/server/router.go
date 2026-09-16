@@ -6,11 +6,12 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/auth"
 	"github.com/kelvins-io/eino-repository-rag/internal/handler"
 	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
-func NewRouter(mode string, h *handler.KnowledgeHandler) *gin.Engine {
+func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandler, tm *auth.TokenManager) *gin.Engine {
 	gin.SetMode(mode)
 	r := gin.New()
 	r.Use(logger.GinLogger(), logger.GinRecovery(true))
@@ -23,41 +24,55 @@ func NewRouter(mode string, h *handler.KnowledgeHandler) *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	r.GET("/health", h.Health)
+	r.GET("/health", kh.Health)
 
 	api := r.Group("/api/v1")
 	{
-		kbs := api.Group("/knowledge-bases")
+		// 公开：租户创建、注册、登录
+		api.POST("/tenants", ah.CreateTenant)
+		authGroup := api.Group("/auth")
 		{
-			kbs.POST("", h.CreateKnowledgeBase)
-			kbs.GET("", h.ListKnowledgeBases)
-			kbs.GET("/:id", h.GetKnowledgeBase)
-			kbs.PUT("/:id", h.UpdateKnowledgeBase)
-			kbs.DELETE("/:id", h.DeleteKnowledgeBase)
-			kbs.POST("/:id/directories", h.CreateDirectory)
-			kbs.GET("/:id/directories", h.ListDirectoryTree)
+			authGroup.POST("/register", ah.Register)
+			authGroup.POST("/login", ah.Login)
 		}
 
-		dirs := api.Group("/directories")
+		protected := api.Group("")
+		protected.Use(auth.Middleware(tm))
 		{
-			dirs.PUT("/:id", h.UpdateDirectory)
-			dirs.DELETE("/:id", h.DeleteDirectory)
-		}
+			protected.GET("/auth/me", ah.Me)
 
-		docs := api.Group("/documents")
-		{
-			docs.POST("/import", h.ImportDocument)
-			docs.POST("/reindex", h.ReindexDocuments)
-			docs.POST("/delete", h.DeleteDocuments)
-			docs.GET("", h.ListDocuments)
-			docs.GET("/:id", h.GetDocument)
-			docs.DELETE("/:id", h.DeleteDocument)
-		}
+			kbs := protected.Group("/knowledge-bases")
+			{
+				kbs.POST("", kh.CreateKnowledgeBase)
+				kbs.GET("", kh.ListKnowledgeBases)
+				kbs.GET("/:id", kh.GetKnowledgeBase)
+				kbs.PUT("/:id", kh.UpdateKnowledgeBase)
+				kbs.DELETE("/:id", kh.DeleteKnowledgeBase)
+				kbs.POST("/:id/directories", kh.CreateDirectory)
+				kbs.GET("/:id/directories", kh.ListDirectoryTree)
+			}
 
-		chat := api.Group("/chat")
-		{
-			chat.POST("/query", h.Query)
-			chat.GET("/history", h.History)
+			dirs := protected.Group("/directories")
+			{
+				dirs.PUT("/:id", kh.UpdateDirectory)
+				dirs.DELETE("/:id", kh.DeleteDirectory)
+			}
+
+			docs := protected.Group("/documents")
+			{
+				docs.POST("/import", kh.ImportDocument)
+				docs.POST("/reindex", kh.ReindexDocuments)
+				docs.POST("/delete", kh.DeleteDocuments)
+				docs.GET("", kh.ListDocuments)
+				docs.GET("/:id", kh.GetDocument)
+				docs.DELETE("/:id", kh.DeleteDocument)
+			}
+
+			chat := protected.Group("/chat")
+			{
+				chat.POST("/query", kh.Query)
+				chat.GET("/history", kh.History)
+			}
 		}
 	}
 	return r

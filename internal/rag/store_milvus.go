@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus2"
@@ -12,10 +13,8 @@ import (
 	einoretriever "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
-	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
-	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 type milvusVectorStore struct {
@@ -77,12 +76,8 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 		return nil, fmt.Errorf("create milvus retriever: %w", err)
 	}
 
-	logger.L().Info("milvus_lite vector store ready",
-		zap.String("address", cfg.Milvus.Address),
-		zap.String("collection", cfg.Milvus.Collection),
-		zap.Int("dim", dim),
-		zap.String("metric", cfg.Milvus.MetricType),
-	)
+	log.Printf("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s",
+		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType)
 
 	return &milvusVectorStore{
 		cfg:       cfg,
@@ -140,6 +135,9 @@ func buildMilvusFilter(filter *RetrieveFilter) string {
 		return ""
 	}
 	var parts []string
+	if filter.UserID != "" {
+		parts = append(parts, fmt.Sprintf(`metadata["user_id"] == %q`, filter.UserID))
+	}
 	if filter.KnowledgeBaseID != "" {
 		parts = append(parts, fmt.Sprintf(`metadata["kb_id"] == %q`, filter.KnowledgeBaseID))
 	}

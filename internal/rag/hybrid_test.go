@@ -1,6 +1,7 @@
 package rag
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
@@ -93,5 +94,38 @@ func TestTruncateDocs(t *testing.T) {
 	out := truncateDocs(docs, 2)
 	if len(out) != 2 {
 		t.Fatalf("got %d", len(out))
+	}
+}
+
+func TestBuildRedisFilterUserID(t *testing.T) {
+	q := buildRedisFilter(&RetrieveFilter{
+		UserID:          "u001",
+		KnowledgeBaseID: "1",
+		DirectoryIDs:    []string{"2", "3"},
+	})
+	if q == "" {
+		t.Fatal("empty filter")
+	}
+	if !strings.Contains(q, "@user_id:{u001}") {
+		t.Fatalf("missing user_id in %q", q)
+	}
+	if !strings.Contains(q, "@kb_id:{1}") {
+		t.Fatalf("missing kb_id in %q", q)
+	}
+	if !strings.Contains(q, "@directory_id:{2|3}") {
+		t.Fatalf("missing directory_id in %q", q)
+	}
+}
+
+func TestBuildMilvusFilterUserID(t *testing.T) {
+	expr := buildMilvusFilter(&RetrieveFilter{
+		UserID:          "u001",
+		KnowledgeBaseID: "12",
+	})
+	if !strings.Contains(expr, `metadata["user_id"] == "u001"`) {
+		t.Fatalf("missing user_id in %q", expr)
+	}
+	if !strings.Contains(expr, `metadata["kb_id"] == "12"`) {
+		t.Fatalf("missing kb_id in %q", expr)
 	}
 }

@@ -1,18 +1,4 @@
-const USER_KEY = 'eino_rag_user_id'
 const SESSION_KEY = 'eino_rag_session_id'
-
-export function getUserId() {
-  let id = localStorage.getItem(USER_KEY)
-  if (!id) {
-    id = 'u001'
-    localStorage.setItem(USER_KEY, id)
-  }
-  return id
-}
-
-export function setUserId(id) {
-  localStorage.setItem(USER_KEY, id || 'u001')
-}
 
 export function getSessionId() {
   let id = localStorage.getItem(SESSION_KEY)

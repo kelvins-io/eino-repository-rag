@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-
-	"go.uber.org/zap"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/recursive"
 	"github.com/cloudwego/eino-ext/components/embedding/openai"
@@ -25,10 +23,9 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
-	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
-	docparser "github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
+	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 )
 
@@ -107,11 +104,8 @@ func NewPipeline(
 		reranker = newHTTPReranker(cfg.Rerank)
 	}
 
-	logger.L().Info("rag pipeline ready",
-		zap.String("vector_index.provider", cfg.VectorIndex.Provider),
-		zap.Bool("hybrid", cfg.RAG.HybridEnabled),
-		zap.Bool("rerank", cfg.Rerank.Enabled),
-	)
+	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v",
+		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled)
 
 	if cfg.Memory.SummaryEnabled {
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
@@ -139,21 +133,20 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 
 	_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusIndexing, 0, "")
 
-	parsed, err := docparser.ExtractFile(doc.FilePath, doc.ContentType)
+	parsed, err := parser.ExtractFile(doc.FilePath, doc.ContentType)
 	if err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
-		return fmt.Errorf("parse document: %w", err)
+		return fmt.Errorf("parse file: %w", err)
 	}
-	content := strings.TrimSpace(parsed.Text)
-	if content == "" {
-		err := fmt.Errorf("parsed document text is empty")
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
-		return err
+	if strings.TrimSpace(parsed.Text) == "" {
+		errMsg := "parsed text is empty"
+		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, errMsg)
+		return fmt.Errorf("parse file: %s", errMsg)
 	}
 
 	baseDocs := []*schema.Document{{
 		ID:      fmt.Sprintf("doc-%d", doc.ID),
-		Content: content,
+		Content: parsed.Text,
 		MetaData: map[string]any{
 			"doc_id":       strconv.FormatUint(uint64(doc.ID), 10),
 			"user_id":      doc.UserID,
@@ -161,7 +154,6 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 			"directory_id": ptrUintToMeta(doc.DirectoryID),
 			"title":        doc.Title,
 			"format":       parsed.Format,
-			"content_type": parsed.ContentType,
 		},
 	}}
 
@@ -181,6 +173,7 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		chunk.MetaData["kb_id"] = uintToMeta(doc.KnowledgeBaseID)
 		chunk.MetaData["directory_id"] = ptrUintToMeta(doc.DirectoryID)
 		chunk.MetaData["title"] = doc.Title
+		chunk.MetaData["format"] = parsed.Format
 		chunk.MetaData["chunk_index"] = i
 	}
 
@@ -211,11 +204,8 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	if err := p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusReady, len(chunks), ""); err != nil {
 		return err
 	}
-	logger.L().Info("indexed document",
-		zap.Uint("doc_id", docID),
-		zap.Int("chunks", len(chunks)),
-		zap.String("provider", p.cfg.VectorIndex.Provider),
-	)
+	log.Printf("[rag] indexed document id=%d format=%s chunks=%d provider=%s",
+		docID, parsed.Format, len(chunks), p.cfg.VectorIndex.Provider)
 	return nil
 }
 
@@ -241,18 +231,14 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 
 	if doc.FilePath != "" {
 		if err := os.Remove(doc.FilePath); err != nil && !os.IsNotExist(err) {
-			logger.L().Warn("remove document file failed",
-				zap.Uint("doc_id", docID),
-				zap.String("path", doc.FilePath),
-				zap.Error(err),
-			)
+			log.Printf("[rag] remove file failed doc_id=%d path=%s err=%v", docID, doc.FilePath, err)
 		}
 	}
 
 	if err := p.docRepo.Delete(docID); err != nil {
 		return fmt.Errorf("delete document record: %w", err)
 	}
-	logger.L().Info("deleted document", zap.Uint("doc_id", docID))
+	log.Printf("[rag] deleted document id=%d (vectors+file+db)", docID)
 	return nil
 }
 
@@ -262,7 +248,7 @@ func (p *Pipeline) IndexDocumentAsync(docID uint) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		if err := p.IndexDocument(ctx, docID); err != nil {
-			logger.L().Error("async index failed", zap.Uint("doc_id", docID), zap.Error(err))
+			log.Printf("[rag] async index failed doc_id=%d err=%v", docID, err)
 		}
 	}()
 }
@@ -355,6 +341,12 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	if req.UserID == "" {
 		req.UserID = "anonymous"
 	}
+	// 强制租户过滤：即使上层未组装 Filter，也注入 user_id
+	if req.Filter == nil {
+		req.Filter = &RetrieveFilter{UserID: req.UserID}
+	} else if req.Filter.UserID == "" {
+		req.Filter.UserID = req.UserID
+	}
 
 	docs, err := p.retrieve(ctx, req.Query, req.Filter)
 	if err != nil {
@@ -392,18 +384,12 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(answer) == "" {
-		answer = emptyAnswerFallback(docs)
-		if err := onEvent(StreamEvent{Type: StreamEventDelta, Content: answer}); err != nil {
-			return err
-		}
-	}
 
 	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
-		logger.L().Warn("append user memory failed", zap.Error(err))
+		log.Printf("[rag] append user memory failed: %v", err)
 	}
 	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer); err != nil {
-		logger.L().Warn("append assistant memory failed", zap.Error(err))
+		log.Printf("[rag] append assistant memory failed: %v", err)
 	}
 
 	return onEvent(StreamEvent{
@@ -437,14 +423,10 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 	if p.cfg.RAG.HybridEnabled && p.bm25 != nil {
 		sparse, serr := p.bm25.Search(ctx, query, filter, poolK)
 		if serr != nil {
-			logger.L().Warn("bm25 search failed, fallback dense-only", zap.Error(serr))
+			log.Printf("[rag] bm25 search failed, fallback dense-only: %v", serr)
 		} else if len(sparse) > 0 {
 			fused = fuseRRF([][]*schema.Document{dense, sparse}, p.cfg.RAG.RRFK)
-			logger.L().Info("hybrid fuse",
-				zap.Int("dense", len(dense)),
-				zap.Int("bm25", len(sparse)),
-				zap.Int("fused", len(fused)),
-			)
+			log.Printf("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
 		}
 	}
 
@@ -457,13 +439,10 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 		candidates := truncateDocs(fused, poolK)
 		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
 		if rerr != nil {
-			logger.L().Warn("rerank failed, fallback fused top_k", zap.Error(rerr))
+			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
 			return truncateDocs(fused, topK), nil
 		}
-		logger.L().Info("reranked",
-			zap.Int("candidates", len(candidates)),
-			zap.Int("result", len(reranked)),
-		)
+		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
 		return reranked, nil
 	}
 
@@ -599,51 +578,6 @@ func metaString(m map[string]any, key string) string {
 	default:
 		return fmt.Sprintf("%v", t)
 	}
-}
-
-func emptyAnswerFallback(docs []*schema.Document) string {
-	if len(docs) == 0 {
-		return "根据现有知识库无法确定。"
-	}
-	garbled := 0
-	for _, d := range docs {
-		if looksLikeGarbledChunk(d.Content) {
-			garbled++
-		}
-	}
-	if garbled*2 >= len(docs) {
-		return "检索到的知识库片段无法阅读（多为 PDF 字体未正确解码）。请对该 PDF 执行「重新索引」后再提问。"
-	}
-	return "根据现有知识库无法确定。"
-}
-
-func looksLikeGarbledChunk(s string) bool {
-	if s == "" {
-		return true
-	}
-	ctrl := 0
-	han := 0
-	total := 0
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			continue
-		}
-		total++
-		if r < 0x20 {
-			ctrl++
-		}
-		if unicode.Is(unicode.Han, r) {
-			han++
-		}
-	}
-	if total == 0 {
-		return true
-	}
-	if ctrl > 5 {
-		return true
-	}
-	// 来源标题常见中文 PDF，正文几乎无汉字
-	return han == 0 && total > 40
 }
 
 func truncate(s string, n int) string {

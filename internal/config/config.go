@@ -11,6 +11,7 @@ import (
 type Config struct {
 	Server      ServerConfig      `yaml:"server"`
 	Log         LogConfig         `yaml:"log"`
+	JWT         JWTConfig         `yaml:"jwt"`
 	Postgres    PostgresConfig    `yaml:"postgres"`
 	Redis       RedisConfig       `yaml:"redis"`
 	VectorIndex VectorIndexConfig `yaml:"vector_index"`
@@ -22,13 +23,23 @@ type Config struct {
 	Memory      MemoryConfig      `yaml:"memory"`
 }
 
+// JWTConfig 登录签发配置
+type JWTConfig struct {
+	// Secret HS256 签名密钥；生产环境务必通过 JWT_SECRET 覆盖
+	Secret string `yaml:"secret"`
+	// ExpireHours token 有效期（小时）
+	ExpireHours int `yaml:"expire_hours"`
+	// Issuer 签发者标识
+	Issuer string `yaml:"issuer"`
+}
+
 // LogConfig zap 日志配置
 type LogConfig struct {
 	// Level: debug | info | warn | error
 	Level string `yaml:"level"`
 	// Encoding: json | console
 	Encoding string `yaml:"encoding"`
-	// OutputPaths 输出路径：stdout / stderr / 文件路径
+	// OutputPaths 输出路径，如 stdout / 文件路径
 	OutputPaths []string `yaml:"output_paths"`
 	// ErrorOutputPaths 错误输出路径
 	ErrorOutputPaths []string `yaml:"error_output_paths"`
@@ -207,6 +218,9 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("RERANK_MODEL"); v != "" {
 		c.Rerank.Model = v
 	}
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		c.JWT.Secret = v
+	}
 }
 
 func (c *Config) setDefaults() {
@@ -217,24 +231,25 @@ func (c *Config) setDefaults() {
 		c.Server.Mode = "release"
 	}
 	if c.Log.Level == "" {
-		if c.Server.Mode == "debug" {
-			c.Log.Level = "debug"
-		} else {
-			c.Log.Level = "info"
-		}
+		c.Log.Level = "info"
 	}
 	if c.Log.Encoding == "" {
-		if c.Server.Mode == "debug" {
-			c.Log.Encoding = "console"
-		} else {
-			c.Log.Encoding = "json"
-		}
+		c.Log.Encoding = "console"
 	}
 	if len(c.Log.OutputPaths) == 0 {
 		c.Log.OutputPaths = []string{"stdout"}
 	}
 	if len(c.Log.ErrorOutputPaths) == 0 {
 		c.Log.ErrorOutputPaths = []string{"stderr"}
+	}
+	if c.JWT.Secret == "" {
+		c.JWT.Secret = "eino-rag-dev-secret-change-me"
+	}
+	if c.JWT.ExpireHours <= 0 {
+		c.JWT.ExpireHours = 72
+	}
+	if c.JWT.Issuer == "" {
+		c.JWT.Issuer = "eino-repository-rag"
 	}
 	if c.Postgres.SSLMode == "" {
 		c.Postgres.SSLMode = "disable"

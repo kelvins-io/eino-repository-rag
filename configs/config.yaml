@@ -2,15 +2,18 @@ server:
   addr: ":8080"
   mode: "debug"
 
-# zap 日志：level=debug|info|warn|error；encoding=console|json
-# debug 模式默认 console+debug；release 默认 json+info
 log:
-  level: "debug"
-  encoding: "console"
+  level: "info"          # debug | info | warn | error
+  encoding: "console"    # console | json
   output_paths:
     - "stdout"
   error_output_paths:
     - "stderr"
+
+jwt:
+  secret: "eino-rag-dev-secret-change-me"  # 生产请用环境变量 JWT_SECRET 覆盖
+  expire_hours: 72
+  issuer: "eino-repository-rag"
 
 postgres:
   host: "localhost"

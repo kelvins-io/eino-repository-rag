@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
@@ -19,6 +20,8 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 	}
 
 	if err := db.AutoMigrate(
+		&model.Tenant{},
+		&model.User{},
 		&model.KnowledgeBase{},
 		&model.Directory{},
 		&model.Document{},
@@ -339,4 +342,84 @@ func (r *MessageRepo) ListBySession(sessionID string, limit int) ([]model.Messag
 		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}
 	return msgs, nil
+}
+
+type TenantRepo struct {
+	db *gorm.DB
+}
+
+func NewTenantRepo(db *gorm.DB) *TenantRepo {
+	return &TenantRepo{db: db}
+}
+
+func (r *TenantRepo) Create(t *model.Tenant) error {
+	return r.db.Create(t).Error
+}
+
+func (r *TenantRepo) GetByCode(code string) (*model.Tenant, error) {
+	var t model.Tenant
+	if err := r.db.Where("code = ?", code).First(&t).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *TenantRepo) GetByID(id uint) (*model.Tenant, error) {
+	var t model.Tenant
+	if err := r.db.First(&t, id).Error; err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *TenantRepo) Count() (int64, error) {
+	var n int64
+	if err := r.db.Model(&model.Tenant{}).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// EnsureDefault 确保存在 code=default 的默认租户
+func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
+	t, err := r.GetByCode("default")
+	if err == nil {
+		return t, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	t = &model.Tenant{Code: "default", Name: "默认租户"}
+	if err := r.Create(t); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+type UserRepo struct {
+	db *gorm.DB
+}
+
+func NewUserRepo(db *gorm.DB) *UserRepo {
+	return &UserRepo{db: db}
+}
+
+func (r *UserRepo) Create(u *model.User) error {
+	return r.db.Create(u).Error
+}
+
+func (r *UserRepo) GetByTenantUsername(tenantID uint, username string) (*model.User, error) {
+	var u model.User
+	if err := r.db.Where("tenant_id = ? AND username = ?", tenantID, username).First(&u).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepo) GetByID(id uint) (*model.User, error) {
+	var u model.User
+	if err := r.db.First(&u, id).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
 }

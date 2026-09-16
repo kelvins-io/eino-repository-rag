@@ -1,9 +1,27 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { clearAuth, getToken } from '@/utils/auth'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '',
   timeout: 120000,
+})
+
+function redirectToLogin() {
+  clearAuth()
+  const path = window.location.pathname
+  if (path.startsWith('/login') || path.startsWith('/register')) return
+  const redirect = encodeURIComponent(path + window.location.search)
+  window.location.href = `/login?redirect=${redirect}`
+}
+
+http.interceptors.request.use((config) => {
+  const token = getToken()
+  if (token) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
 })
 
 http.interceptors.response.use(
@@ -17,27 +35,34 @@ http.interceptors.response.use(
     return body?.data !== undefined ? body.data : body
   },
   (err) => {
+    const status = err.response?.status
     const msg =
       err.response?.data?.message ||
       err.message ||
       '网络错误'
+    if (status === 401) {
+      redirectToLogin()
+    }
     ElMessage.error(msg)
-    return Promise.reject(err)
+    return Promise.reject(new Error(msg))
   },
 )
 
 /**
  * 消费 POST /api/v1/chat/query 的 SSE 流。
- * 事件: meta | delta | done | error
  */
 export async function chatQueryStream(data, handlers = {}, signal) {
   const base = import.meta.env.VITE_API_BASE || ''
+  const token = getToken()
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
   const res = await fetch(`${base}/api/v1/chat/query`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-    },
+    headers,
     body: JSON.stringify(data),
     signal,
   })
@@ -49,6 +74,9 @@ export async function chatQueryStream(data, handlers = {}, signal) {
       if (body?.message) msg = body.message
     } catch {
       /* ignore */
+    }
+    if (res.status === 401) {
+      redirectToLogin()
     }
     throw new Error(msg)
   }
@@ -115,9 +143,14 @@ export async function chatQueryStream(data, handlers = {}, signal) {
 export const api = {
   health: () => http.get('/health'),
 
+  // 租户 / 认证
+  createTenant: (data) => http.post('/api/v1/tenants', data),
+  register: (data) => http.post('/api/v1/auth/register', data),
+  login: (data) => http.post('/api/v1/auth/login', data),
+  me: () => http.get('/api/v1/auth/me'),
+
   // 知识库
-  listKnowledgeBases: (userId) =>
-    http.get('/api/v1/knowledge-bases', { params: { user_id: userId } }),
+  listKnowledgeBases: () => http.get('/api/v1/knowledge-bases'),
   getKnowledgeBase: (id) => http.get(`/api/v1/knowledge-bases/${id}`),
   createKnowledgeBase: (data) => http.post('/api/v1/knowledge-bases', data),
   updateKnowledgeBase: (id, data) => http.put(`/api/v1/knowledge-bases/${id}`, data),

@@ -2,13 +2,16 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/auth"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 	"github.com/kelvins-io/eino-repository-rag/internal/service"
@@ -36,8 +39,28 @@ func fail(c *gin.Context, httpCode int, msg string) {
 	c.JSON(httpCode, APIResponse{Code: httpCode, Message: msg})
 }
 
+func failErr(c *gin.Context, err error) {
+	if errors.Is(err, service.ErrForbidden) {
+		fail(c, http.StatusForbidden, err.Error())
+		return
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "不存在") {
+		fail(c, http.StatusNotFound, msg)
+		return
+	}
+	if strings.Contains(msg, "required") || strings.Contains(msg, "无效") || strings.Contains(msg, "不能") {
+		fail(c, http.StatusBadRequest, msg)
+		return
+	}
+	fail(c, http.StatusBadRequest, msg)
+}
+
+func currentUserID(c *gin.Context) string {
+	return auth.UserIDFromContext(c)
+}
+
 type createKBReq struct {
-	UserID      string `json:"user_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 }
@@ -48,18 +71,18 @@ func (h *KnowledgeHandler) CreateKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	kb, err := h.svc.CreateKnowledgeBase(req.UserID, req.Name, req.Description)
+	kb, err := h.svc.CreateKnowledgeBase(currentUserID(c), req.Name, req.Description)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, kb)
 }
 
 func (h *KnowledgeHandler) ListKnowledgeBases(c *gin.Context) {
-	list, err := h.svc.ListKnowledgeBases(c.Query("user_id"))
+	list, err := h.svc.ListKnowledgeBases(currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusInternalServerError, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, list)
@@ -71,9 +94,9 @@ func (h *KnowledgeHandler) GetKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	kb, err := h.svc.GetKnowledgeBase(uint(id))
+	kb, err := h.svc.GetKnowledgeBase(uint(id), currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusNotFound, "知识库不存在")
+		failErr(c, err)
 		return
 	}
 	ok(c, kb)
@@ -90,9 +113,9 @@ func (h *KnowledgeHandler) UpdateKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	kb, err := h.svc.UpdateKnowledgeBase(uint(id), req.Name, req.Description)
+	kb, err := h.svc.UpdateKnowledgeBase(uint(id), currentUserID(c), req.Name, req.Description)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, kb)
@@ -104,8 +127,8 @@ func (h *KnowledgeHandler) DeleteKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	if err := h.svc.DeleteKnowledgeBase(uint(id)); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+	if err := h.svc.DeleteKnowledgeBase(uint(id), currentUserID(c)); err != nil {
+		failErr(c, err)
 		return
 	}
 	ok(c, gin.H{"deleted": true})
@@ -130,6 +153,7 @@ func (h *KnowledgeHandler) CreateDirectory(c *gin.Context) {
 		return
 	}
 	dir, err := h.svc.CreateDirectory(service.CreateDirectoryInput{
+		UserID:          currentUserID(c),
 		KnowledgeBaseID: uint(kbID),
 		ParentID:        req.ParentID,
 		Name:            req.Name,
@@ -137,7 +161,7 @@ func (h *KnowledgeHandler) CreateDirectory(c *gin.Context) {
 		SortOrder:       req.SortOrder,
 	})
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, dir)
@@ -149,9 +173,9 @@ func (h *KnowledgeHandler) ListDirectoryTree(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	tree, err := h.svc.ListDirectoryTree(uint(kbID))
+	tree, err := h.svc.ListDirectoryTree(uint(kbID), currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, tree)
@@ -175,9 +199,9 @@ func (h *KnowledgeHandler) UpdateDirectory(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	dir, err := h.svc.UpdateDirectory(uint(id), req.Name, req.Description, req.ParentID, req.SortOrder)
+	dir, err := h.svc.UpdateDirectory(uint(id), currentUserID(c), req.Name, req.Description, req.ParentID, req.SortOrder)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, dir)
@@ -189,15 +213,14 @@ func (h *KnowledgeHandler) DeleteDirectory(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的目录 ID")
 		return
 	}
-	if err := h.svc.DeleteDirectory(uint(id)); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+	if err := h.svc.DeleteDirectory(uint(id), currentUserID(c)); err != nil {
+		failErr(c, err)
 		return
 	}
 	ok(c, gin.H{"deleted": true})
 }
 
 // ImportDocument POST /api/v1/documents/import
-// multipart: file(可多个) / files(可多个), user_id, title(仅单文件时生效), knowledge_base_id, directory_id
 func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -210,7 +233,6 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 		fileHeaders = append(fileHeaders, form.File["file"]...)
 		fileHeaders = append(fileHeaders, form.File["files"]...)
 	}
-	// 兼容未走 MultipartForm 解析路径的单文件上传
 	if len(fileHeaders) == 0 {
 		if fh, err := c.FormFile("file"); err == nil {
 			fileHeaders = append(fileHeaders, fh)
@@ -224,7 +246,7 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 	}
 
 	opts := service.ImportOptions{
-		UserID: c.PostForm("user_id"),
+		UserID: currentUserID(c),
 		Title:  c.PostForm("title"),
 	}
 	if v := c.PostForm("knowledge_base_id"); v != "" {
@@ -247,15 +269,15 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 
 	result, err := h.svc.ImportDocuments(c.Request.Context(), opts, fileHeaders)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, result)
 }
 
-// ListDocuments GET /api/v1/documents?user_id=&knowledge_base_id=&directory_id=&page=&page_size=
+// ListDocuments GET /api/v1/documents
 func (h *KnowledgeHandler) ListDocuments(c *gin.Context) {
-	filter := repository.DocumentListFilter{UserID: c.Query("user_id")}
+	filter := repository.DocumentListFilter{UserID: currentUserID(c)}
 	if v := c.Query("knowledge_base_id"); v != "" {
 		id, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
@@ -278,7 +300,7 @@ func (h *KnowledgeHandler) ListDocuments(c *gin.Context) {
 
 	docs, total, err := h.svc.ListDocuments(filter, page, pageSize)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, gin.H{
@@ -289,30 +311,28 @@ func (h *KnowledgeHandler) ListDocuments(c *gin.Context) {
 	})
 }
 
-// GetDocument GET /api/v1/documents/:id
 func (h *KnowledgeHandler) GetDocument(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		fail(c, http.StatusBadRequest, "无效的文档 ID")
 		return
 	}
-	doc, err := h.svc.GetDocument(uint(id))
+	doc, err := h.svc.GetDocument(uint(id), currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusNotFound, "文档不存在")
+		failErr(c, err)
 		return
 	}
 	ok(c, doc)
 }
 
-// DeleteDocument DELETE /api/v1/documents/:id
 func (h *KnowledgeHandler) DeleteDocument(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		fail(c, http.StatusBadRequest, "无效的文档 ID")
 		return
 	}
-	if err := h.svc.DeleteDocument(c.Request.Context(), uint(id)); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+	if err := h.svc.DeleteDocument(c.Request.Context(), uint(id), currentUserID(c)); err != nil {
+		failErr(c, err)
 		return
 	}
 	ok(c, gin.H{"deleted": true, "id": uint(id)})
@@ -322,17 +342,15 @@ type deleteDocsReq struct {
 	IDs []uint `json:"ids"`
 }
 
-// DeleteDocuments POST /api/v1/documents/delete
-// body: {"ids":[1,2,3]}
 func (h *KnowledgeHandler) DeleteDocuments(c *gin.Context) {
 	var req deleteDocsReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	result, err := h.svc.DeleteDocuments(c.Request.Context(), req.IDs)
+	result, err := h.svc.DeleteDocuments(c.Request.Context(), req.IDs, currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, result)
@@ -342,23 +360,20 @@ type reindexReq struct {
 	IDs []uint `json:"ids"`
 }
 
-// ReindexDocuments POST /api/v1/documents/reindex
-// body: {"ids":[1,2,3]}
 func (h *KnowledgeHandler) ReindexDocuments(c *gin.Context) {
 	var req reindexReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	result, err := h.svc.ReindexDocuments(req.IDs)
+	result, err := h.svc.ReindexDocuments(req.IDs, currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, result)
 }
 
-// Query POST /api/v1/chat/query （SSE 流式）
 func (h *KnowledgeHandler) Query(c *gin.Context) {
 	var req rag.QueryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -369,9 +384,10 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "query is required")
 		return
 	}
+	req.UserID = currentUserID(c)
 
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
+	flusher, okFlush := c.Writer.(http.Flusher)
+	if !okFlush {
 		fail(c, http.StatusInternalServerError, "streaming unsupported")
 		return
 	}
@@ -401,7 +417,6 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 	}
 
 	if err := h.svc.QueryStream(c.Request.Context(), req, writeEvent); err != nil {
-		// 客户端已断开时不再写 error 事件
 		if c.Request.Context().Err() != nil {
 			return
 		}
@@ -412,18 +427,16 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 	}
 }
 
-// History GET /api/v1/chat/history?session_id=
 func (h *KnowledgeHandler) History(c *gin.Context) {
 	sessionID := c.Query("session_id")
-	msgs, err := h.svc.GetHistory(sessionID)
+	msgs, err := h.svc.GetHistory(sessionID, currentUserID(c))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		failErr(c, err)
 		return
 	}
 	ok(c, msgs)
 }
 
-// Health GET /health
 func (h *KnowledgeHandler) Health(c *gin.Context) {
 	ok(c, gin.H{"status": "up"})
 }

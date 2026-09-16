@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>知识库</h2>
-        <p class="sub">管理用户 {{ userId }} 下的知识库容器</p>
+        <p class="sub">管理当前登录用户下的知识库容器</p>
       </div>
       <el-button type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
     </div>
@@ -66,10 +66,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { api } from '@/api'
-import { getUserId } from '@/utils/helpers'
 
 const router = useRouter()
-const userId = getUserId()
 const loading = ref(false)
 const saving = ref(false)
 const list = ref([])
@@ -89,7 +87,7 @@ function sortByCreatedAt(a, b) {
 async function load() {
   loading.value = true
   try {
-    list.value = (await api.listKnowledgeBases(userId)) || []
+    list.value = (await api.listKnowledgeBases()) || []
   } finally {
     loading.value = false
   }
@@ -124,7 +122,6 @@ async function onSave() {
       ElMessage.success('已更新')
     } else {
       await api.createKnowledgeBase({
-        user_id: userId,
         name: form.name,
         description: form.description,
       })

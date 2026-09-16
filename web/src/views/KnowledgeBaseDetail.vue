@@ -209,14 +209,12 @@ import { Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import {
   formatSize,
-  getUserId,
   statusLabel,
   statusType,
 } from '@/utils/helpers'
 
 const route = useRoute()
 const kbId = computed(() => Number(route.params.id))
-const userId = getUserId()
 
 const pageLoading = ref(false)
 const kb = ref(null)
@@ -257,7 +255,6 @@ async function loadDocs() {
   docLoading.value = true
   try {
     const params = {
-      user_id: userId,
       knowledge_base_id: kbId.value,
       page: page.value,
       page_size: pageSize.value,
@@ -373,7 +370,6 @@ async function doImport() {
     return
   }
   const fd = new FormData()
-  fd.append('user_id', userId)
   fd.append('knowledge_base_id', String(kbId.value))
   if (importForm.directory_id) {
     fd.append('directory_id', String(importForm.directory_id))

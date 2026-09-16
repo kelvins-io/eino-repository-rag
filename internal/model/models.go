@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // DocumentStatus 文档索引状态
 type DocumentStatus string
@@ -98,3 +101,32 @@ type Message struct {
 }
 
 func (Message) TableName() string { return "messages" }
+
+// Tenant 租户（注册/登录时填写的租户 ID 对应 Code）
+type Tenant struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Code      string    `gorm:"size:64;uniqueIndex;not null" json:"code"`
+	Name      string    `gorm:"size:128;not null" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (Tenant) TableName() string { return "tenants" }
+
+// User 租户下的登录用户
+type User struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	TenantID     uint      `gorm:"index;not null;uniqueIndex:idx_tenant_username,priority:1" json:"tenant_id"`
+	Username     string    `gorm:"size:64;not null;uniqueIndex:idx_tenant_username,priority:2" json:"username"`
+	PasswordHash string    `gorm:"size:255;not null" json:"-"`
+	DisplayName  string    `gorm:"size:128" json:"display_name"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (User) TableName() string { return "users" }
+
+// AuthUserID 业务表 user_id 字段使用的稳定字符串标识
+func (u User) AuthUserID() string {
+	return strconv.FormatUint(uint64(u.ID), 10)
+}
