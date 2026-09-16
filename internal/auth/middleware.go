@@ -69,3 +69,10 @@ func TenantCodeFromContext(c *gin.Context) string {
 	s, _ := v.(string)
 	return s
 }
+
+// TenantIDFromContext 读取租户数字 ID
+func TenantIDFromContext(c *gin.Context) uint {
+	v, _ := c.Get(ContextTenantID)
+	id, _ := v.(uint)
+	return id
+}

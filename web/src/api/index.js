@@ -178,6 +178,8 @@ export const api = {
   chatQueryStream,
   chatHistory: (sessionId) =>
     http.get('/api/v1/chat/history', { params: { session_id: sessionId } }),
+  listChatSessions: (params) =>
+    http.get('/api/v1/chat/sessions', { params }),
 }
 
 export default http

@@ -15,10 +15,11 @@ const (
 	DocumentStatusFailed   DocumentStatus = "failed"
 )
 
-// KnowledgeBase 知识库（顶层容器）
+// KnowledgeBase 知识库（顶层容器，租户内共享可读）
 type KnowledgeBase struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
-	UserID      string    `gorm:"size:64;index;not null" json:"user_id"`
+	TenantID    uint      `gorm:"index;not null;default:0" json:"tenant_id"`
+	UserID      string    `gorm:"size:64;index;not null" json:"user_id"` // 创建者/属主
 	Name        string    `gorm:"size:128;not null" json:"name"`
 	Description string    `gorm:"size:512" json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -30,6 +31,7 @@ func (KnowledgeBase) TableName() string { return "knowledge_bases" }
 // Directory 知识库分类目录（树形，parent_id 为空表示根目录）
 type Directory struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`
+	TenantID        uint      `gorm:"index;not null;default:0" json:"tenant_id"`
 	KnowledgeBaseID uint      `gorm:"index;not null" json:"knowledge_base_id"`
 	ParentID        *uint     `gorm:"index" json:"parent_id"`
 	Name            string    `gorm:"size:128;not null" json:"name"`
@@ -50,7 +52,8 @@ type DirectoryNode struct {
 // Document 用户导入的知识库文档记录
 type Document struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
-	UserID          string         `gorm:"size:64;index;not null" json:"user_id"`
+	TenantID        uint           `gorm:"index;not null;default:0" json:"tenant_id"`
+	UserID          string         `gorm:"size:64;index;not null" json:"user_id"` // 上传者/属主
 	KnowledgeBaseID uint           `gorm:"index;index:idx_kb_content_md5,priority:1;not null;default:0" json:"knowledge_base_id"`
 	DirectoryID     *uint          `gorm:"index" json:"directory_id"`
 	Title           string         `gorm:"size:256;not null" json:"title"`
@@ -70,12 +73,15 @@ func (Document) TableName() string { return "documents" }
 
 // Conversation 会话（长期记忆的会话维度）
 type Conversation struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	UserID    string    `gorm:"size:64;index;not null" json:"user_id"`
-	SessionID string    `gorm:"size:64;uniqueIndex;not null" json:"session_id"`
-	Title     string    `gorm:"size:256" json:"title"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	TenantID        uint      `gorm:"index;not null;default:0" json:"tenant_id"`
+	UserID          string    `gorm:"size:64;index;not null" json:"user_id"`
+	SessionID       string    `gorm:"size:64;uniqueIndex;not null" json:"session_id"`
+	KnowledgeBaseID uint      `gorm:"index;not null;default:0" json:"knowledge_base_id"`
+	DirectoryID     *uint     `gorm:"index" json:"directory_id"`
+	Title           string    `gorm:"size:256" json:"title"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 func (Conversation) TableName() string { return "conversations" }
@@ -92,6 +98,7 @@ const (
 // Message 长期对话记忆（PostgreSQL）
 type Message struct {
 	ID             uint        `gorm:"primaryKey" json:"id"`
+	TenantID       uint        `gorm:"index;not null;default:0" json:"tenant_id"`
 	ConversationID uint        `gorm:"index;not null" json:"conversation_id"`
 	UserID         string      `gorm:"size:64;index;not null" json:"user_id"`
 	SessionID      string      `gorm:"size:64;index;not null" json:"session_id"`

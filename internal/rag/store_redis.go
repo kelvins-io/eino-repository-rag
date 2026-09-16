@@ -48,10 +48,14 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 		"SCHEMA",
 		"content", "TEXT",
 		"doc_id", "TAG",
+		"tenant_id", "TAG",
 		"user_id", "TAG",
 		"kb_id", "TAG",
 		"directory_id", "TAG",
 		"title", "TEXT",
+		"format", "TAG",
+		"chunk_index", "TAG",
+		"page", "TAG",
 		s.cfg.Redis.VectorField, "VECTOR", "HNSW", "6",
 		"TYPE", "FLOAT32",
 		"DIM", strconv.Itoa(s.cfg.Redis.VectorDim),
@@ -59,6 +63,11 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 	).Result()
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "index already exists") {
+			// 兼容旧索引：尝试补充字段
+			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "tenant_id", "TAG").Err()
+			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "format", "TAG").Err()
+			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "chunk_index", "TAG").Err()
+			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "page", "TAG").Err()
 			return nil
 		}
 		return fmt.Errorf("create redis vector index: %w", err)
@@ -82,10 +91,14 @@ func (s *redisVectorStore) Store(ctx context.Context, docs []*schema.Document) e
 						EmbedKey: s.cfg.Redis.VectorField,
 					},
 					"doc_id":       {Value: metaString(d.MetaData, "doc_id")},
+					"tenant_id":    {Value: metaString(d.MetaData, "tenant_id")},
 					"user_id":      {Value: metaString(d.MetaData, "user_id")},
 					"kb_id":        {Value: metaString(d.MetaData, "kb_id")},
 					"directory_id": {Value: metaString(d.MetaData, "directory_id")},
 					"title":        {Value: metaString(d.MetaData, "title")},
+					"format":       {Value: metaString(d.MetaData, "format")},
+					"chunk_index":  {Value: metaString(d.MetaData, "chunk_index")},
+					"page":         {Value: metaString(d.MetaData, "page")},
 				},
 			}, nil
 		},
@@ -194,17 +207,21 @@ func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *R
 		VectorField:  s.cfg.Redis.VectorField,
 		TopK:         topK,
 		Embedding:    s.embedder,
-		ReturnFields: []string{"content", "doc_id", "user_id", "kb_id", "directory_id", "title", s.cfg.Redis.VectorField},
+		ReturnFields: []string{"content", "doc_id", "tenant_id", "user_id", "kb_id", "directory_id", "title", "format", "chunk_index", "page", s.cfg.Redis.VectorField},
 		DocumentConverter: func(ctx context.Context, doc redis.Document) (*schema.Document, error) {
 			return &schema.Document{
 				ID:      doc.ID,
 				Content: doc.Fields["content"],
 				MetaData: map[string]any{
 					"doc_id":       doc.Fields["doc_id"],
+					"tenant_id":    doc.Fields["tenant_id"],
 					"user_id":      doc.Fields["user_id"],
 					"kb_id":        doc.Fields["kb_id"],
 					"directory_id": doc.Fields["directory_id"],
 					"title":        doc.Fields["title"],
+					"format":       doc.Fields["format"],
+					"chunk_index":  doc.Fields["chunk_index"],
+					"page":         doc.Fields["page"],
 					"channel":      "dense",
 				},
 			}, nil
@@ -231,6 +248,9 @@ func buildRedisFilter(filter *RetrieveFilter) string {
 		return ""
 	}
 	var parts []string
+	if filter.TenantID != "" {
+		parts = append(parts, fmt.Sprintf("@tenant_id:{%s}", escapeRedisTag(filter.TenantID)))
+	}
 	if filter.UserID != "" {
 		parts = append(parts, fmt.Sprintf("@user_id:{%s}", escapeRedisTag(filter.UserID)))
 	}

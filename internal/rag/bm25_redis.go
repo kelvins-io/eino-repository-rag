@@ -60,12 +60,20 @@ func (b *redisBM25) ensureSidecarIndex(ctx context.Context) error {
 		"content", "TEXT",
 		"title", "TEXT",
 		"doc_id", "TAG",
+		"tenant_id", "TAG",
 		"user_id", "TAG",
 		"kb_id", "TAG",
 		"directory_id", "TAG",
+		"format", "TAG",
+		"chunk_index", "TAG",
+		"page", "TAG",
 	).Result()
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "index already exists") {
+			_ = b.rdb.Do(ctx, "FT.ALTER", b.indexName, "SCHEMA", "ADD", "tenant_id", "TAG").Err()
+			_ = b.rdb.Do(ctx, "FT.ALTER", b.indexName, "SCHEMA", "ADD", "format", "TAG").Err()
+			_ = b.rdb.Do(ctx, "FT.ALTER", b.indexName, "SCHEMA", "ADD", "chunk_index", "TAG").Err()
+			_ = b.rdb.Do(ctx, "FT.ALTER", b.indexName, "SCHEMA", "ADD", "page", "TAG").Err()
 			return nil
 		}
 		return fmt.Errorf("create redis bm25 index: %w", err)
@@ -89,9 +97,13 @@ func (b *redisBM25) Upsert(ctx context.Context, docs []*schema.Document) error {
 			"content":      d.Content,
 			"title":        metaString(d.MetaData, "title"),
 			"doc_id":       metaString(d.MetaData, "doc_id"),
+			"tenant_id":    metaString(d.MetaData, "tenant_id"),
 			"user_id":      metaString(d.MetaData, "user_id"),
 			"kb_id":        metaString(d.MetaData, "kb_id"),
 			"directory_id": metaString(d.MetaData, "directory_id"),
+			"format":       metaString(d.MetaData, "format"),
+			"chunk_index":  metaString(d.MetaData, "chunk_index"),
+			"page":         metaString(d.MetaData, "page"),
 		})
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -164,7 +176,7 @@ func (b *redisBM25) Search(ctx context.Context, query string, filter *RetrieveFi
 	raw, err := b.rdb.Do(ctx,
 		"FT.SEARCH", b.indexName,
 		searchQ,
-		"RETURN", 6, "content", "doc_id", "user_id", "kb_id", "directory_id", "title",
+		"RETURN", 10, "content", "doc_id", "tenant_id", "user_id", "kb_id", "directory_id", "title", "format", "chunk_index", "page",
 		"WITHSCORES",
 		"LIMIT", 0, topK,
 	).Result()
@@ -315,10 +327,14 @@ func parseFTSearchDocs(raw any) ([]*schema.Document, error) {
 			Content: fields["content"],
 			MetaData: map[string]any{
 				"doc_id":       fields["doc_id"],
+				"tenant_id":    fields["tenant_id"],
 				"user_id":      fields["user_id"],
 				"kb_id":        fields["kb_id"],
 				"directory_id": fields["directory_id"],
 				"title":        fields["title"],
+				"format":       fields["format"],
+				"chunk_index":  fields["chunk_index"],
+				"page":         fields["page"],
 				"channel":      "bm25",
 			},
 		}

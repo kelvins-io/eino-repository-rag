@@ -60,17 +60,26 @@ func shortKey(sessionID string) string {
 }
 
 // Append 同时写入短期与长期记忆
-func (m *Manager) Append(ctx context.Context, userID, sessionID string, role model.MessageRole, content string) error {
+func (m *Manager) Append(
+	ctx context.Context,
+	tenantID uint,
+	userID, sessionID string,
+	role model.MessageRole,
+	content string,
+	knowledgeBaseID uint,
+	directoryID *uint,
+) error {
 	title := content
 	if len([]rune(title)) > 40 {
 		title = string([]rune(title)[:40]) + "..."
 	}
-	conv, err := m.convRepo.GetOrCreate(userID, sessionID, title)
+	conv, err := m.convRepo.GetOrCreate(tenantID, userID, sessionID, title, knowledgeBaseID, directoryID)
 	if err != nil {
 		return fmt.Errorf("get or create conversation: %w", err)
 	}
 
 	msg := &model.Message{
+		TenantID:       tenantID,
 		ConversationID: conv.ID,
 		UserID:         userID,
 		SessionID:      sessionID,
@@ -101,6 +110,18 @@ func (m *Manager) Append(ctx context.Context, userID, sessionID string, role mod
 		return fmt.Errorf("save short-term memory: %w", err)
 	}
 	return nil
+}
+
+// ListSessions 按租户/用户/知识库/目录列出历史会话
+func (m *Manager) ListSessions(tenantID uint, userID string, knowledgeBaseID uint, directoryID *uint) ([]model.Conversation, error) {
+	filter := repository.ConversationListFilter{
+		TenantID:           tenantID,
+		UserID:             userID,
+		KnowledgeBaseID:    knowledgeBaseID,
+		DirectoryID:        directoryID,
+		MatchNullDirectory: directoryID == nil,
+	}
+	return m.convRepo.List(filter, 100)
 }
 
 // GetShortTerm 读取 Redis 短期记忆

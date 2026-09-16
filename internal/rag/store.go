@@ -13,9 +13,12 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 )
 
-// RetrieveFilter 向量检索过滤条件（租户 / 知识库 / 目录）
+// RetrieveFilter 向量检索过滤条件（租户隔离 + 可选 ACL）
 type RetrieveFilter struct {
-	UserID          string   // 必填：强制按租户隔离
+	// TenantID 必填：租户隔离（向量 meta tenant_id）
+	TenantID string
+	// UserID 可选：进一步按上传者收窄（私有 ACL）；共享知识库检索通常不填
+	UserID string
 	KnowledgeBaseID string
 	DirectoryIDs    []string // 为空表示不按目录过滤；多个 ID 为 OR
 }

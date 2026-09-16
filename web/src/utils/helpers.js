@@ -9,6 +9,10 @@ export function getSessionId() {
   return id
 }
 
+export function setSessionId(id) {
+  if (id) localStorage.setItem(SESSION_KEY, id)
+}
+
 export function newSessionId() {
   const id = `s-${Date.now().toString(36)}`
   localStorage.setItem(SESSION_KEY, id)

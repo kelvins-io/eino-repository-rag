@@ -99,12 +99,16 @@ func TestTruncateDocs(t *testing.T) {
 
 func TestBuildRedisFilterUserID(t *testing.T) {
 	q := buildRedisFilter(&RetrieveFilter{
+		TenantID:        "1",
 		UserID:          "u001",
 		KnowledgeBaseID: "1",
 		DirectoryIDs:    []string{"2", "3"},
 	})
 	if q == "" {
 		t.Fatal("empty filter")
+	}
+	if !strings.Contains(q, "@tenant_id:{1}") {
+		t.Fatalf("missing tenant_id in %q", q)
 	}
 	if !strings.Contains(q, "@user_id:{u001}") {
 		t.Fatalf("missing user_id in %q", q)
@@ -119,13 +123,27 @@ func TestBuildRedisFilterUserID(t *testing.T) {
 
 func TestBuildMilvusFilterUserID(t *testing.T) {
 	expr := buildMilvusFilter(&RetrieveFilter{
+		TenantID:        "9",
 		UserID:          "u001",
 		KnowledgeBaseID: "12",
 	})
+	if !strings.Contains(expr, `metadata["tenant_id"] == "9"`) {
+		t.Fatalf("missing tenant_id in %q", expr)
+	}
 	if !strings.Contains(expr, `metadata["user_id"] == "u001"`) {
 		t.Fatalf("missing user_id in %q", expr)
 	}
 	if !strings.Contains(expr, `metadata["kb_id"] == "12"`) {
 		t.Fatalf("missing kb_id in %q", expr)
+	}
+}
+
+func TestBuildRedisFilterTenantOnly(t *testing.T) {
+	q := buildRedisFilter(&RetrieveFilter{TenantID: "3", KnowledgeBaseID: "5"})
+	if strings.Contains(q, "@user_id:") {
+		t.Fatalf("shared KB filter should not force user_id: %q", q)
+	}
+	if !strings.Contains(q, "@tenant_id:{3}") || !strings.Contains(q, "@kb_id:{5}") {
+		t.Fatalf("unexpected filter %q", q)
 	}
 }

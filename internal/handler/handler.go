@@ -60,6 +60,10 @@ func currentUserID(c *gin.Context) string {
 	return auth.UserIDFromContext(c)
 }
 
+func currentTenantID(c *gin.Context) uint {
+	return auth.TenantIDFromContext(c)
+}
+
 type createKBReq struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -71,7 +75,7 @@ func (h *KnowledgeHandler) CreateKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	kb, err := h.svc.CreateKnowledgeBase(currentUserID(c), req.Name, req.Description)
+	kb, err := h.svc.CreateKnowledgeBase(currentUserID(c), currentTenantID(c), req.Name, req.Description)
 	if err != nil {
 		failErr(c, err)
 		return
@@ -80,7 +84,7 @@ func (h *KnowledgeHandler) CreateKnowledgeBase(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) ListKnowledgeBases(c *gin.Context) {
-	list, err := h.svc.ListKnowledgeBases(currentUserID(c))
+	list, err := h.svc.ListKnowledgeBases(currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -94,7 +98,7 @@ func (h *KnowledgeHandler) GetKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	kb, err := h.svc.GetKnowledgeBase(uint(id), currentUserID(c))
+	kb, err := h.svc.GetKnowledgeBase(uint(id), currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -113,7 +117,7 @@ func (h *KnowledgeHandler) UpdateKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	kb, err := h.svc.UpdateKnowledgeBase(uint(id), currentUserID(c), req.Name, req.Description)
+	kb, err := h.svc.UpdateKnowledgeBase(uint(id), currentUserID(c), currentTenantID(c), req.Name, req.Description)
 	if err != nil {
 		failErr(c, err)
 		return
@@ -127,7 +131,7 @@ func (h *KnowledgeHandler) DeleteKnowledgeBase(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	if err := h.svc.DeleteKnowledgeBase(uint(id), currentUserID(c)); err != nil {
+	if err := h.svc.DeleteKnowledgeBase(uint(id), currentUserID(c), currentTenantID(c)); err != nil {
 		failErr(c, err)
 		return
 	}
@@ -154,6 +158,7 @@ func (h *KnowledgeHandler) CreateDirectory(c *gin.Context) {
 	}
 	dir, err := h.svc.CreateDirectory(service.CreateDirectoryInput{
 		UserID:          currentUserID(c),
+		TenantID:        currentTenantID(c),
 		KnowledgeBaseID: uint(kbID),
 		ParentID:        req.ParentID,
 		Name:            req.Name,
@@ -173,7 +178,7 @@ func (h *KnowledgeHandler) ListDirectoryTree(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的知识库 ID")
 		return
 	}
-	tree, err := h.svc.ListDirectoryTree(uint(kbID), currentUserID(c))
+	tree, err := h.svc.ListDirectoryTree(uint(kbID), currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -199,7 +204,7 @@ func (h *KnowledgeHandler) UpdateDirectory(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	dir, err := h.svc.UpdateDirectory(uint(id), currentUserID(c), req.Name, req.Description, req.ParentID, req.SortOrder)
+	dir, err := h.svc.UpdateDirectory(uint(id), currentUserID(c), currentTenantID(c), req.Name, req.Description, req.ParentID, req.SortOrder)
 	if err != nil {
 		failErr(c, err)
 		return
@@ -213,7 +218,7 @@ func (h *KnowledgeHandler) DeleteDirectory(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的目录 ID")
 		return
 	}
-	if err := h.svc.DeleteDirectory(uint(id), currentUserID(c)); err != nil {
+	if err := h.svc.DeleteDirectory(uint(id), currentUserID(c), currentTenantID(c)); err != nil {
 		failErr(c, err)
 		return
 	}
@@ -246,8 +251,9 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 	}
 
 	opts := service.ImportOptions{
-		UserID: currentUserID(c),
-		Title:  c.PostForm("title"),
+		UserID:   currentUserID(c),
+		TenantID: currentTenantID(c),
+		Title:    c.PostForm("title"),
 	}
 	if v := c.PostForm("knowledge_base_id"); v != "" {
 		id, err := strconv.ParseUint(v, 10, 64)
@@ -277,7 +283,10 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 
 // ListDocuments GET /api/v1/documents
 func (h *KnowledgeHandler) ListDocuments(c *gin.Context) {
-	filter := repository.DocumentListFilter{UserID: currentUserID(c)}
+	filter := repository.DocumentListFilter{
+		UserID:   currentUserID(c),
+		TenantID: currentTenantID(c),
+	}
 	if v := c.Query("knowledge_base_id"); v != "" {
 		id, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
@@ -317,7 +326,7 @@ func (h *KnowledgeHandler) GetDocument(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的文档 ID")
 		return
 	}
-	doc, err := h.svc.GetDocument(uint(id), currentUserID(c))
+	doc, err := h.svc.GetDocument(uint(id), currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -331,7 +340,7 @@ func (h *KnowledgeHandler) DeleteDocument(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "无效的文档 ID")
 		return
 	}
-	if err := h.svc.DeleteDocument(c.Request.Context(), uint(id), currentUserID(c)); err != nil {
+	if err := h.svc.DeleteDocument(c.Request.Context(), uint(id), currentUserID(c), currentTenantID(c)); err != nil {
 		failErr(c, err)
 		return
 	}
@@ -348,7 +357,7 @@ func (h *KnowledgeHandler) DeleteDocuments(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	result, err := h.svc.DeleteDocuments(c.Request.Context(), req.IDs, currentUserID(c))
+	result, err := h.svc.DeleteDocuments(c.Request.Context(), req.IDs, currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -366,7 +375,7 @@ func (h *KnowledgeHandler) ReindexDocuments(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	result, err := h.svc.ReindexDocuments(req.IDs, currentUserID(c))
+	result, err := h.svc.ReindexDocuments(req.IDs, currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
@@ -385,6 +394,7 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 		return
 	}
 	req.UserID = currentUserID(c)
+	req.TenantID = currentTenantID(c)
 
 	flusher, okFlush := c.Writer.(http.Flusher)
 	if !okFlush {
@@ -429,12 +439,37 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 
 func (h *KnowledgeHandler) History(c *gin.Context) {
 	sessionID := c.Query("session_id")
-	msgs, err := h.svc.GetHistory(sessionID, currentUserID(c))
+	msgs, err := h.svc.GetHistory(sessionID, currentUserID(c), currentTenantID(c))
 	if err != nil {
 		failErr(c, err)
 		return
 	}
 	ok(c, msgs)
+}
+
+// ListSessions GET /api/v1/chat/sessions?knowledge_base_id=&directory_id=
+func (h *KnowledgeHandler) ListSessions(c *gin.Context) {
+	kbID, err := strconv.ParseUint(c.Query("knowledge_base_id"), 10, 64)
+	if err != nil || kbID == 0 {
+		fail(c, http.StatusBadRequest, "无效的 knowledge_base_id")
+		return
+	}
+	var dirID *uint
+	if v := c.Query("directory_id"); v != "" {
+		id, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			fail(c, http.StatusBadRequest, "无效的 directory_id")
+			return
+		}
+		d := uint(id)
+		dirID = &d
+	}
+	list, err := h.svc.ListSessions(currentUserID(c), currentTenantID(c), uint(kbID), dirID)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, list)
 }
 
 func (h *KnowledgeHandler) Health(c *gin.Context) {

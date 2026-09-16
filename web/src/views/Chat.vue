@@ -37,10 +37,40 @@
                 :props="{ label: 'name', children: 'children', value: 'id' }"
                 placeholder="不选则检索整个知识库"
                 style="width: 100%"
+                @change="onDirectoryChange"
               />
             </el-form-item>
             <el-form-item label="Session ID">
-              <el-input v-model="sessionId" readonly />
+              <el-select
+                v-model="sessionId"
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择或筛选历史会话"
+                style="width: 100%"
+                :loading="sessionsLoading"
+                @change="onSessionChange"
+              >
+                <el-option
+                  v-for="s in sessions"
+                  :key="s.session_id"
+                  :label="sessionLabel(s)"
+                  :value="s.session_id"
+                >
+                  <div class="session-option">
+                    <div class="session-id">{{ s.session_id }}</div>
+                    <div class="session-meta">
+                      <span>{{ s.title || '未命名会话' }}</span>
+                      <span>{{ formatTime(s.updated_at) }}</span>
+                    </div>
+                  </div>
+                </el-option>
+              </el-select>
+              <div class="session-hint">
+                展示当前租户/用户在所选知识库
+                {{ directoryId ? '与目录' : '（未选目录）' }}
+                下的历史会话，可筛选切换。
+              </div>
             </el-form-item>
           </el-form>
         </div>
@@ -62,14 +92,29 @@
                 {{ m.content }}
               </div>
               <div v-if="m.sources?.length" class="sources">
-                <div
-                  v-for="(s, i) in m.sources"
-                  :key="i"
-                  class="source-item"
-                >
-                  <strong>{{ s.title || s.id || `来源 ${i + 1}` }}</strong>
-                  <div>{{ s.content }}</div>
-                </div>
+                <el-collapse>
+                  <el-collapse-item :name="idx">
+                    <template #title>
+                      <span class="sources-title">引用来源（{{ m.sources.length }}）</span>
+                    </template>
+                    <div
+                      v-for="(s, i) in m.sources"
+                      :key="s.id || i"
+                      class="source-item"
+                    >
+                      <div class="source-head">
+                        <strong>[{{ i + 1 }}] {{ s.title || `来源 ${i + 1}` }}</strong>
+                        <span class="source-meta">
+                          <template v-if="s.doc_id">doc_id={{ s.doc_id }}</template>
+                          <template v-if="s.page"> · 第 {{ s.page }} 页</template>
+                          <template v-if="s.chunk_index != null"> · chunk={{ s.chunk_index }}</template>
+                          <template v-if="s.score != null"> · score={{ Number(s.score).toFixed(3) }}</template>
+                        </span>
+                      </div>
+                      <div class="source-body">{{ s.content }}</div>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
               </div>
             </div>
           </div>
@@ -101,9 +146,11 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
-import { getSessionId, newSessionId } from '@/utils/helpers'
+import { getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
 
 const sessionId = ref(getSessionId())
+const sessions = ref([])
+const sessionsLoading = ref(false)
 const kbs = ref([])
 const kbId = ref()
 const treeData = ref([])
@@ -112,6 +159,17 @@ const messages = ref([])
 const query = ref('')
 const asking = ref(false)
 const listRef = ref()
+
+function formatTime(v) {
+  if (!v) return ''
+  return new Date(v).toLocaleString()
+}
+
+function sessionLabel(s) {
+  const title = s.title || '未命名会话'
+  const time = formatTime(s.updated_at)
+  return time ? `${s.session_id} · ${title} · ${time}` : `${s.session_id} · ${title}`
+}
 
 async function loadKbs() {
   kbs.value = (await api.listKnowledgeBases()) || []
@@ -126,9 +184,49 @@ async function onKbChange() {
   treeData.value = kbId.value
     ? (await api.listDirectories(kbId.value)) || []
     : []
+  await reloadSessionsAndHistory()
+}
+
+async function onDirectoryChange() {
+  await reloadSessionsAndHistory()
+}
+
+async function loadSessions() {
+  if (!kbId.value) {
+    sessions.value = []
+    return
+  }
+  sessionsLoading.value = true
+  try {
+    const params = { knowledge_base_id: kbId.value }
+    if (directoryId.value) {
+      params.directory_id = directoryId.value
+    }
+    sessions.value = (await api.listChatSessions(params)) || []
+  } catch {
+    sessions.value = []
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+async function reloadSessionsAndHistory() {
+  await loadSessions()
+  const exists = sessions.value.some((s) => s.session_id === sessionId.value)
+  if (!exists) {
+    sessionId.value = newSessionId()
+    messages.value = []
+    return
+  }
+  setSessionId(sessionId.value)
+  await loadHistory()
 }
 
 async function loadHistory() {
+  if (!sessionId.value) {
+    messages.value = []
+    return
+  }
   try {
     const list = await api.chatHistory(sessionId.value)
     messages.value = (list || []).map((m) => ({
@@ -139,6 +237,13 @@ async function loadHistory() {
   } catch {
     messages.value = []
   }
+}
+
+async function onSessionChange(id) {
+  if (!id) return
+  setSessionId(id)
+  sessionId.value = id
+  await loadHistory()
 }
 
 function resetSession() {
@@ -183,7 +288,10 @@ async function ask() {
     }
     await api.chatQueryStream(payload, {
       onMeta: (evt) => {
-        if (evt.session_id) sessionId.value = evt.session_id
+        if (evt.session_id) {
+          sessionId.value = evt.session_id
+          setSessionId(evt.session_id)
+        }
         messages.value[assistantIdx].sources = evt.sources || []
       },
       onDelta: async (chunk) => {
@@ -191,7 +299,10 @@ async function ask() {
         await scrollBottom()
       },
       onDone: async (evt) => {
-        if (evt.session_id) sessionId.value = evt.session_id
+        if (evt.session_id) {
+          sessionId.value = evt.session_id
+          setSessionId(evt.session_id)
+        }
         if (evt.answer) messages.value[assistantIdx].content = evt.answer
         if (evt.sources?.length) {
           messages.value[assistantIdx].sources = evt.sources
@@ -199,6 +310,7 @@ async function ask() {
         if (!messages.value[assistantIdx].content) {
           messages.value[assistantIdx].content = '(空回答)'
         }
+        await loadSessions()
         await scrollBottom()
       },
     })
@@ -214,13 +326,39 @@ async function ask() {
 
 onMounted(async () => {
   await loadKbs()
-  await loadHistory()
 })
 </script>
 
 <style scoped>
 .side {
   min-height: 560px;
+}
+
+.session-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.session-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  line-height: 1.3;
+}
+
+.session-id {
+  font-size: 13px;
+}
+
+.session-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .chat-panel {
@@ -265,6 +403,35 @@ onMounted(async () => {
 
 .sources {
   max-width: 780px;
+  width: 100%;
+}
+
+.sources :deep(.el-collapse) {
+  border: none;
+  background: transparent;
+}
+
+.sources :deep(.el-collapse-item__header) {
+  height: auto;
+  line-height: 1.4;
+  padding: 4px 0;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.sources :deep(.el-collapse-item__wrap) {
+  border: none;
+  background: transparent;
+}
+
+.sources :deep(.el-collapse-item__content) {
+  padding: 4px 0 0;
+}
+
+.sources-title {
+  font-weight: 500;
 }
 
 .composer {

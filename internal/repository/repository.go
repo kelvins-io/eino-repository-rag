@@ -34,7 +34,8 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 }
 
 type DocumentListFilter struct {
-	UserID          string
+	TenantID        uint
+	UserID          string // 可选：仅列自己上传的文档
 	KnowledgeBaseID uint
 	DirectoryID     *uint
 }
@@ -75,6 +76,9 @@ func (r *DocumentRepo) List(filter DocumentListFilter, limit, offset int) ([]mod
 		total int64
 	)
 	q := r.db.Model(&model.Document{})
+	if filter.TenantID > 0 {
+		q = q.Where("tenant_id = ?", filter.TenantID)
+	}
 	if filter.UserID != "" {
 		q = q.Where("user_id = ?", filter.UserID)
 	}
@@ -150,6 +154,16 @@ func (r *KnowledgeBaseRepo) ListByUser(userID string) ([]model.KnowledgeBase, er
 	return list, nil
 }
 
+// ListByTenant 列出租户内全部知识库（同租户共享可读）
+func (r *KnowledgeBaseRepo) ListByTenant(tenantID uint) ([]model.KnowledgeBase, error) {
+	var list []model.KnowledgeBase
+	err := r.db.Model(&model.KnowledgeBase{}).
+		Where("tenant_id = ?", tenantID).
+		Order("id desc").
+		Find(&list).Error
+	return list, err
+}
+
 func (r *KnowledgeBaseRepo) Update(kb *model.KnowledgeBase) error {
 	return r.db.Model(kb).Updates(map[string]any{
 		"name":        kb.Name,
@@ -161,10 +175,10 @@ func (r *KnowledgeBaseRepo) Delete(id uint) error {
 	return r.db.Delete(&model.KnowledgeBase{}, id).Error
 }
 
-// GetOrCreateDefault 获取用户默认知识库，不存在则创建
-func (r *KnowledgeBaseRepo) GetOrCreateDefault(userID string) (*model.KnowledgeBase, error) {
+// GetOrCreateDefault 获取用户在租户下的默认知识库，不存在则创建
+func (r *KnowledgeBaseRepo) GetOrCreateDefault(tenantID uint, userID string) (*model.KnowledgeBase, error) {
 	var kb model.KnowledgeBase
-	err := r.db.Where("user_id = ? AND name = ?", userID, "默认知识库").First(&kb).Error
+	err := r.db.Where("tenant_id = ? AND user_id = ? AND name = ?", tenantID, userID, "默认知识库").First(&kb).Error
 	if err == nil {
 		return &kb, nil
 	}
@@ -172,6 +186,7 @@ func (r *KnowledgeBaseRepo) GetOrCreateDefault(userID string) (*model.KnowledgeB
 		return nil, err
 	}
 	kb = model.KnowledgeBase{
+		TenantID:    tenantID,
 		UserID:      userID,
 		Name:        "默认知识库",
 		Description: "系统自动创建的默认知识库",
@@ -289,19 +304,48 @@ func NewConversationRepo(db *gorm.DB) *ConversationRepo {
 	return &ConversationRepo{db: db}
 }
 
-func (r *ConversationRepo) GetOrCreate(userID, sessionID, title string) (*model.Conversation, error) {
+func (r *ConversationRepo) GetOrCreate(
+	tenantID uint,
+	userID, sessionID, title string,
+	knowledgeBaseID uint,
+	directoryID *uint,
+) (*model.Conversation, error) {
 	var conv model.Conversation
 	err := r.db.Where("session_id = ?", sessionID).First(&conv).Error
 	if err == nil {
+		// 回填历史会话缺失的知识库/目录归属
+		needUpdate := false
+		if conv.KnowledgeBaseID == 0 && knowledgeBaseID > 0 {
+			conv.KnowledgeBaseID = knowledgeBaseID
+			needUpdate = true
+		}
+		if conv.DirectoryID == nil && directoryID != nil {
+			conv.DirectoryID = directoryID
+			needUpdate = true
+		}
+		if title != "" && conv.Title == "" {
+			conv.Title = title
+			needUpdate = true
+		}
+		if needUpdate {
+			_ = r.db.Model(&conv).Updates(map[string]any{
+				"knowledge_base_id": conv.KnowledgeBaseID,
+				"directory_id":      conv.DirectoryID,
+				"title":             conv.Title,
+			}).Error
+		}
 		return &conv, nil
 	}
 	if err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
 	conv = model.Conversation{
-		UserID:    userID,
-		SessionID: sessionID,
-		Title:     title,
+		TenantID:        tenantID,
+		UserID:          userID,
+		SessionID:       sessionID,
+		KnowledgeBaseID: knowledgeBaseID,
+		DirectoryID:     directoryID,
+		Title:           title,
 	}
 	if err := r.db.Create(&conv).Error; err != nil {
 		return nil, err
@@ -315,6 +359,38 @@ func (r *ConversationRepo) GetBySessionID(sessionID string) (*model.Conversation
 		return nil, err
 	}
 	return &conv, nil
+}
+
+// ConversationListFilter 会话列表过滤
+type ConversationListFilter struct {
+	TenantID        uint
+	UserID          string
+	KnowledgeBaseID uint
+	// DirectoryID 非 nil 时按目录精确匹配；nil 表示仅查未绑定目录的会话
+	DirectoryID *uint
+	// MatchNullDirectory 为 true 且 DirectoryID==nil 时，匹配 directory_id IS NULL
+	MatchNullDirectory bool
+}
+
+func (r *ConversationRepo) List(filter ConversationListFilter, limit int) ([]model.Conversation, error) {
+	q := r.db.Model(&model.Conversation{}).
+		Where("tenant_id = ? AND user_id = ?", filter.TenantID, filter.UserID)
+	if filter.KnowledgeBaseID > 0 {
+		q = q.Where("knowledge_base_id = ?", filter.KnowledgeBaseID)
+	}
+	if filter.DirectoryID != nil {
+		q = q.Where("directory_id = ?", *filter.DirectoryID)
+	} else if filter.MatchNullDirectory {
+		q = q.Where("directory_id IS NULL")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var list []model.Conversation
+	if err := q.Order("updated_at desc").Limit(limit).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 type MessageRepo struct {

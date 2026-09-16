@@ -72,6 +72,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 			{
 				chat.POST("/query", kh.Query)
 				chat.GET("/history", kh.History)
+				chat.GET("/sessions", kh.ListSessions)
 			}
 		}
 	}

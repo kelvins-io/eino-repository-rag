@@ -135,6 +135,9 @@ func buildMilvusFilter(filter *RetrieveFilter) string {
 		return ""
 	}
 	var parts []string
+	if filter.TenantID != "" {
+		parts = append(parts, fmt.Sprintf(`metadata["tenant_id"] == %q`, filter.TenantID))
+	}
 	if filter.UserID != "" {
 		parts = append(parts, fmt.Sprintf(`metadata["user_id"] == %q`, filter.UserID))
 	}

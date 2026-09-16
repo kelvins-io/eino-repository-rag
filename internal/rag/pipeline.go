@@ -149,6 +149,7 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		Content: parsed.Text,
 		MetaData: map[string]any{
 			"doc_id":       strconv.FormatUint(uint64(doc.ID), 10),
+			"tenant_id":    uintToMeta(doc.TenantID),
 			"user_id":      doc.UserID,
 			"kb_id":        uintToMeta(doc.KnowledgeBaseID),
 			"directory_id": ptrUintToMeta(doc.DirectoryID),
@@ -169,12 +170,16 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 			chunk.MetaData = map[string]any{}
 		}
 		chunk.MetaData["doc_id"] = strconv.FormatUint(uint64(doc.ID), 10)
+		chunk.MetaData["tenant_id"] = uintToMeta(doc.TenantID)
 		chunk.MetaData["user_id"] = doc.UserID
 		chunk.MetaData["kb_id"] = uintToMeta(doc.KnowledgeBaseID)
 		chunk.MetaData["directory_id"] = ptrUintToMeta(doc.DirectoryID)
 		chunk.MetaData["title"] = doc.Title
 		chunk.MetaData["format"] = parsed.Format
 		chunk.MetaData["chunk_index"] = i
+		if page := inferPageFromContent(chunk.Content); page > 0 {
+			chunk.MetaData["page"] = page
+		}
 	}
 
 	// 写入前先清掉旧向量，避免 reindex 残留污染检索
@@ -256,6 +261,7 @@ func (p *Pipeline) IndexDocumentAsync(docID uint) {
 // QueryRequest RAG 问答请求
 type QueryRequest struct {
 	UserID          string `json:"user_id"`
+	TenantID        uint   `json:"-"` // 由 handler 从 JWT 注入
 	SessionID       string `json:"session_id"`
 	Query           string `json:"query"`
 	KnowledgeBaseID uint   `json:"knowledge_base_id"`
@@ -274,10 +280,14 @@ type QueryResponse struct {
 }
 
 type SourceDocument struct {
-	ID      string  `json:"id"`
-	Content string  `json:"content"`
-	Title   string  `json:"title,omitempty"`
-	Score   float64 `json:"score,omitempty"`
+	ID         string  `json:"id"`
+	DocID      string  `json:"doc_id,omitempty"`
+	ChunkIndex int     `json:"chunk_index"`
+	Page       int     `json:"page,omitempty"` // PDF/PPTX 页码；0 表示未知
+	Title      string  `json:"title,omitempty"`
+	Format     string  `json:"format,omitempty"`
+	Content    string  `json:"content"`
+	Score      float64 `json:"score,omitempty"`
 }
 
 // StreamEventType SSE 事件类型
@@ -341,11 +351,12 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	if req.UserID == "" {
 		req.UserID = "anonymous"
 	}
-	// 强制租户过滤：即使上层未组装 Filter，也注入 user_id
+	// 强制租户过滤；共享知识库检索按 tenant_id，不按上传者 user_id 收窄
+	tenantMeta := uintToMeta(req.TenantID)
 	if req.Filter == nil {
-		req.Filter = &RetrieveFilter{UserID: req.UserID}
-	} else if req.Filter.UserID == "" {
-		req.Filter.UserID = req.UserID
+		req.Filter = &RetrieveFilter{TenantID: tenantMeta}
+	} else if req.Filter.TenantID == "" {
+		req.Filter.TenantID = tenantMeta
 	}
 
 	docs, err := p.retrieve(ctx, req.Query, req.Filter)
@@ -360,12 +371,7 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 
 	sources := make([]SourceDocument, 0, len(docs))
 	for _, d := range docs {
-		sources = append(sources, SourceDocument{
-			ID:      d.ID,
-			Content: truncate(d.Content, 300),
-			Title:   metaString(d.MetaData, "title"),
-			Score:   d.Score(),
-		})
+		sources = append(sources, buildSourceDocument(d))
 	}
 
 	if err := onEvent(StreamEvent{
@@ -385,10 +391,10 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 		return err
 	}
 
-	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
+	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
 		log.Printf("[rag] append user memory failed: %v", err)
 	}
-	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer); err != nil {
+	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID); err != nil {
 		log.Printf("[rag] append assistant memory failed: %v", err)
 	}
 
@@ -459,7 +465,16 @@ func (p *Pipeline) buildMessages(
 		ctxBuilder.WriteString("（未检索到相关知识库片段）")
 	} else {
 		for i, d := range docs {
-			fmt.Fprintf(&ctxBuilder, "[%d] 标题:%s\n%s\n\n", i+1, metaString(d.MetaData, "title"), d.Content)
+			page := metaInt(d.MetaData, "page")
+			if page <= 0 {
+				page = inferPageFromContent(d.Content)
+			}
+			loc := fmt.Sprintf("doc_id=%s", metaString(d.MetaData, "doc_id"))
+			if page > 0 {
+				loc += fmt.Sprintf(" page=%d", page)
+			}
+			fmt.Fprintf(&ctxBuilder, "[%d] 标题:%s (%s)\n%s\n\n",
+				i+1, metaString(d.MetaData, "title"), loc, d.Content)
 		}
 	}
 
@@ -468,7 +483,7 @@ func (p *Pipeline) buildMessages(
 			Role: schema.System,
 			Content: `你是企业知识库助手。请仅依据提供的「知识库上下文」与「历史对话」回答用户问题。
 若上下文不足以回答，请明确说明「根据现有知识库无法确定」，不要编造。
-回答使用简洁中文，必要时引用片段编号如 [1]。`,
+回答使用简洁中文，必要时引用片段编号如 [1]（对应上下文中的编号）。`,
 		},
 	}
 
