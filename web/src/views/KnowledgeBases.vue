@@ -41,6 +41,18 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          :total="total"
+          @current-change="load"
+          @size-change="onSizeChange"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑知识库' : '新建知识库'" width="480px">
@@ -71,6 +83,9 @@ const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
 const list = ref([])
+const page = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
 const dialogVisible = ref(false)
 const editing = ref(null)
 const form = reactive({ name: '', description: '' })
@@ -87,10 +102,20 @@ function sortByCreatedAt(a, b) {
 async function load() {
   loading.value = true
   try {
-    list.value = (await api.listKnowledgeBases()) || []
+    const data = await api.listKnowledgeBases({
+      page: page.value,
+      page_size: pageSize.value,
+    })
+    list.value = data?.list || []
+    total.value = data?.total || 0
   } finally {
     loading.value = false
   }
+}
+
+function onSizeChange() {
+  page.value = 1
+  load()
 }
 
 function openCreate() {
@@ -126,6 +151,7 @@ async function onSave() {
         description: form.description,
       })
       ElMessage.success('已创建')
+      page.value = 1
     }
     dialogVisible.value = false
     await load()
@@ -140,6 +166,9 @@ async function onDelete(row) {
   })
   await api.deleteKnowledgeBase(row.id)
   ElMessage.success('已删除')
+  if (list.value.length <= 1 && page.value > 1) {
+    page.value -= 1
+  }
   await load()
 }
 
@@ -149,3 +178,11 @@ function goDetail(row) {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+</style>

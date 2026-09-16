@@ -173,14 +173,20 @@ func (r *KnowledgeBaseRepo) ListByUser(userID string) ([]model.KnowledgeBase, er
 	return list, nil
 }
 
-// ListByTenant 列出租户内全部知识库（同租户共享可读）
-func (r *KnowledgeBaseRepo) ListByTenant(tenantID uint) ([]model.KnowledgeBase, error) {
-	var list []model.KnowledgeBase
-	err := r.db.Model(&model.KnowledgeBase{}).
-		Where("tenant_id = ?", tenantID).
-		Order("id desc").
-		Find(&list).Error
-	return list, err
+// ListByTenant 分页列出租户内知识库（同租户共享可读）
+func (r *KnowledgeBaseRepo) ListByTenant(tenantID uint, limit, offset int) ([]model.KnowledgeBase, int64, error) {
+	var (
+		list  []model.KnowledgeBase
+		total int64
+	)
+	q := r.db.Model(&model.KnowledgeBase{}).Where("tenant_id = ?", tenantID)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := q.Order("id desc").Limit(limit).Offset(offset).Find(&list).Error; err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
 }
 
 func (r *KnowledgeBaseRepo) Update(kb *model.KnowledgeBase) error {

@@ -117,10 +117,11 @@
             <el-pagination
               v-model:current-page="page"
               v-model:page-size="pageSize"
-              layout="total, prev, pager, next"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
               :total="total"
               @current-change="loadDocs"
-              @size-change="loadDocs"
+              @size-change="onDocSizeChange"
             />
           </div>
         </div>
@@ -281,6 +282,11 @@ async function loadDocs() {
   } finally {
     docLoading.value = false
   }
+}
+
+function onDocSizeChange() {
+  page.value = 1
+  loadDocs()
 }
 
 async function refreshAll() {

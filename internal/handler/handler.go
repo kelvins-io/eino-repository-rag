@@ -85,12 +85,20 @@ func (h *KnowledgeHandler) CreateKnowledgeBase(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) ListKnowledgeBases(c *gin.Context) {
-	list, err := h.svc.ListKnowledgeBases(currentUserID(c), currentTenantID(c))
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+
+	list, total, err := h.svc.ListKnowledgeBases(currentUserID(c), currentTenantID(c), page, pageSize)
 	if err != nil {
 		failErr(c, err)
 		return
 	}
-	ok(c, list)
+	ok(c, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func (h *KnowledgeHandler) GetKnowledgeBase(c *gin.Context) {

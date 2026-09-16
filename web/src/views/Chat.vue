@@ -192,7 +192,8 @@ function sessionLabel(s) {
 }
 
 async function loadKbs() {
-  kbs.value = (await api.listKnowledgeBases()) || []
+  const data = await api.listKnowledgeBases({ page: 1, page_size: 100 })
+  kbs.value = data?.list || []
   if (kbs.value.length && !kbId.value) {
     kbId.value = kbs.value[0].id
     await onKbChange()

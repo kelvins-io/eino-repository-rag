@@ -202,12 +202,18 @@ func (s *KnowledgeService) CreateKnowledgeBase(userID string, tenantID uint, nam
 	return kb, nil
 }
 
-func (s *KnowledgeService) ListKnowledgeBases(userID string, tenantID uint) ([]model.KnowledgeBase, error) {
+func (s *KnowledgeService) ListKnowledgeBases(userID string, tenantID uint, page, pageSize int) ([]model.KnowledgeBase, int64, error) {
 	actor, err := requireActor(userID, tenantID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return s.kbRepo.ListByTenant(actor.TenantID)
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 10
+	}
+	return s.kbRepo.ListByTenant(actor.TenantID, pageSize, (page-1)*pageSize)
 }
 
 func (s *KnowledgeService) GetKnowledgeBase(id uint, userID string, tenantID uint) (*model.KnowledgeBase, error) {

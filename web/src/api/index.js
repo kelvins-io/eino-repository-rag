@@ -173,7 +173,7 @@ export const api = {
   me: () => http.get('/api/v1/auth/me'),
 
   // 知识库
-  listKnowledgeBases: () => http.get('/api/v1/knowledge-bases'),
+  listKnowledgeBases: (params) => http.get('/api/v1/knowledge-bases', { params }),
   getKnowledgeBase: (id) => http.get(`/api/v1/knowledge-bases/${id}`),
   createKnowledgeBase: (data) => http.post('/api/v1/knowledge-bases', data),
   updateKnowledgeBase: (id, data) => http.put(`/api/v1/knowledge-bases/${id}`, data),
