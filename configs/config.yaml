@@ -47,7 +47,7 @@ milvus:
   dimension: 1024
 
 deepseek:
-  api_key: "sk-0961878b8a2c4154a1a3ba8e74ccb863"
+  api_key: ""
   model: "deepseek-v4-flash"
   base_url: "https://api.deepseek.com"
   max_tokens: 2048
@@ -57,7 +57,7 @@ deepseek:
 # dimensions: 0/省略 = 不传给 API。SiliconFlow 对 BAAI/bge-m3 传 dimensions 会返回 20015；
 # 向量库维度由 redis.vector_dim / milvus.dimension 控制（bge-m3 为 1024）。
 embedding:
-  api_key: "sk-xrrujhahkdutenptifywzwxsajvnextgeowivfefpaiibgjg"
+  api_key: ""
   model: "BAAI/bge-m3"
   base_url: "https://api.siliconflow.cn/v1"
   dimensions: 0
