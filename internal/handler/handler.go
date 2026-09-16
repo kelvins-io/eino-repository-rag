@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -356,19 +358,58 @@ func (h *KnowledgeHandler) ReindexDocuments(c *gin.Context) {
 	ok(c, result)
 }
 
-// Query POST /api/v1/chat/query
+// Query POST /api/v1/chat/query （SSE 流式）
 func (h *KnowledgeHandler) Query(c *gin.Context) {
 	var req rag.QueryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	resp, err := h.svc.Query(c.Request.Context(), req)
-	if err != nil {
-		fail(c, http.StatusInternalServerError, err.Error())
+	if req.Query == "" {
+		fail(c, http.StatusBadRequest, "query is required")
 		return
 	}
-	ok(c, resp)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		fail(c, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	flusher.Flush()
+
+	writeEvent := func(evt rag.StreamEvent) error {
+		select {
+		case <-c.Request.Context().Done():
+			return c.Request.Context().Err()
+		default:
+		}
+		payload, err := json.Marshal(evt)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", payload); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	if err := h.svc.QueryStream(c.Request.Context(), req, writeEvent); err != nil {
+		// 客户端已断开时不再写 error 事件
+		if c.Request.Context().Err() != nil {
+			return
+		}
+		_ = writeEvent(rag.StreamEvent{
+			Type:    rag.StreamEventError,
+			Message: err.Error(),
+		})
+	}
 }
 
 // History GET /api/v1/chat/history?session_id=

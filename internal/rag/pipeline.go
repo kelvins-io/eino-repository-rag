@@ -2,7 +2,9 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -269,8 +271,61 @@ type SourceDocument struct {
 	Score   float64 `json:"score,omitempty"`
 }
 
-// Query 带记忆机制的检索增强生成
+// StreamEventType SSE 事件类型
+const (
+	StreamEventMeta  = "meta"
+	StreamEventDelta = "delta"
+	StreamEventDone  = "done"
+	StreamEventError = "error"
+)
+
+// StreamEvent chat/query 流式事件
+type StreamEvent struct {
+	Type            string           `json:"type"`
+	Content         string           `json:"content,omitempty"`
+	Answer          string           `json:"answer,omitempty"`
+	SessionID       string           `json:"session_id,omitempty"`
+	KnowledgeBaseID uint             `json:"knowledge_base_id,omitempty"`
+	DirectoryID     *uint            `json:"directory_id,omitempty"`
+	Sources         []SourceDocument `json:"sources,omitempty"`
+	Message         string           `json:"message,omitempty"`
+}
+
+// StreamHandler 流式事件回调；返回 error 时中止生成（如客户端断开）
+type StreamHandler func(event StreamEvent) error
+
+// Query 带记忆机制的检索增强生成（聚合完整回答，便于非流式调用）
 func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse, error) {
+	var resp *QueryResponse
+	err := p.QueryStream(ctx, req, func(evt StreamEvent) error {
+		switch evt.Type {
+		case StreamEventDone:
+			resp = &QueryResponse{
+				Answer:          evt.Answer,
+				SessionID:       evt.SessionID,
+				KnowledgeBaseID: evt.KnowledgeBaseID,
+				DirectoryID:     evt.DirectoryID,
+				Sources:         evt.Sources,
+			}
+		case StreamEventError:
+			return fmt.Errorf("%s", evt.Message)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("empty stream response")
+	}
+	return resp, nil
+}
+
+// QueryStream 流式问答：先推送 meta（session/sources），再推送 delta，最后 done
+func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent StreamHandler) error {
+	if onEvent == nil {
+		return fmt.Errorf("stream handler is required")
+	}
 	if req.SessionID == "" {
 		req.SessionID = uuid.NewString()
 	}
@@ -280,24 +335,12 @@ func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse,
 
 	docs, err := p.retrieve(ctx, req.Query, req.Filter)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	history, err := p.mem.BuildContextForPrompt(ctx, req.SessionID)
 	if err != nil {
-		return nil, fmt.Errorf("load memory: %w", err)
-	}
-
-	answer, err := p.generate(ctx, req.Query, docs, history)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
-		log.Printf("[rag] append user memory failed: %v", err)
-	}
-	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer); err != nil {
-		log.Printf("[rag] append assistant memory failed: %v", err)
+		return fmt.Errorf("load memory: %w", err)
 	}
 
 	sources := make([]SourceDocument, 0, len(docs))
@@ -310,13 +353,38 @@ func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse,
 		})
 	}
 
-	return &QueryResponse{
+	if err := onEvent(StreamEvent{
+		Type:            StreamEventMeta,
+		SessionID:       req.SessionID,
+		KnowledgeBaseID: req.KnowledgeBaseID,
+		DirectoryID:     req.DirectoryID,
+		Sources:         sources,
+	}); err != nil {
+		return err
+	}
+
+	answer, err := p.generateStream(ctx, req.Query, docs, history, func(delta string) error {
+		return onEvent(StreamEvent{Type: StreamEventDelta, Content: delta})
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query); err != nil {
+		log.Printf("[rag] append user memory failed: %v", err)
+	}
+	if err := p.mem.Append(ctx, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer); err != nil {
+		log.Printf("[rag] append assistant memory failed: %v", err)
+	}
+
+	return onEvent(StreamEvent{
+		Type:            StreamEventDone,
 		Answer:          answer,
 		SessionID:       req.SessionID,
 		KnowledgeBaseID: req.KnowledgeBaseID,
 		DirectoryID:     req.DirectoryID,
 		Sources:         sources,
-	}, nil
+	})
 }
 
 // retrieve 稠密召回 →（可选）BM25 + RRF →（可选）Rerank → TopK
@@ -366,12 +434,11 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 	return truncateDocs(fused, topK), nil
 }
 
-func (p *Pipeline) generate(
-	ctx context.Context,
+func (p *Pipeline) buildMessages(
 	query string,
 	docs []*schema.Document,
 	history *memory.ContextPack,
-) (string, error) {
+) []*schema.Message {
 	var ctxBuilder strings.Builder
 	if len(docs) == 0 {
 		ctxBuilder.WriteString("（未检索到相关知识库片段）")
@@ -416,12 +483,55 @@ func (p *Pipeline) generate(
 		Role:    schema.User,
 		Content: fmt.Sprintf("知识库上下文:\n%s\n\n用户问题: %s", ctxBuilder.String(), query),
 	})
+	return messages
+}
 
-	resp, err := p.chat.Generate(ctx, messages)
+func (p *Pipeline) generate(
+	ctx context.Context,
+	query string,
+	docs []*schema.Document,
+	history *memory.ContextPack,
+) (string, error) {
+	resp, err := p.chat.Generate(ctx, p.buildMessages(query, docs, history))
 	if err != nil {
 		return "", fmt.Errorf("deepseek generate: %w", err)
 	}
 	return resp.Content, nil
+}
+
+func (p *Pipeline) generateStream(
+	ctx context.Context,
+	query string,
+	docs []*schema.Document,
+	history *memory.ContextPack,
+	onDelta func(string) error,
+) (string, error) {
+	reader, err := p.chat.Stream(ctx, p.buildMessages(query, docs, history))
+	if err != nil {
+		return "", fmt.Errorf("deepseek stream: %w", err)
+	}
+	defer reader.Close()
+
+	var full strings.Builder
+	for {
+		chunk, err := reader.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return full.String(), fmt.Errorf("deepseek stream recv: %w", err)
+		}
+		if chunk == nil || chunk.Content == "" {
+			continue
+		}
+		full.WriteString(chunk.Content)
+		if onDelta != nil {
+			if err := onDelta(chunk.Content); err != nil {
+				return full.String(), err
+			}
+		}
+	}
+	return full.String(), nil
 }
 
 // SaveUpload 将上传文件持久化到本地

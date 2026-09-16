@@ -30,7 +30,7 @@ HTTP API (Gin)
   └─ 问答检索 → 短期/长期记忆
                → Dense Retriever + BM25（可选 Hybrid/RRF）
                → Rerank（可选）
-               → DeepSeek Generate → 回写记忆
+               → DeepSeek Stream → 回写记忆
 ```
 
 ## 快速开始
@@ -214,11 +214,21 @@ curl -X POST http://localhost:8080/api/v1/documents/reindex \
   -d '{"ids":[1,2,3]}'
 ```
 
-### 知识库问答（带记忆，可按分类过滤）
+### 知识库问答（SSE 流式，带记忆，可按分类过滤）
+
+`POST /api/v1/chat/query` 返回 `text/event-stream`，事件类型：
+
+| type | 说明 |
+|------|------|
+| `meta` | 会话 ID、检索来源 `sources` |
+| `delta` | 增量文本 `content` |
+| `done` | 完整回答 `answer` 与来源 |
+| `error` | 失败信息 `message` |
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/chat/query \
+curl -N -X POST http://localhost:8080/api/v1/chat/query \
   -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
   -d '{
     "user_id": "u001",
     "session_id": "s-demo-001",

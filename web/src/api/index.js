@@ -26,6 +26,92 @@ http.interceptors.response.use(
   },
 )
 
+/**
+ * 消费 POST /api/v1/chat/query 的 SSE 流。
+ * 事件: meta | delta | done | error
+ */
+export async function chatQueryStream(data, handlers = {}, signal) {
+  const base = import.meta.env.VITE_API_BASE || ''
+  const res = await fetch(`${base}/api/v1/chat/query`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(data),
+    signal,
+  })
+
+  if (!res.ok) {
+    let msg = `请求失败 (${res.status})`
+    try {
+      const body = await res.json()
+      if (body?.message) msg = body.message
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg)
+  }
+
+  if (!res.body) {
+    throw new Error('浏览器不支持流式响应')
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  let doneEvent = null
+
+  const dispatch = (evt) => {
+    if (!evt || !evt.type) return
+    switch (evt.type) {
+      case 'meta':
+        handlers.onMeta?.(evt)
+        break
+      case 'delta':
+        handlers.onDelta?.(evt.content || '')
+        break
+      case 'done':
+        doneEvent = evt
+        handlers.onDone?.(evt)
+        break
+      case 'error':
+        handlers.onError?.(evt.message || '流式回答失败')
+        throw new Error(evt.message || '流式回答失败')
+      default:
+        break
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let sep
+    while ((sep = buffer.indexOf('\n\n')) >= 0) {
+      const raw = buffer.slice(0, sep)
+      buffer = buffer.slice(sep + 2)
+      const lines = raw.split('\n')
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+        const payload = trimmed.slice(5).trim()
+        if (!payload || payload === '[DONE]') continue
+        let evt
+        try {
+          evt = JSON.parse(payload)
+        } catch {
+          continue
+        }
+        dispatch(evt)
+      }
+    }
+  }
+
+  return doneEvent
+}
+
 export const api = {
   health: () => http.get('/health'),
 
@@ -55,8 +141,8 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
-  // 问答
-  chatQuery: (data) => http.post('/api/v1/chat/query', data),
+  // 问答（SSE 流式）
+  chatQueryStream,
   chatHistory: (sessionId) =>
     http.get('/api/v1/chat/history', { params: { session_id: sessionId } }),
 }

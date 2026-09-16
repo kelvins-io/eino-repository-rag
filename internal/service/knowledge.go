@@ -598,9 +598,9 @@ func (s *KnowledgeService) ReindexDocuments(ids []uint) (*ReindexResult, error) 
 	return result, nil
 }
 
-func (s *KnowledgeService) Query(ctx context.Context, req rag.QueryRequest) (*rag.QueryResponse, error) {
+func (s *KnowledgeService) prepareQueryRequest(req *rag.QueryRequest) error {
 	if req.Query == "" {
-		return nil, fmt.Errorf("query is required")
+		return fmt.Errorf("query is required")
 	}
 	if req.SessionID == "" {
 		req.SessionID = uuid.NewString()
@@ -609,14 +609,14 @@ func (s *KnowledgeService) Query(ctx context.Context, req rag.QueryRequest) (*ra
 	filter := &rag.RetrieveFilter{}
 	if req.KnowledgeBaseID > 0 {
 		if _, err := s.kbRepo.GetByID(req.KnowledgeBaseID); err != nil {
-			return nil, fmt.Errorf("knowledge base not found: %w", err)
+			return fmt.Errorf("knowledge base not found: %w", err)
 		}
 		filter.KnowledgeBaseID = strconv.FormatUint(uint64(req.KnowledgeBaseID), 10)
 	}
 	if req.DirectoryID != nil && *req.DirectoryID > 0 {
 		ids, err := s.dirRepo.CollectSelfAndDescendantIDs(*req.DirectoryID)
 		if err != nil {
-			return nil, fmt.Errorf("directory not found: %w", err)
+			return fmt.Errorf("directory not found: %w", err)
 		}
 		for _, id := range ids {
 			filter.DirectoryIDs = append(filter.DirectoryIDs, strconv.FormatUint(uint64(id), 10))
@@ -625,8 +625,21 @@ func (s *KnowledgeService) Query(ctx context.Context, req rag.QueryRequest) (*ra
 	if filter.KnowledgeBaseID != "" || len(filter.DirectoryIDs) > 0 {
 		req.Filter = filter
 	}
+	return nil
+}
 
+func (s *KnowledgeService) Query(ctx context.Context, req rag.QueryRequest) (*rag.QueryResponse, error) {
+	if err := s.prepareQueryRequest(&req); err != nil {
+		return nil, err
+	}
 	return s.rag.Query(ctx, req)
+}
+
+func (s *KnowledgeService) QueryStream(ctx context.Context, req rag.QueryRequest, onEvent rag.StreamHandler) error {
+	if err := s.prepareQueryRequest(&req); err != nil {
+		return err
+	}
+	return s.rag.QueryStream(ctx, req, onEvent)
 }
 
 func (s *KnowledgeService) GetHistory(sessionID string) ([]model.Message, error) {

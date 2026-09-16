@@ -171,6 +171,8 @@ async function ask() {
 
   messages.value.push({ role: 'user', content: q })
   query.value = ''
+  messages.value.push({ role: 'assistant', content: '', sources: [] })
+  const assistantIdx = messages.value.length - 1
   await scrollBottom()
 
   asking.value = true
@@ -184,19 +186,32 @@ async function ask() {
     if (directoryId.value) {
       payload.directory_id = directoryId.value
     }
-    const resp = await api.chatQuery(payload)
-    if (resp?.session_id) sessionId.value = resp.session_id
-    messages.value.push({
-      role: 'assistant',
-      content: resp?.answer || '(空回答)',
-      sources: resp?.sources || [],
+    await api.chatQueryStream(payload, {
+      onMeta: (evt) => {
+        if (evt.session_id) sessionId.value = evt.session_id
+        messages.value[assistantIdx].sources = evt.sources || []
+      },
+      onDelta: async (chunk) => {
+        messages.value[assistantIdx].content += chunk
+        await scrollBottom()
+      },
+      onDone: async (evt) => {
+        if (evt.session_id) sessionId.value = evt.session_id
+        if (evt.answer) messages.value[assistantIdx].content = evt.answer
+        if (evt.sources?.length) {
+          messages.value[assistantIdx].sources = evt.sources
+        }
+        if (!messages.value[assistantIdx].content) {
+          messages.value[assistantIdx].content = '(空回答)'
+        }
+        await scrollBottom()
+      },
     })
-    await scrollBottom()
   } catch {
-    messages.value.push({
-      role: 'assistant',
-      content: '请求失败，请稍后重试。',
-    })
+    if (!messages.value[assistantIdx].content) {
+      messages.value[assistantIdx].content = '请求失败，请稍后重试。'
+    }
+    ElMessage.error('流式回答失败')
   } finally {
     asking.value = false
   }
