@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/model"
@@ -114,6 +115,11 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 		"status":      status,
 		"chunk_count": chunkCount,
 		"error_msg":   errMsg,
+	}
+	// 索引构建结束（就绪/失败）时记录操作时间；indexing/pending 不覆盖
+	if status == model.DocumentStatusReady || status == model.DocumentStatusFailed {
+		now := time.Now()
+		updates["last_indexed_at"] = now
 	}
 	return r.db.Model(&model.Document{}).Where("id = ?", id).Updates(updates).Error
 }

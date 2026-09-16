@@ -65,6 +65,7 @@ type Document struct {
 	Status          DocumentStatus `gorm:"size:32;index;not null;default:pending" json:"status"`
 	ChunkCount      int            `json:"chunk_count"`
 	ErrorMsg        string         `gorm:"type:text" json:"error_msg,omitempty"`
+	LastIndexedAt   *time.Time     `json:"last_indexed_at,omitempty"` // 上次索引构建完成时间（成功或失败）
 	CreatedAt       time.Time      `json:"created_at"`
 	UpdatedAt       time.Time      `json:"updated_at"`
 }

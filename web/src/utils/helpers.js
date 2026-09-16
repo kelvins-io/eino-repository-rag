@@ -26,6 +26,11 @@ export function formatSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`
 }
 
+export function formatTime(v) {
+  if (!v) return '-'
+  return new Date(v).toLocaleString()
+}
+
 export function statusType(status) {
   const map = {
     pending: 'info',

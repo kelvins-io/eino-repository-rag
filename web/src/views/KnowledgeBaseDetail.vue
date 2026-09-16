@@ -91,6 +91,17 @@
               </template>
             </el-table-column>
             <el-table-column prop="chunk_count" label="分块" width="70" />
+            <el-table-column label="上次索引" width="170">
+              <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
+            </el-table-column>
+            <el-table-column label="错误原因" min-width="160" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.status === 'failed' && row.error_msg" class="error-msg">
+                  {{ row.error_msg }}
+                </span>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="file_size" label="大小" width="90">
               <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
             </el-table-column>
@@ -190,10 +201,11 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
+          <el-descriptions-item label="上次索引">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
           <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
           <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
-          <el-descriptions-item v-if="docDetail.error_msg" label="错误">
-            {{ docDetail.error_msg }}
+          <el-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">
+            <span class="error-msg">{{ docDetail.error_msg }}</span>
           </el-descriptions-item>
         </el-descriptions>
       </template>
@@ -209,6 +221,7 @@ import { Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import {
   formatSize,
+  formatTime,
   statusLabel,
   statusType,
 } from '@/utils/helpers'
@@ -485,5 +498,10 @@ onMounted(refreshAll)
 
 .ml8 {
   margin-left: 8px;
+}
+
+.error-msg {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 </style>
