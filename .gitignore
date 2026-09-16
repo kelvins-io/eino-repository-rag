@@ -11,6 +11,9 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Local binaries
+bin/
+vendor
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
@@ -26,6 +29,10 @@ go.work.sum
 
 # env file
 .env
+
+# uploads
+storage/uploads/**
+!storage/uploads/.gitkeep
 
 # Editor/IDE
 # .idea/
