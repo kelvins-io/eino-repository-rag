@@ -53,7 +53,23 @@ rag:
   chunk_size: 800
   overlap_size: 100
   top_k: 5
+  # Hybrid：稠密向量 + Redis BM25，经 RRF 融合；milvus 模式会额外维护 BM25 sidecar
+  hybrid_enabled: true
+  candidate_k: 20
+  rrf_k: 60
+  bm25_index_name: "kb_bm25_index"
+  bm25_key_prefix: "kb:bm25:"
   upload_dir: "./storage/uploads"
+
+# Cross-Encoder 重排（OpenAI 兼容，如 SiliconFlow /v1/rerank）
+# api_key / base_url 为空时回退 embedding 配置
+rerank:
+  enabled: true
+  api_key: ""
+  model: "BAAI/bge-reranker-v2-m3"
+  base_url: "https://api.siliconflow.cn/v1"
+  top_n: 5
+  timeout_seconds: 30
 
 memory:
   short_term_ttl_minutes: 60

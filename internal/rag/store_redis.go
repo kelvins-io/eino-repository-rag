@@ -10,6 +10,7 @@ import (
 	redisindexer "github.com/cloudwego/eino-ext/components/indexer/redis"
 	redisretriever "github.com/cloudwego/eino-ext/components/retriever/redis"
 	"github.com/cloudwego/eino/components/embedding"
+	einoretriever "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
 
@@ -183,12 +184,15 @@ func toInt(v any) (int, error) {
 	}
 }
 
-func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
+func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter, topK int) ([]*schema.Document, error) {
+	if topK <= 0 {
+		topK = s.cfg.RAG.TopK
+	}
 	retriever, err := redisretriever.NewRetriever(ctx, &redisretriever.RetrieverConfig{
 		Client:       s.rdb,
 		Index:        s.cfg.Redis.IndexName,
 		VectorField:  s.cfg.Redis.VectorField,
-		TopK:         s.cfg.RAG.TopK,
+		TopK:         topK,
 		Embedding:    s.embedder,
 		ReturnFields: []string{"content", "doc_id", "user_id", "kb_id", "directory_id", "title", s.cfg.Redis.VectorField},
 		DocumentConverter: func(ctx context.Context, doc redis.Document) (*schema.Document, error) {
@@ -201,6 +205,7 @@ func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *R
 					"kb_id":        doc.Fields["kb_id"],
 					"directory_id": doc.Fields["directory_id"],
 					"title":        doc.Fields["title"],
+					"channel":      "dense",
 				},
 			}, nil
 		},
@@ -210,15 +215,11 @@ func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *R
 	}
 
 	filterQuery := buildRedisFilter(filter)
+	opts := []einoretriever.Option{einoretriever.WithTopK(topK)}
 	if filterQuery != "" {
-		docs, err := retriever.Retrieve(ctx, query, redisretriever.WithFilterQuery(filterQuery))
-		if err != nil {
-			return nil, fmt.Errorf("redis retrieve: %w", err)
-		}
-		return docs, nil
+		opts = append(opts, redisretriever.WithFilterQuery(filterQuery))
 	}
-
-	docs, err := retriever.Retrieve(ctx, query)
+	docs, err := retriever.Retrieve(ctx, query, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("redis retrieve: %w", err)
 	}

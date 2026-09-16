@@ -22,7 +22,8 @@ type RetrieveFilter struct {
 // VectorStore 向量索引抽象：支持 Redis / Milvus Lite 等后端切换
 type VectorStore interface {
 	Store(ctx context.Context, docs []*schema.Document) error
-	Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error)
+	// Retrieve 稠密向量检索；topK<=0 时由实现使用默认配置
+	Retrieve(ctx context.Context, query string, filter *RetrieveFilter, topK int) ([]*schema.Document, error)
 	// DeleteByDocID 按文档 ID 删除其全部向量 chunk（doc 不存在时视为成功）
 	DeleteByDocID(ctx context.Context, docID string) error
 }

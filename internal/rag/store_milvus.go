@@ -10,6 +10,7 @@ import (
 	milvusretriever "github.com/cloudwego/eino-ext/components/retriever/milvus2"
 	"github.com/cloudwego/eino-ext/components/retriever/milvus2/search_mode"
 	"github.com/cloudwego/eino/components/embedding"
+	einoretriever "github.com/cloudwego/eino/components/retriever"
 	"github.com/cloudwego/eino/schema"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 
@@ -107,19 +108,24 @@ func (s *milvusVectorStore) DeleteByDocID(ctx context.Context, docID string) err
 	return nil
 }
 
-func (s *milvusVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
-	expr := buildMilvusFilter(filter)
-	var (
-		docs []*schema.Document
-		err  error
-	)
-	if expr != "" {
-		docs, err = s.retriever.Retrieve(ctx, query, milvusretriever.WithFilter(expr))
-	} else {
-		docs, err = s.retriever.Retrieve(ctx, query)
+func (s *milvusVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter, topK int) ([]*schema.Document, error) {
+	if topK <= 0 {
+		topK = s.cfg.RAG.TopK
 	}
+	expr := buildMilvusFilter(filter)
+	opts := []einoretriever.Option{einoretriever.WithTopK(topK)}
+	if expr != "" {
+		opts = append(opts, milvusretriever.WithFilter(expr))
+	}
+	docs, err := s.retriever.Retrieve(ctx, query, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("milvus retrieve: %w", err)
+	}
+	for _, d := range docs {
+		if d.MetaData == nil {
+			d.MetaData = map[string]any{}
+		}
+		d.MetaData["channel"] = "dense"
 	}
 	return docs, nil
 }

@@ -34,6 +34,10 @@ go.work.sum
 storage/uploads/**
 !storage/uploads/.gitkeep
 
+# Frontend
+web/node_modules/
+web/dist/
+
 # Editor/IDE
 # .idea/
 # .vscode/

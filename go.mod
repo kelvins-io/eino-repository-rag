@@ -11,6 +11,7 @@ require (
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.7
 	github.com/cloudwego/eino-ext/components/retriever/milvus2 v0.1.0
 	github.com/cloudwego/eino-ext/components/retriever/redis v0.0.0-20260909094858-6fe16d48b736
+	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1

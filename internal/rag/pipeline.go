@@ -33,6 +33,8 @@ type Pipeline struct {
 	chat     einomodel.BaseChatModel
 	splitter document.Transformer
 	store    VectorStore
+	bm25     *redisBM25
+	reranker Reranker
 	docRepo  *repository.DocumentRepo
 	mem      *memory.Manager
 }
@@ -86,7 +88,21 @@ func NewPipeline(
 		return nil, fmt.Errorf("init vector store: %w", err)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s", cfg.VectorIndex.Provider)
+	var bm25 *redisBM25
+	if cfg.RAG.HybridEnabled {
+		bm25, err = newRedisBM25(ctx, cfg, rdb)
+		if err != nil {
+			return nil, fmt.Errorf("init bm25 index: %w", err)
+		}
+	}
+
+	var reranker Reranker
+	if cfg.Rerank.Enabled {
+		reranker = newHTTPReranker(cfg.Rerank)
+	}
+
+	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v",
+		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled)
 
 	if cfg.Memory.SummaryEnabled {
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
@@ -98,6 +114,8 @@ func NewPipeline(
 		chat:     chat,
 		splitter: splitter,
 		store:    store,
+		bm25:     bm25,
+		reranker: reranker,
 		docRepo:  docRepo,
 		mem:      mem,
 	}, nil
@@ -155,10 +173,22 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
 		return fmt.Errorf("delete old vectors: %w", err)
 	}
+	if p.bm25 != nil {
+		if err := p.bm25.DeleteByDocID(ctx, docIDStr); err != nil {
+			_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+			return fmt.Errorf("delete old bm25: %w", err)
+		}
+	}
 
 	if err := p.store.Store(ctx, chunks); err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
 		return err
+	}
+	if p.bm25 != nil {
+		if err := p.bm25.Upsert(ctx, chunks); err != nil {
+			_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+			return fmt.Errorf("bm25 upsert: %w", err)
+		}
 	}
 
 	if err := p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusReady, len(chunks), ""); err != nil {
@@ -181,6 +211,11 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 	docIDStr := strconv.FormatUint(uint64(doc.ID), 10)
 	if err := p.store.DeleteByDocID(ctx, docIDStr); err != nil {
 		return fmt.Errorf("delete vectors: %w", err)
+	}
+	if p.bm25 != nil {
+		if err := p.bm25.DeleteByDocID(ctx, docIDStr); err != nil {
+			return fmt.Errorf("delete bm25: %w", err)
+		}
 	}
 
 	if doc.FilePath != "" {
@@ -228,9 +263,10 @@ type QueryResponse struct {
 }
 
 type SourceDocument struct {
-	ID      string `json:"id"`
-	Content string `json:"content"`
-	Title   string `json:"title,omitempty"`
+	ID      string  `json:"id"`
+	Content string  `json:"content"`
+	Title   string  `json:"title,omitempty"`
+	Score   float64 `json:"score,omitempty"`
 }
 
 // Query 带记忆机制的检索增强生成
@@ -242,7 +278,7 @@ func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse,
 		req.UserID = "anonymous"
 	}
 
-	docs, err := p.store.Retrieve(ctx, req.Query, req.Filter)
+	docs, err := p.retrieve(ctx, req.Query, req.Filter)
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +306,7 @@ func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse,
 			ID:      d.ID,
 			Content: truncate(d.Content, 300),
 			Title:   metaString(d.MetaData, "title"),
+			Score:   d.Score(),
 		})
 	}
 
@@ -280,6 +317,53 @@ func (p *Pipeline) Query(ctx context.Context, req QueryRequest) (*QueryResponse,
 		DirectoryID:     req.DirectoryID,
 		Sources:         sources,
 	}, nil
+}
+
+// retrieve 稠密召回 →（可选）BM25 + RRF →（可选）Rerank → TopK
+func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveFilter) ([]*schema.Document, error) {
+	topK := p.cfg.RAG.TopK
+	if topK <= 0 {
+		topK = 5
+	}
+	needPool := p.cfg.RAG.HybridEnabled || p.cfg.Rerank.Enabled
+	poolK := topK
+	if needPool {
+		poolK = candidateK(topK, p.cfg.RAG.CandidateK)
+	}
+
+	dense, err := p.store.Retrieve(ctx, query, filter, poolK)
+	if err != nil {
+		return nil, err
+	}
+
+	fused := dense
+	if p.cfg.RAG.HybridEnabled && p.bm25 != nil {
+		sparse, serr := p.bm25.Search(ctx, query, filter, poolK)
+		if serr != nil {
+			log.Printf("[rag] bm25 search failed, fallback dense-only: %v", serr)
+		} else if len(sparse) > 0 {
+			fused = fuseRRF([][]*schema.Document{dense, sparse}, p.cfg.RAG.RRFK)
+			log.Printf("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
+		}
+	}
+
+	if p.cfg.Rerank.Enabled && p.reranker != nil && len(fused) > 0 {
+		rerankTopN := p.cfg.Rerank.TopN
+		if rerankTopN <= 0 {
+			rerankTopN = topK
+		}
+		// 重排输入截断到候选池，避免过长请求
+		candidates := truncateDocs(fused, poolK)
+		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
+		if rerr != nil {
+			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
+			return truncateDocs(fused, topK), nil
+		}
+		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
+		return reranked, nil
+	}
+
+	return truncateDocs(fused, topK), nil
 }
 
 func (p *Pipeline) generate(

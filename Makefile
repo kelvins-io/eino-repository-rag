@@ -1,4 +1,4 @@
-.PHONY: deps up down run tidy
+.PHONY: deps up down run tidy web web-install web-build
 
 deps:
 	go mod tidy
@@ -14,3 +14,12 @@ run:
 
 tidy:
 	go mod tidy
+
+web-install:
+	cd web && npm install
+
+web:
+	cd web && npm run dev
+
+web-build:
+	cd web && npm run build

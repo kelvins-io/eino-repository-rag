@@ -7,6 +7,8 @@
 - **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后**自动异步构建向量索引**
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
+- **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
+- **Rerank**：OpenAI 兼容 Cross-Encoder 重排（如 SiliconFlow `BAAI/bge-reranker-v2-m3`）
 - **大模型回答**：DeepSeek（`eino-ext/components/model/deepseek`）
 - **记忆机制**
   - 短期记忆：Redis List（会话级，带 TTL）
@@ -23,8 +25,12 @@ HTTP API (Gin)
   ├─ 文档导入 → 落盘 + PostgreSQL 记录 → 异步 Index Pipeline
   │                                      ├─ Recursive Splitter（递归分割）
   │                                      ├─ Embedding
-  │                                      └─ Vector Store（redis / milvus_lite）
-  └─ 问答检索 → 短期/长期记忆 → Retriever → DeepSeek Generate → 回写记忆
+  │                                      ├─ Vector Store（redis / milvus_lite）
+  │                                      └─ BM25 sidecar（hybrid + milvus 时）
+  └─ 问答检索 → 短期/长期记忆
+               → Dense Retriever + BM25（可选 Hybrid/RRF）
+               → Rerank（可选）
+               → DeepSeek Generate → 回写记忆
 ```
 
 ## 快速开始
@@ -68,13 +74,49 @@ milvus:
 
 > 说明：官方 Milvus Lite（本地 `.db` 文件）目前主要面向 Python；本项目 Go 侧通过 gRPC 连接本地 Milvus Standalone，配置项命名为 `milvus_lite`，便于本地轻量部署。
 
+### 3.1 Hybrid + Rerank（可选，默认开启）
+
+```yaml
+rag:
+  hybrid_enabled: true   # 稠密向量 + BM25，RRF 融合
+  candidate_k: 20        # 每路候选；0 = top_k*4
+  rrf_k: 60
+
+rerank:
+  enabled: true
+  model: "BAAI/bge-reranker-v2-m3"
+  base_url: "https://api.siliconflow.cn/v1"
+  # api_key 留空则复用 embedding.api_key
+  top_n: 5
+```
+
+环境变量：`RERANK_API_KEY`、`RERANK_BASE_URL`、`RERANK_MODEL`。
+
+> milvus 模式下首次开启 Hybrid 后，需对已有文档执行一次 **重新索引**，以写入 BM25 sidecar。  
+> redis 向量模式直接复用索引上的 `content`/`title` TEXT 字段，无需额外同步。
+
 ### 4. 启动服务
 
 ```bash
 go run ./cmd/server -config configs/config.yaml
 ```
 
-默认监听 `:8080`。
+默认监听 `:8080`，已启用 CORS（允许本地前端 `5173` / `3000` 跨域访问）。
+
+### 5. 启动 Web 前端（可选）
+
+前后端分离：后端 API `:8080`，前端 Vite 开发服 `:5173`。
+
+```bash
+cd web
+npm install
+npm run dev
+# 或在仓库根目录：make web-install && make web
+```
+
+浏览器打开 http://localhost:5173 。开发模式下 Vite 会把 `/api`、`/health` 代理到后端；生产构建通过 `web/.env.production` 的 `VITE_API_BASE` 直连后端（依赖 CORS）。
+
+前端能力：知识库 CRUD、目录树、文档导入/列表/删除/重新索引、带会话记忆的知识问答。
 
 ## API
 
@@ -222,15 +264,17 @@ internal/
   rag/               # Eino RAG 流水线
   service/           # 业务编排
   handler/           # HTTP Handler
-  server/            # 路由
+  server/            # 路由（含 CORS）
+web/                 # Vue3 + Element Plus 前端
 storage/uploads/     # 上传文件落盘
 examples/            # 示例知识库文档
 ```
 
 ## 技术栈
 
-- Go + Gin
+- Go + Gin（`gin-contrib/cors`）
 - CloudWeGo Eino / Eino-Ext（DeepSeek、OpenAI Embedding、Redis/Milvus Indexer/Retriever、Recursive Splitter）
 - PostgreSQL + GORM
 - Redis Stack（短期记忆；可选向量检索）
 - Milvus Standalone（可选，对应 `milvus_lite` 配置）
+- Vue 3 + Vite + Element Plus + Vue Router + Axios

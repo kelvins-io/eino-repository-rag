@@ -17,6 +17,7 @@ type Config struct {
 	DeepSeek    DeepSeekConfig    `yaml:"deepseek"`
 	Embedding   EmbeddingConfig   `yaml:"embedding"`
 	RAG         RAGConfig         `yaml:"rag"`
+	Rerank      RerankConfig      `yaml:"rerank"`
 	Memory      MemoryConfig      `yaml:"memory"`
 }
 
@@ -94,6 +95,28 @@ type RAGConfig struct {
 	OverlapSize int    `yaml:"overlap_size"`
 	TopK        int    `yaml:"top_k"`
 	UploadDir   string `yaml:"upload_dir"`
+	// HybridEnabled 启用稠密向量 + BM25 稀疏检索，经 RRF 融合
+	HybridEnabled bool `yaml:"hybrid_enabled"`
+	// CandidateK Hybrid/Rerank 前每路召回候选数；0 表示 top_k*4
+	CandidateK int `yaml:"candidate_k"`
+	// RRFK Reciprocal Rank Fusion 常数，经典默认 60
+	RRFK int `yaml:"rrf_k"`
+	// BM25IndexName Redis 全文索引名（milvus 模式作 sidecar；redis 模式可复用向量索引）
+	BM25IndexName string `yaml:"bm25_index_name"`
+	// BM25KeyPrefix milvus sidecar 文本索引的 key 前缀
+	BM25KeyPrefix string `yaml:"bm25_key_prefix"`
+}
+
+// RerankConfig Cross-Encoder / API 重排（OpenAI 兼容，如 SiliconFlow）
+type RerankConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+	// TopN 重排后保留条数；0 表示使用 rag.top_k
+	TopN int `yaml:"top_n"`
+	// TimeoutSeconds HTTP 超时；0 表示 30s
+	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
 type MemoryConfig struct {
@@ -162,6 +185,15 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("MILVUS_ADDRESS"); v != "" {
 		c.Milvus.Address = v
 	}
+	if v := os.Getenv("RERANK_API_KEY"); v != "" {
+		c.Rerank.APIKey = v
+	}
+	if v := os.Getenv("RERANK_BASE_URL"); v != "" {
+		c.Rerank.BaseURL = v
+	}
+	if v := os.Getenv("RERANK_MODEL"); v != "" {
+		c.Rerank.Model = v
+	}
 }
 
 func (c *Config) setDefaults() {
@@ -219,6 +251,27 @@ func (c *Config) setDefaults() {
 	}
 	if c.RAG.UploadDir == "" {
 		c.RAG.UploadDir = "./storage/uploads"
+	}
+	if c.RAG.RRFK <= 0 {
+		c.RAG.RRFK = 60
+	}
+	if c.RAG.BM25IndexName == "" {
+		c.RAG.BM25IndexName = "kb_bm25_index"
+	}
+	if c.RAG.BM25KeyPrefix == "" {
+		c.RAG.BM25KeyPrefix = "kb:bm25:"
+	}
+	if c.Rerank.APIKey == "" {
+		c.Rerank.APIKey = c.Embedding.APIKey
+	}
+	if c.Rerank.BaseURL == "" {
+		c.Rerank.BaseURL = c.Embedding.BaseURL
+	}
+	if c.Rerank.Model == "" {
+		c.Rerank.Model = "BAAI/bge-reranker-v2-m3"
+	}
+	if c.Rerank.TimeoutSeconds <= 0 {
+		c.Rerank.TimeoutSeconds = 30
 	}
 	if c.Memory.ShortTermTTLMinutes == 0 {
 		c.Memory.ShortTermTTLMinutes = 60
