@@ -207,6 +207,32 @@ export const api = {
       timeout: 120000,
     })
   },
+  synthesizeSpeech: async (text) => {
+    const base = import.meta.env.VITE_API_BASE || ''
+    const token = getToken()
+    const headers = { 'Content-Type': 'application/json' }
+    if (token) headers.Authorization = `Bearer ${token}`
+    const res = await fetch(`${base}/api/v1/chat/speech`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) {
+      let msg = `朗读失败 (${res.status})`
+      try {
+        const body = await res.json()
+        if (body?.message) msg = body.message
+      } catch {
+        /* ignore */
+      }
+      if (res.status === 401) {
+        redirectToLogin()
+      }
+      ElMessage.error(msg)
+      throw new Error(msg)
+    }
+    return res.blob()
+  },
 
   // 问答（SSE 流式）
   chatQueryStream,

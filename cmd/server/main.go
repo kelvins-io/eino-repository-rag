@@ -20,6 +20,7 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 	"github.com/kelvins-io/eino-repository-rag/internal/server"
 	"github.com/kelvins-io/eino-repository-rag/internal/service"
+	"github.com/kelvins-io/eino-repository-rag/internal/tts"
 )
 
 func main() {
@@ -93,6 +94,9 @@ func main() {
 	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
 	if cfg.ASR.Enabled {
 		kh.WithASR(asr.NewClient(cfg.ASR), cfg.ASR.MaxAudioBytes())
+	}
+	if cfg.TTS.Enabled {
+		kh.WithTTS(tts.NewClient(cfg.TTS))
 	}
 	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr, cfg.Agent.Enabled)
 	router.MaxMultipartMemory = cfg.RAG.MaxUploadFileSizeBytes()

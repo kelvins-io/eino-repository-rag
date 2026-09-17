@@ -100,6 +100,23 @@
               <div class="chat-bubble" :class="m.role === 'user' ? 'user' : 'assistant'">
                 {{ m.content }}
               </div>
+              <div v-if="canSpeak(m, idx)" class="msg-actions">
+                <el-button
+                  class="tts-btn"
+                  text
+                  size="small"
+                  :loading="loadingIdx === idx"
+                  :type="speakingIdx === idx ? 'primary' : ''"
+                  :aria-label="speakingIdx === idx ? '停止朗读' : '朗读回答'"
+                  @click="toggleSpeak(idx, m.content)"
+                >
+                  <el-icon>
+                    <VideoPause v-if="speakingIdx === idx" />
+                    <VideoPlay v-else />
+                  </el-icon>
+                  {{ speakingIdx === idx ? '停止朗读' : '朗读' }}
+                </el-button>
+              </div>
               <div v-if="m.steps?.length" class="agent-steps">
                 <div
                   v-for="(s, si) in m.steps"
@@ -190,11 +207,12 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Microphone } from '@element-plus/icons-vue'
+import { Microphone, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { useSpeechInput } from '@/composables/useSpeechInput'
+import { useSpeechOutput } from '@/composables/useSpeechOutput'
 import { getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
 
 const sessionId = ref(getSessionId())
@@ -221,6 +239,16 @@ const {
     const kb = kbs.value.find((item) => item.id === kbId.value)
     return kb?.name ? `知识库问答，相关主题：${kb.name}` : '知识库问答'
   },
+})
+const {
+  speakingIdx,
+  loadingIdx,
+  toggle: toggleSpeak,
+  stop: stopSpeak,
+} = useSpeechOutput()
+
+watch(listening, (on) => {
+  if (on) stopSpeak()
 })
 
 const speechPlaceholder = computed(() => {
@@ -324,6 +352,7 @@ async function loadHistory() {
 
 async function onSessionChange(id) {
   if (!id) return
+  stopSpeak()
   setSessionId(id)
   sessionId.value = id
   await loadHistory()
@@ -331,6 +360,7 @@ async function onSessionChange(id) {
 
 function resetSession() {
   stopSpeech({ commit: false })
+  stopSpeak()
   sessionId.value = newSessionId()
   messages.value = []
   ElMessage.success('已开始新会话')
@@ -350,9 +380,18 @@ function onKeydown(e) {
   }
 }
 
+function canSpeak(m, idx) {
+  if (m.role !== 'assistant') return false
+  const text = (m.content || '').trim()
+  if (!text || text === '(空回答)') return false
+  if (asking.value && idx === messages.value.length - 1) return false
+  return true
+}
+
 async function ask() {
   const q = query.value.trim()
   if (!q || !kbId.value || asking.value) return
+  stopSpeak()
 
   messages.value.push({ role: 'user', content: q })
   query.value = ''
@@ -503,6 +542,23 @@ onMounted(async () => {
 
 .msg-row.assistant {
   align-items: flex-start;
+}
+
+.msg-actions {
+  display: flex;
+  align-items: center;
+  max-width: 780px;
+}
+
+.tts-btn {
+  margin-left: -8px;
+  color: #64748b;
+  padding: 0 8px;
+  height: 28px;
+}
+
+.tts-btn :deep(.el-icon) {
+  margin-right: 4px;
 }
 
 .sources {

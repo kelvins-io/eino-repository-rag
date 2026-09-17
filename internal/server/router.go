@@ -77,6 +77,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 					chat.POST("/agent", kh.AgentQuery)
 				}
 				chat.POST("/transcribe", kh.TranscribeSpeech)
+				chat.POST("/speech", kh.SynthesizeSpeech)
 				chat.GET("/history", kh.History)
 				chat.GET("/sessions", kh.ListSessions)
 			}

@@ -119,6 +119,15 @@ asr:
   timeout_seconds: 60
   max_audio_mb: 8
 
+tts:
+  enabled: true
+  api_key: ""
+  model: "FunAudioLLM/CosyVoice2-0.5B"
+  voice: "anna"
+  base_url: "https://api.siliconflow.cn/v1"
+  timeout_seconds: 60
+  max_chars: 4000
+
 memory:
   short_term_ttl_minutes: 60
   short_term_max_messages: 20

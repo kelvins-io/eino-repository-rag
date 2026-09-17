@@ -29,6 +29,12 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.ASR.Model != "FunAudioLLM/SenseVoiceSmall" {
 		t.Fatalf("asr model=%s", c.ASR.Model)
 	}
+	if c.TTS.TimeoutSeconds != 60 {
+		t.Fatalf("tts timeout=%d", c.TTS.TimeoutSeconds)
+	}
+	if c.TTS.MaxChars != 4000 {
+		t.Fatalf("tts max chars=%d", c.TTS.MaxChars)
+	}
 	if c.RAG.OCR.TimeoutSeconds != 60 {
 		t.Fatalf("ocr timeout=%d", c.RAG.OCR.TimeoutSeconds)
 	}
@@ -216,5 +222,17 @@ func TestASRFallbackToEmbedding(t *testing.T) {
 	}
 	if c.ASR.Language != "zh" {
 		t.Fatalf("lang=%s", c.ASR.Language)
+	}
+	if c.TTS.APIKey != "emb-key" {
+		t.Fatalf("tts key=%s", c.TTS.APIKey)
+	}
+	if c.TTS.Model != "FunAudioLLM/CosyVoice2-0.5B" {
+		t.Fatalf("tts model=%s", c.TTS.Model)
+	}
+	if c.TTS.Voice != "anna" {
+		t.Fatalf("tts voice=%s", c.TTS.Voice)
+	}
+	if c.TTS.MaxChars != 4000 {
+		t.Fatalf("tts max=%d", c.TTS.MaxChars)
 	}
 }

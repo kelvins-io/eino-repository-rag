@@ -136,6 +136,18 @@ asr:
   timeout_seconds: 60
   max_audio_mb: 8
 
+# 问答朗读：OpenAI 兼容 /audio/speech（SiliconFlow CosyVoice）
+# api_key / base_url 为空时回退 asr / embedding 配置
+tts:
+  enabled: true
+  api_key: ""
+  model: "FunAudioLLM/CosyVoice2-0.5B"
+#  voice 可更换为 bella、alex、anna
+  voice: "bella"
+  base_url: "https://api.siliconflow.cn/v1"
+  timeout_seconds: 60
+  max_chars: 4000
+
 memory:
   short_term_ttl_minutes: 60
   short_term_max_messages: 20

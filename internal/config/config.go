@@ -23,6 +23,7 @@ type Config struct {
 	RAG         RAGConfig         `yaml:"rag"`
 	Rerank      RerankConfig      `yaml:"rerank"`
 	ASR         ASRConfig         `yaml:"asr"`
+	TTS         TTSConfig         `yaml:"tts"`
 	Memory      MemoryConfig      `yaml:"memory"`
 	Agent       AgentConfig       `yaml:"agent"`
 }
@@ -309,6 +310,24 @@ func (c ASRConfig) MaxAudioBytes() int64 {
 	return int64(mb) * 1024 * 1024
 }
 
+// TTSConfig 问答结果语音合成（OpenAI 兼容 /audio/speech，如 SiliconFlow CosyVoice）
+type TTSConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+	// Voice 音色名，如 anna；不含 ":" 时会拼成 model:voice
+	Voice string `yaml:"voice"`
+	// TimeoutSeconds HTTP 超时；0 表示 60s
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+	// MaxChars 单次朗读最大字符数；0 表示 4000
+	MaxChars int `yaml:"max_chars"`
+}
+
+func (c TTSConfig) Timeout() time.Duration {
+	return secondsOr(c.TimeoutSeconds, 60)
+}
+
 type MemoryConfig struct {
 	ShortTermTTLMinutes  int `yaml:"short_term_ttl_minutes"`
 	ShortTermMaxMessages int `yaml:"short_term_max_messages"`
@@ -398,6 +417,18 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("ASR_MODEL"); v != "" {
 		c.ASR.Model = v
 	}
+	if v := os.Getenv("TTS_API_KEY"); v != "" {
+		c.TTS.APIKey = v
+	}
+	if v := os.Getenv("TTS_BASE_URL"); v != "" {
+		c.TTS.BaseURL = v
+	}
+	if v := os.Getenv("TTS_MODEL"); v != "" {
+		c.TTS.Model = v
+	}
+	if v := os.Getenv("TTS_VOICE"); v != "" {
+		c.TTS.Voice = v
+	}
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		c.JWT.Secret = v
 	}
@@ -409,6 +440,8 @@ func (c *Config) applyEnv() {
 	applyPositiveIntEnv(&c.Rerank.TimeoutSeconds, "RERANK_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.ASR.TimeoutSeconds, "ASR_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.ASR.MaxAudioMB, "ASR_MAX_AUDIO_MB")
+	applyPositiveIntEnv(&c.TTS.TimeoutSeconds, "TTS_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.TTS.MaxChars, "TTS_MAX_CHARS")
 	applyPositiveIntEnv(&c.RAG.OCR.TimeoutSeconds, "OCR_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.RAG.QueryExpandTimeoutSeconds, "QUERY_EXPAND_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Memory.SummaryTimeoutSeconds, "MEMORY_SUMMARY_TIMEOUT_SECONDS")
@@ -645,6 +678,24 @@ func (c *Config) setDefaults() {
 	}
 	if c.ASR.MaxAudioMB <= 0 {
 		c.ASR.MaxAudioMB = 8
+	}
+	if c.TTS.APIKey == "" {
+		c.TTS.APIKey = c.ASR.APIKey
+	}
+	if c.TTS.BaseURL == "" {
+		c.TTS.BaseURL = c.ASR.BaseURL
+	}
+	if c.TTS.Model == "" {
+		c.TTS.Model = "FunAudioLLM/CosyVoice2-0.5B"
+	}
+	if c.TTS.Voice == "" {
+		c.TTS.Voice = "anna"
+	}
+	if c.TTS.TimeoutSeconds <= 0 {
+		c.TTS.TimeoutSeconds = 60
+	}
+	if c.TTS.MaxChars <= 0 {
+		c.TTS.MaxChars = 4000
 	}
 	if c.Memory.ShortTermTTLMinutes == 0 {
 		c.Memory.ShortTermTTLMinutes = 60

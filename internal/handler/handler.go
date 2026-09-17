@@ -24,6 +24,7 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 	"github.com/kelvins-io/eino-repository-rag/internal/service"
+	"github.com/kelvins-io/eino-repository-rag/internal/tts"
 )
 
 type KnowledgeHandler struct {
@@ -33,6 +34,7 @@ type KnowledgeHandler struct {
 	maxUploadFileSizeMB int
 	transcriber         asr.Transcriber
 	maxAudioBytes       int64
+	speaker             tts.Speaker
 }
 
 func NewKnowledgeHandler(svc *service.KnowledgeService, uploadCfg config.RAGConfig) *KnowledgeHandler {
@@ -50,6 +52,14 @@ func (h *KnowledgeHandler) WithASR(t asr.Transcriber, maxAudioBytes int64) *Know
 	}
 	h.transcriber = t
 	h.maxAudioBytes = maxAudioBytes
+	return h
+}
+
+func (h *KnowledgeHandler) WithTTS(s tts.Speaker) *KnowledgeHandler {
+	if h == nil {
+		return h
+	}
+	h.speaker = s
 	return h
 }
 
@@ -603,6 +613,44 @@ func isAllowedAudio(filename, contentType string) bool {
 		return true
 	}
 	return false
+}
+
+// SynthesizeSpeech POST /api/v1/chat/speech — 将回答文本合成为语音
+func (h *KnowledgeHandler) SynthesizeSpeech(c *gin.Context) {
+	if h.speaker == nil {
+		fail(c, http.StatusServiceUnavailable, "语音合成未启用")
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+	result, err := h.speaker.Synthesize(c.Request.Context(), req.Text)
+	if err != nil {
+		if errors.Is(err, tts.ErrNotConfigured) {
+			writeFail(c, http.StatusServiceUnavailable, err.Error(), err)
+			return
+		}
+		if errors.Is(err, tts.ErrEmptyText) {
+			writeFail(c, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		var ue *tts.UpstreamError
+		if errors.As(err, &ue) {
+			writeFail(c, http.StatusBadGateway, "语音合成服务异常，请稍后重试", err)
+			return
+		}
+		writeFail(c, http.StatusBadGateway, "语音合成失败，请稍后重试", err)
+		return
+	}
+	ct := result.ContentType
+	if ct == "" {
+		ct = "audio/mpeg"
+	}
+	c.Data(http.StatusOK, ct, result.Audio)
 }
 
 // AgentQuery POST /api/v1/chat/agent — ReAct 多步检索 SSE
