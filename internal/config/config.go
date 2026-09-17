@@ -22,6 +22,7 @@ type Config struct {
 	Embedding   EmbeddingConfig   `yaml:"embedding"`
 	RAG         RAGConfig         `yaml:"rag"`
 	Rerank      RerankConfig      `yaml:"rerank"`
+	ASR         ASRConfig         `yaml:"asr"`
 	Memory      MemoryConfig      `yaml:"memory"`
 	Agent       AgentConfig       `yaml:"agent"`
 }
@@ -280,6 +281,34 @@ type RerankConfig struct {
 	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
+// ASRConfig 语音转写（OpenAI 兼容 /audio/transcriptions，如 SiliconFlow SenseVoice）
+type ASRConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	APIKey  string `yaml:"api_key"`
+	Model   string `yaml:"model"`
+	BaseURL string `yaml:"base_url"`
+	// Language 识别语言，如 zh；空则由上游自动检测
+	Language string `yaml:"language"`
+	// Prompt 热词 / 领域提示，会与请求里的 prompt 拼接
+	Prompt string `yaml:"prompt"`
+	// TimeoutSeconds HTTP 超时；0 表示 60s
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+	// MaxAudioMB 上传音频大小上限；0 表示 8
+	MaxAudioMB int `yaml:"max_audio_mb"`
+}
+
+func (c ASRConfig) Timeout() time.Duration {
+	return secondsOr(c.TimeoutSeconds, 60)
+}
+
+func (c ASRConfig) MaxAudioBytes() int64 {
+	mb := c.MaxAudioMB
+	if mb <= 0 {
+		mb = 8
+	}
+	return int64(mb) * 1024 * 1024
+}
+
 type MemoryConfig struct {
 	ShortTermTTLMinutes  int `yaml:"short_term_ttl_minutes"`
 	ShortTermMaxMessages int `yaml:"short_term_max_messages"`
@@ -360,6 +389,15 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("RERANK_MODEL"); v != "" {
 		c.Rerank.Model = v
 	}
+	if v := os.Getenv("ASR_API_KEY"); v != "" {
+		c.ASR.APIKey = v
+	}
+	if v := os.Getenv("ASR_BASE_URL"); v != "" {
+		c.ASR.BaseURL = v
+	}
+	if v := os.Getenv("ASR_MODEL"); v != "" {
+		c.ASR.Model = v
+	}
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		c.JWT.Secret = v
 	}
@@ -369,6 +407,8 @@ func (c *Config) applyEnv() {
 	applyPositiveIntEnv(&c.DeepSeek.TimeoutSeconds, "DEEPSEEK_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Embedding.TimeoutSeconds, "EMBEDDING_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Rerank.TimeoutSeconds, "RERANK_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.ASR.TimeoutSeconds, "ASR_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.ASR.MaxAudioMB, "ASR_MAX_AUDIO_MB")
 	applyPositiveIntEnv(&c.RAG.OCR.TimeoutSeconds, "OCR_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.RAG.QueryExpandTimeoutSeconds, "QUERY_EXPAND_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Memory.SummaryTimeoutSeconds, "MEMORY_SUMMARY_TIMEOUT_SECONDS")
@@ -587,6 +627,24 @@ func (c *Config) setDefaults() {
 	}
 	if c.Rerank.TimeoutSeconds <= 0 {
 		c.Rerank.TimeoutSeconds = 30
+	}
+	if c.ASR.APIKey == "" {
+		c.ASR.APIKey = c.Embedding.APIKey
+	}
+	if c.ASR.BaseURL == "" {
+		c.ASR.BaseURL = c.Embedding.BaseURL
+	}
+	if c.ASR.Model == "" {
+		c.ASR.Model = "FunAudioLLM/SenseVoiceSmall"
+	}
+	if c.ASR.Language == "" {
+		c.ASR.Language = "zh"
+	}
+	if c.ASR.TimeoutSeconds <= 0 {
+		c.ASR.TimeoutSeconds = 60
+	}
+	if c.ASR.MaxAudioMB <= 0 {
+		c.ASR.MaxAudioMB = 8
 	}
 	if c.Memory.ShortTermTTLMinutes == 0 {
 		c.Memory.ShortTermTTLMinutes = 60

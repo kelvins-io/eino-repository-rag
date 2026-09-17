@@ -10,6 +10,7 @@ import (
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/asr"
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/handler"
@@ -90,6 +91,9 @@ func main() {
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
 	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
+	if cfg.ASR.Enabled {
+		kh.WithASR(asr.NewClient(cfg.ASR), cfg.ASR.MaxAudioBytes())
+	}
 	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr, cfg.Agent.Enabled)
 	router.MaxMultipartMemory = cfg.RAG.MaxUploadFileSizeBytes()
 

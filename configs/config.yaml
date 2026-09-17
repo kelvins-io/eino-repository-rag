@@ -124,6 +124,18 @@ rerank:
   top_n: 5
   timeout_seconds: 60
 
+# 语音输入：OpenAI 兼容 /audio/transcriptions（SiliconFlow SenseVoice）
+# api_key / base_url 为空时回退 embedding 配置
+asr:
+  enabled: true
+  api_key: ""
+  model: "FunAudioLLM/SenseVoiceSmall"
+  base_url: "https://api.siliconflow.cn/v1"
+  language: "zh"
+  prompt: "知识库问答"
+  timeout_seconds: 60
+  max_audio_mb: 8
+
 memory:
   short_term_ttl_minutes: 60
   short_term_max_messages: 20

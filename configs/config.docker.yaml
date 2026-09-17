@@ -109,6 +109,16 @@ rerank:
   top_n: 5
   timeout_seconds: 30
 
+asr:
+  enabled: true
+  api_key: ""
+  model: "FunAudioLLM/SenseVoiceSmall"
+  base_url: "https://api.siliconflow.cn/v1"
+  language: "zh"
+  prompt: "知识库问答"
+  timeout_seconds: 60
+  max_audio_mb: 8
+
 memory:
   short_term_ttl_minutes: 60
   short_term_max_messages: 20

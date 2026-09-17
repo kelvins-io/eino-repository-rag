@@ -197,6 +197,16 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   uploadLimits: () => http.get('/api/v1/system/upload-limits'),
+  transcribeSpeech: (file, { prompt, language } = {}) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (prompt) formData.append('prompt', prompt)
+    if (language) formData.append('language', language)
+    return http.post('/api/v1/chat/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    })
+  },
 
   // 问答（SSE 流式）
   chatQueryStream,

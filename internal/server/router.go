@@ -76,6 +76,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 				if agentEnabled {
 					chat.POST("/agent", kh.AgentQuery)
 				}
+				chat.POST("/transcribe", kh.TranscribeSpeech)
 				chat.GET("/history", kh.History)
 				chat.GET("/sessions", kh.ListSessions)
 			}

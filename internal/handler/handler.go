@@ -1,18 +1,22 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/asr"
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/logger"
@@ -27,6 +31,8 @@ type KnowledgeHandler struct {
 	maxUploadFileSize   int64
 	maxUploadFiles      int
 	maxUploadFileSizeMB int
+	transcriber         asr.Transcriber
+	maxAudioBytes       int64
 }
 
 func NewKnowledgeHandler(svc *service.KnowledgeService, uploadCfg config.RAGConfig) *KnowledgeHandler {
@@ -36,6 +42,15 @@ func NewKnowledgeHandler(svc *service.KnowledgeService, uploadCfg config.RAGConf
 		maxUploadFiles:      uploadCfg.MaxUploadFiles,
 		maxUploadFileSizeMB: uploadCfg.MaxUploadFileSizeMB,
 	}
+}
+
+func (h *KnowledgeHandler) WithASR(t asr.Transcriber, maxAudioBytes int64) *KnowledgeHandler {
+	if h == nil {
+		return h
+	}
+	h.transcriber = t
+	h.maxAudioBytes = maxAudioBytes
+	return h
 }
 
 type APIResponse struct {
@@ -500,6 +515,94 @@ func (h *KnowledgeHandler) ReindexDocuments(c *gin.Context) {
 
 func (h *KnowledgeHandler) Query(c *gin.Context) {
 	h.streamChat(c, h.svc.QueryStream)
+}
+
+// TranscribeSpeech POST /api/v1/chat/transcribe — 上传录音，返回识别文本
+func (h *KnowledgeHandler) TranscribeSpeech(c *gin.Context) {
+	if h.transcriber == nil {
+		fail(c, http.StatusServiceUnavailable, "语音识别未启用")
+		return
+	}
+	maxBytes := h.maxAudioBytes
+	if maxBytes <= 0 {
+		maxBytes = 8 << 20
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes+1024*1024)
+
+	fh, err := c.FormFile("file")
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || strings.Contains(strings.ToLower(err.Error()), "request body too large") {
+			fail(c, http.StatusRequestEntityTooLarge, fmt.Sprintf("录音超过大小限制 %dMB", maxBytes/(1024*1024)))
+			return
+		}
+		fail(c, http.StatusBadRequest, "缺少录音文件 file")
+		return
+	}
+	if fh.Size > 0 && fh.Size > maxBytes {
+		fail(c, http.StatusBadRequest, fmt.Sprintf("录音大小 %.1fMB 超过限制 %dMB", float64(fh.Size)/(1024*1024), maxBytes/(1024*1024)))
+		return
+	}
+	if !isAllowedAudio(fh.Filename, fh.Header.Get("Content-Type")) {
+		fail(c, http.StatusBadRequest, "仅支持音频文件（webm / mp3 / wav / m4a / ogg 等）")
+		return
+	}
+
+	f, err := fh.Open()
+	if err != nil {
+		fail(c, http.StatusBadRequest, "读取录音失败")
+		return
+	}
+	defer f.Close()
+
+	limited := io.LimitReader(f, maxBytes+1)
+	raw, err := io.ReadAll(limited)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "读取录音失败")
+		return
+	}
+	if int64(len(raw)) > maxBytes {
+		fail(c, http.StatusRequestEntityTooLarge, fmt.Sprintf("录音超过大小限制 %dMB", maxBytes/(1024*1024)))
+		return
+	}
+
+	text, err := h.transcriber.Transcribe(c.Request.Context(), asr.Request{
+		Filename:    fh.Filename,
+		ContentType: fh.Header.Get("Content-Type"),
+		Body:        bytes.NewReader(raw),
+		Language:    c.PostForm("language"),
+		Prompt:      c.PostForm("prompt"),
+	})
+	if err != nil {
+		if errors.Is(err, asr.ErrNotConfigured) {
+			writeFail(c, http.StatusServiceUnavailable, err.Error(), err)
+			return
+		}
+		if errors.Is(err, asr.ErrEmptyAudio) {
+			writeFail(c, http.StatusBadRequest, "未采集到音频，请重试", err)
+			return
+		}
+		var ue *asr.UpstreamError
+		if errors.As(err, &ue) {
+			writeFail(c, http.StatusBadGateway, "语音识别服务异常，请稍后重试", err)
+			return
+		}
+		writeFail(c, http.StatusBadGateway, "语音识别失败，请稍后重试", err)
+		return
+	}
+	ok(c, gin.H{"text": text})
+}
+
+func isAllowedAudio(filename, contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if strings.HasPrefix(ct, "audio/") || strings.Contains(ct, "webm") || strings.Contains(ct, "ogg") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".webm", ".ogg", ".oga", ".mp3", ".wav", ".m4a", ".mp4", ".mpeg", ".mpga", ".flac", ".aac":
+		return true
+	}
+	return false
 }
 
 // AgentQuery POST /api/v1/chat/agent — ReAct 多步检索 SSE

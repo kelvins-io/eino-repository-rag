@@ -147,12 +147,12 @@
                 :placeholder="speechPlaceholder"
                 @keydown="onKeydown"
               />
-              <div v-if="listening" class="speech-live">
+              <div v-if="listening || transcribing" class="speech-live">
                 <span class="speech-dot" />
                 <span class="speech-live-text">
-                  {{ recognizedText || '正在聆听，请开始说话…' }}
+                  {{ statusText || (transcribing ? '正在识别，请稍候…' : '正在录音，请开始说话…') }}
                 </span>
-                <span class="speech-live-hint">再次点击麦克风停止并填入</span>
+                <span v-if="listening" class="speech-live-hint">再次点击麦克风停止并识别</span>
               </div>
             </div>
             <div class="composer-actions">
@@ -162,8 +162,9 @@
                     class="speech-btn"
                     :class="{ 'is-listening': listening }"
                     :type="listening ? 'danger' : 'default'"
-                    :disabled="asking || !speechSupported"
-                    :aria-label="listening ? '停止语音输入' : '语音输入'"
+                    :loading="transcribing"
+                    :disabled="asking || transcribing || !speechSupported"
+                    :aria-label="speechAriaLabel"
                     @click="toggleSpeech"
                   >
                     <el-icon>
@@ -175,7 +176,7 @@
               <el-button
                 type="primary"
                 :loading="asking"
-                :disabled="!kbId || !query.trim() || listening"
+                :disabled="!kbId || !query.trim() || listening || transcribing"
                 @click="ask"
               >
                 发送
@@ -210,21 +211,35 @@ const listRef = ref()
 const chatMode = ref('rag')
 const {
   listening,
-  recognizedText,
+  transcribing,
+  statusText,
   supported: speechSupported,
   toggle: toggleSpeech,
   stop: stopSpeech,
-} = useSpeechInput(query)
+} = useSpeechInput(query, {
+  getPrompt() {
+    const kb = kbs.value.find((item) => item.id === kbId.value)
+    return kb?.name ? `知识库问答，相关主题：${kb.name}` : '知识库问答'
+  },
+})
 
-const speechPlaceholder = computed(() =>
-  listening.value
-    ? '正在聆听，再次点击麦克风停止并填入输入框'
-    : '输入问题，Enter 发送，Shift+Enter 换行',
-)
+const speechPlaceholder = computed(() => {
+  if (transcribing.value) return '正在识别语音…'
+  if (listening.value) return '正在录音，再次点击麦克风停止并识别'
+  return '输入问题，Enter 发送，Shift+Enter 换行'
+})
 
 const speechTip = computed(() => {
-  if (!speechSupported.value) return '当前浏览器不支持语音识别，请使用 Chrome 或 Edge'
-  return listening.value ? '点击停止并填入输入框' : '语音输入'
+  if (!speechSupported.value) return '当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari'
+  if (transcribing.value) return '正在识别'
+  if (listening.value) return '点击停止并识别为文字'
+  return '语音输入'
+})
+
+const speechAriaLabel = computed(() => {
+  if (transcribing.value) return '正在识别语音'
+  if (listening.value) return '停止语音输入'
+  return '语音输入'
 })
 
 function formatTime(v) {
@@ -315,7 +330,7 @@ async function onSessionChange(id) {
 }
 
 function resetSession() {
-  stopSpeech()
+  stopSpeech({ commit: false })
   sessionId.value = newSessionId()
   messages.value = []
   ElMessage.success('已开始新会话')
@@ -331,7 +346,7 @@ async function scrollBottom() {
 function onKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    if (!listening.value) ask()
+    if (!listening.value && !transcribing.value) ask()
   }
 }
 

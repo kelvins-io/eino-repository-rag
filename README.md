@@ -399,6 +399,7 @@ curl "http://localhost:8080/api/v1/chat/history?session_id=s-demo-001"
 | `embedding` | OpenAI 兼容向量模型（`timeout_seconds`） |
 | `rag` | 切分 / TopK / Hybrid / Query 改写 / 结构切分 / 引用校验 / 索引队列 / OCR |
 | `rerank` | Cross-Encoder 重排（`timeout_seconds`） |
+| `asr` | 语音输入转写（SiliconFlow SenseVoice / OpenAI 兼容 transcriptions） |
 | `memory` | 短期 TTL、消息窗口、摘要超时 |
 | `agent` | ReAct Agent（enabled / max_steps / tool_top_k） |
 

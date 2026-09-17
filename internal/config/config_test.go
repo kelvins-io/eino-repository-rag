@@ -20,6 +20,15 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.Rerank.TimeoutSeconds != 30 {
 		t.Fatalf("rerank timeout=%d", c.Rerank.TimeoutSeconds)
 	}
+	if c.ASR.TimeoutSeconds != 60 {
+		t.Fatalf("asr timeout=%d", c.ASR.TimeoutSeconds)
+	}
+	if c.ASR.MaxAudioMB != 8 {
+		t.Fatalf("asr max audio mb=%d", c.ASR.MaxAudioMB)
+	}
+	if c.ASR.Model != "FunAudioLLM/SenseVoiceSmall" {
+		t.Fatalf("asr model=%s", c.ASR.Model)
+	}
 	if c.RAG.OCR.TimeoutSeconds != 60 {
 		t.Fatalf("ocr timeout=%d", c.RAG.OCR.TimeoutSeconds)
 	}
@@ -58,6 +67,8 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "180")
 	t.Setenv("EMBEDDING_TIMEOUT_SECONDS", "90")
 	t.Setenv("RERANK_TIMEOUT_SECONDS", "45")
+	t.Setenv("ASR_TIMEOUT_SECONDS", "70")
+	t.Setenv("ASR_MAX_AUDIO_MB", "12")
 	t.Setenv("OCR_TIMEOUT_SECONDS", "75")
 	t.Setenv("QUERY_EXPAND_TIMEOUT_SECONDS", "15")
 	t.Setenv("MEMORY_SUMMARY_TIMEOUT_SECONDS", "25")
@@ -71,6 +82,7 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 		DeepSeek:  DeepSeekConfig{TimeoutSeconds: 120},
 		Embedding: EmbeddingConfig{TimeoutSeconds: 120},
 		Rerank:    RerankConfig{TimeoutSeconds: 30},
+		ASR:       ASRConfig{TimeoutSeconds: 60, MaxAudioMB: 8},
 	}
 	c.RAG.OCR.TimeoutSeconds = 60
 	c.RAG.QueryExpandTimeoutSeconds = 20
@@ -82,7 +94,8 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 	c.Milvus.ConnectTimeoutSeconds = 10
 	c.applyEnv()
 	if c.DeepSeek.TimeoutSeconds != 180 || c.Embedding.TimeoutSeconds != 90 ||
-		c.Rerank.TimeoutSeconds != 45 || c.RAG.OCR.TimeoutSeconds != 75 ||
+		c.Rerank.TimeoutSeconds != 45 || c.ASR.TimeoutSeconds != 70 || c.ASR.MaxAudioMB != 12 ||
+		c.RAG.OCR.TimeoutSeconds != 75 ||
 		c.RAG.QueryExpandTimeoutSeconds != 15 || c.Memory.SummaryTimeoutSeconds != 25 ||
 		c.Postgres.ConnectTimeoutSeconds != 8 || c.Redis.DialTimeoutSeconds != 3 ||
 		c.Redis.ReadTimeoutSeconds != 7 || c.Redis.WriteTimeoutSeconds != 6 ||
@@ -97,6 +110,8 @@ func TestLoadYAMLTimeouts(t *testing.T) {
 	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "")
 	t.Setenv("EMBEDDING_TIMEOUT_SECONDS", "")
 	t.Setenv("RERANK_TIMEOUT_SECONDS", "")
+	t.Setenv("ASR_TIMEOUT_SECONDS", "")
+	t.Setenv("ASR_MAX_AUDIO_MB", "")
 	t.Setenv("OCR_TIMEOUT_SECONDS", "")
 	t.Setenv("QUERY_EXPAND_TIMEOUT_SECONDS", "")
 	t.Setenv("MEMORY_SUMMARY_TIMEOUT_SECONDS", "")
@@ -122,6 +137,9 @@ embedding:
   timeout_seconds: 80
 rerank:
   timeout_seconds: 40
+asr:
+  timeout_seconds: 55
+  max_audio_mb: 6
 rag:
   query_expand_timeout_seconds: 12
   ocr:
@@ -154,6 +172,12 @@ memory:
 	if cfg.Rerank.TimeoutSeconds != 40 {
 		t.Fatalf("rerank=%d", cfg.Rerank.TimeoutSeconds)
 	}
+	if cfg.ASR.TimeoutSeconds != 55 {
+		t.Fatalf("asr=%d", cfg.ASR.TimeoutSeconds)
+	}
+	if cfg.ASR.MaxAudioMB != 6 {
+		t.Fatalf("asr max=%d", cfg.ASR.MaxAudioMB)
+	}
 	if cfg.RAG.QueryExpandTimeoutSeconds != 12 {
 		t.Fatalf("expand=%d", cfg.RAG.QueryExpandTimeoutSeconds)
 	}
@@ -173,5 +197,24 @@ func TestRedisWriteTimeoutFollowsRead(t *testing.T) {
 	c.WriteTimeoutSeconds = 3
 	if c.WriteTimeout() != 3*time.Second {
 		t.Fatalf("write override=%s", c.WriteTimeout())
+	}
+}
+
+func TestASRFallbackToEmbedding(t *testing.T) {
+	c := Config{
+		Embedding: EmbeddingConfig{
+			APIKey:  "emb-key",
+			BaseURL: "https://api.siliconflow.cn/v1",
+		},
+	}
+	c.setDefaults()
+	if c.ASR.APIKey != "emb-key" {
+		t.Fatalf("key=%s", c.ASR.APIKey)
+	}
+	if c.ASR.BaseURL != "https://api.siliconflow.cn/v1" {
+		t.Fatalf("url=%s", c.ASR.BaseURL)
+	}
+	if c.ASR.Language != "zh" {
+		t.Fatalf("lang=%s", c.ASR.Language)
 	}
 }
