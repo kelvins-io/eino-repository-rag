@@ -391,15 +391,15 @@ curl "http://localhost:8080/api/v1/chat/history?session_id=s-demo-001"
 
 | 区块 | 说明 |
 |------|------|
-| `postgres` | 文档导入记录与长期记忆 |
-| `redis` | 短期记忆；`provider=redis` 时兼作向量索引 |
+| `postgres` | 文档导入记录与长期记忆（`connect_timeout_seconds`） |
+| `redis` | 短期记忆；`provider=redis` 时兼作向量索引（`dial/read/write_timeout_seconds`） |
 | `vector_index` | 向量后端：`redis` / `milvus_lite` |
-| `milvus` | `provider=milvus_lite` 时的连接与集合配置 |
-| `deepseek` | 对话大模型 |
-| `embedding` | OpenAI 兼容向量模型 |
-| `rag` | 切分 / TopK / Hybrid / Query 改写 / 结构切分 / 引用校验 / 索引队列 |
-| `rerank` | Cross-Encoder 重排 |
-| `memory` | 短期 TTL、消息窗口大小 |
+| `milvus` | `provider=milvus_lite` 时的连接与集合配置（`connect_timeout_seconds`） |
+| `deepseek` | 对话大模型（`timeout_seconds` 控制 LLM HTTP 超时） |
+| `embedding` | OpenAI 兼容向量模型（`timeout_seconds`） |
+| `rag` | 切分 / TopK / Hybrid / Query 改写 / 结构切分 / 引用校验 / 索引队列 / OCR |
+| `rerank` | Cross-Encoder 重排（`timeout_seconds`） |
+| `memory` | 短期 TTL、消息窗口、摘要超时 |
 | `agent` | ReAct Agent（enabled / max_steps / tool_top_k） |
 
 ## 目录结构

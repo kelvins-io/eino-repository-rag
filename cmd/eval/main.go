@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
@@ -48,14 +47,8 @@ func main() {
 	if err != nil {
 		fatalf("postgres: %v", err)
 	}
-	rdb := redis.NewClient(&redis.Options{
-		Addr:          cfg.Redis.Addr,
-		Password:      cfg.Redis.Password,
-		DB:            cfg.Redis.DB,
-		Protocol:      2,
-		UnstableResp3: true,
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	rdb := config.RedisClient(cfg.Redis)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Redis.PingTimeout())
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		fatalf("redis ping: %v", err)

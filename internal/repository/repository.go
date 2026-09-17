@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -18,6 +19,16 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("postgres sql db: %w", err)
+	}
+	pingCtx, cancel := context.WithTimeout(context.Background(), cfg.ConnectTimeout())
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
+		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	if err := db.AutoMigrate(

@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 const (
@@ -35,6 +38,12 @@ func Middleware(tm *TokenManager) gin.HandlerFunc {
 		}
 		claims, err := tm.Parse(strings.TrimSpace(raw[len(prefix):]))
 		if err != nil {
+			logger.L().Warn("auth token invalid",
+				zap.Error(err),
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.String("ip", c.ClientIP()),
+			)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"code":    http.StatusUnauthorized,
 				"message": "登录已失效，请重新登录",

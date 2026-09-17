@@ -22,6 +22,7 @@ postgres:
   password: "rag123"
   dbname: "eino_rag"
   sslmode: "disable"
+  connect_timeout_seconds: 10
 
 redis:
   addr: "redis:6379"
@@ -31,6 +32,9 @@ redis:
   key_prefix: "kb:doc:"
   vector_field: "content_vector"
   vector_dim: 1024
+  dial_timeout_seconds: 5
+  read_timeout_seconds: 5
+  write_timeout_seconds: 5
 
 vector_index:
   provider: "redis"
@@ -42,6 +46,7 @@ milvus:
   collection: "kb_docs"
   metric_type: "COSINE"
   dimension: 1024
+  connect_timeout_seconds: 10
 
 deepseek:
   api_key: ""
@@ -49,6 +54,7 @@ deepseek:
   base_url: "https://api.deepseek.com"
   max_tokens: 2048
   temperature: 0.3
+  timeout_seconds: 120
 
 embedding:
   api_key: ""
@@ -109,3 +115,4 @@ memory:
   keep_recent_messages: 6
   summary_enabled: true
   summary_trigger_messages: 8
+  summary_timeout_seconds: 30

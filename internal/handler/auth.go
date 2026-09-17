@@ -102,16 +102,21 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func failAuth(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	code := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, service.ErrTenantNotFound):
-		fail(c, http.StatusBadRequest, err.Error())
+		code = http.StatusBadRequest
 	case errors.Is(err, service.ErrInvalidCredentials):
-		fail(c, http.StatusUnauthorized, err.Error())
+		code = http.StatusUnauthorized
 	case errors.Is(err, service.ErrUsernameTaken), errors.Is(err, service.ErrTenantCodeTaken):
-		fail(c, http.StatusConflict, err.Error())
-	case strings.Contains(err.Error(), "不能为空"), strings.Contains(err.Error(), "至少"):
-		fail(c, http.StatusBadRequest, err.Error())
-	default:
-		fail(c, http.StatusBadRequest, err.Error())
+		code = http.StatusConflict
+	case strings.Contains(err.Error(), "不能为空"),
+		strings.Contains(err.Error(), "至少"),
+		strings.Contains(err.Error(), "过长"):
+		code = http.StatusBadRequest
 	}
+	writeFail(c, code, err.Error(), err)
 }

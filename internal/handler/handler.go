@@ -11,8 +11,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
@@ -38,24 +40,76 @@ func ok(c *gin.Context, data any) {
 }
 
 func fail(c *gin.Context, httpCode int, msg string) {
-	c.JSON(httpCode, APIResponse{Code: httpCode, Message: msg})
+	writeFail(c, httpCode, msg, errors.New(msg))
 }
 
 func failErr(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrForbidden) {
-		fail(c, http.StatusForbidden, err.Error())
+	if err == nil {
 		return
 	}
+	code, msg := classifyHandlerError(err)
+	writeFail(c, code, msg, err)
+}
+
+func writeFail(c *gin.Context, httpCode int, msg string, err error) {
+	if err != nil {
+		_ = c.Error(err)
+	}
+	logHandlerError(c, httpCode, msg, err)
+	c.JSON(httpCode, APIResponse{Code: httpCode, Message: msg})
+}
+
+func logHandlerError(c *gin.Context, httpCode int, msg string, err error) {
+	if c == nil || c.Request == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.Int("status", httpCode),
+		zap.String("method", c.Request.Method),
+		zap.String("path", c.FullPath()),
+		zap.String("ip", c.ClientIP()),
+		zap.String("user_id", currentUserID(c)),
+		zap.Uint("tenant_id", currentTenantID(c)),
+		zap.String("message", msg),
+	}
+	if err != nil {
+		fields = append(fields, zap.Error(err))
+	}
+	switch {
+	case httpCode >= http.StatusInternalServerError:
+		logger.L().Error("http handler failed", fields...)
+	case httpCode >= http.StatusBadRequest:
+		logger.L().Warn("http handler rejected", fields...)
+	}
+}
+
+func classifyHandlerError(err error) (int, string) {
 	msg := err.Error()
-	if strings.Contains(msg, "不存在") {
-		fail(c, http.StatusNotFound, msg)
-		return
+	switch {
+	case errors.Is(err, service.ErrForbidden):
+		return http.StatusForbidden, msg
+	case strings.Contains(msg, "不存在"):
+		return http.StatusNotFound, msg
+	case strings.Contains(msg, "正在索引"):
+		return http.StatusConflict, msg
+	case isClientErrorMsg(msg):
+		return http.StatusBadRequest, msg
+	default:
+		return http.StatusInternalServerError, msg
 	}
-	if strings.Contains(msg, "required") || strings.Contains(msg, "无效") || strings.Contains(msg, "不能") {
-		fail(c, http.StatusBadRequest, msg)
-		return
+}
+
+func isClientErrorMsg(msg string) bool {
+	keys := []string{
+		"required", "无效", "不能", "缺少", "不属于", "仍有", "请先",
+		"过长", "至少", "请求参数",
 	}
-	fail(c, http.StatusBadRequest, msg)
+	for _, k := range keys {
+		if strings.Contains(msg, k) {
+			return true
+		}
+	}
+	return false
 }
 
 func currentUserID(c *gin.Context) string {
@@ -456,8 +510,22 @@ func (h *KnowledgeHandler) streamChat(c *gin.Context, run func(context.Context, 
 
 	if err := run(c.Request.Context(), req, writeEvent); err != nil {
 		if c.Request.Context().Err() != nil {
+			logger.L().Info("chat stream canceled",
+				zap.Error(c.Request.Context().Err()),
+				zap.String("path", c.FullPath()),
+				zap.String("user_id", currentUserID(c)),
+				zap.Uint("tenant_id", currentTenantID(c)),
+			)
 			return
 		}
+		logger.L().Error("chat stream failed",
+			zap.Error(err),
+			zap.String("path", c.FullPath()),
+			zap.String("session_id", req.SessionID),
+			zap.String("user_id", currentUserID(c)),
+			zap.Uint("tenant_id", currentTenantID(c)),
+			zap.Uint("knowledge_base_id", req.KnowledgeBaseID),
+		)
 		_ = writeEvent(rag.StreamEvent{
 			Type:    rag.StreamEventError,
 			Message: err.Error(),

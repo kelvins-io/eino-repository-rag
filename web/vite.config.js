@@ -17,8 +17,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        timeout: 0,
-        proxyTimeout: 0,
+        timeout: 120000,
+        proxyTimeout: 120000,
       },
       '/health': {
         target: 'http://localhost:8080',

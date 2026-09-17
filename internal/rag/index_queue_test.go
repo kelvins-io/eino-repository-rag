@@ -1,12 +1,76 @@
 package rag
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 )
+
+func TestHandleJobInterruptedSkipsProcess(t *testing.T) {
+	q := &IndexQueue{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// parent 已取消时应直接返回，不得调用 process（pipe/rdb 均为 nil）
+	q.handleJob(ctx, `{"doc_id":1,"attempt":0}`)
+}
+
+func TestStopWaitsForWorker(t *testing.T) {
+	q := &IndexQueue{started: true}
+	ctx, cancel := context.WithCancel(context.Background())
+	q.runCtx, q.cancel = ctx, cancel
+	q.wg.Add(1)
+	go func() {
+		defer q.wg.Done()
+		<-ctx.Done()
+	}()
+	q.Stop()
+	if q.started {
+		t.Fatal("expected started=false")
+	}
+}
+
+func TestStopTimesOutWhenWorkerStuck(t *testing.T) {
+	q := &IndexQueue{started: true, stopTimeout: 50 * time.Millisecond}
+	q.runCtx, q.cancel = context.WithCancel(context.Background())
+	q.wg.Add(1) // 永不 Done，模拟卡在无 ctx 的索引任务里
+	done := make(chan struct{})
+	go func() {
+		q.Stop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Stop hung")
+	}
+	if q.started {
+		t.Fatal("expected started=false after timeout")
+	}
+	q.wg.Done() // 释放 Stop 里 wg.Wait 的 goroutine
+}
+
+func TestFailDocumentSkipsWhenCanceled(t *testing.T) {
+	p := &Pipeline{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	p.failDocument(ctx, 1, "boom") // ctx 已取消且 docRepo 为 nil，不得 panic
+}
+
+func TestWaitGroupTimeout(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	if waitGroupTimeout(&wg, 30*time.Millisecond) {
+		t.Fatal("expected timeout")
+	}
+	wg.Done()
+	if !waitGroupTimeout(&wg, time.Second) {
+		t.Fatal("expected wait to complete")
+	}
+}
 
 func TestParseIndexJob(t *testing.T) {
 	job, err := parseIndexJob(`{"doc_id":42,"attempt":2,"error":"boom"}`)

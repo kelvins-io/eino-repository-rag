@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -13,12 +14,18 @@ import (
 
 // llmSummarizer 使用聊天模型生成滚动历史摘要。
 type llmSummarizer struct {
-	chat einomodel.BaseChatModel
+	chat    einomodel.BaseChatModel
+	timeout time.Duration
 }
 
 func (s *llmSummarizer) Summarize(ctx context.Context, previousSummary string, turns []memory.ChatTurn) (string, error) {
 	if len(turns) == 0 {
 		return previousSummary, nil
+	}
+	if s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
 	}
 
 	var b strings.Builder

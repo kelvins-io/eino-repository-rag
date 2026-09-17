@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -77,6 +79,8 @@ type MilvusConfig struct {
 	MetricType string `yaml:"metric_type"`
 	// Dimension 向量维度，应与 embedding.dimensions 一致；为 0 时回退 embedding.dimensions
 	Dimension int `yaml:"dimension"`
+	// ConnectTimeoutSeconds gRPC 建连超时；0 表示 10s
+	ConnectTimeoutSeconds int `yaml:"connect_timeout_seconds"`
 }
 
 type ServerConfig struct {
@@ -91,13 +95,23 @@ type PostgresConfig struct {
 	Password string `yaml:"password"`
 	DBName   string `yaml:"dbname"`
 	SSLMode  string `yaml:"sslmode"`
+	// ConnectTimeoutSeconds 建连超时（DSN connect_timeout）；0 表示 10s
+	ConnectTimeoutSeconds int `yaml:"connect_timeout_seconds"`
 }
 
 func (c PostgresConfig) DSN() string {
+	timeout := c.ConnectTimeoutSeconds
+	if timeout <= 0 {
+		timeout = 10
+	}
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode,
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=%d",
+		c.Host, c.Port, c.User, c.Password, c.DBName, c.SSLMode, timeout,
 	)
+}
+
+func (c PostgresConfig) ConnectTimeout() time.Duration {
+	return secondsOr(c.ConnectTimeoutSeconds, 10)
 }
 
 type RedisConfig struct {
@@ -108,6 +122,39 @@ type RedisConfig struct {
 	KeyPrefix   string `yaml:"key_prefix"`
 	VectorField string `yaml:"vector_field"`
 	VectorDim   int    `yaml:"vector_dim"`
+	// DialTimeoutSeconds 建连超时；0 表示 5s
+	DialTimeoutSeconds int `yaml:"dial_timeout_seconds"`
+	// ReadTimeoutSeconds 命令读超时；0 表示 5s
+	ReadTimeoutSeconds int `yaml:"read_timeout_seconds"`
+	// WriteTimeoutSeconds 命令写超时；0 表示与 read_timeout_seconds 相同
+	WriteTimeoutSeconds int `yaml:"write_timeout_seconds"`
+}
+
+func (c RedisConfig) DialTimeout() time.Duration {
+	return secondsOr(c.DialTimeoutSeconds, 5)
+}
+
+func (c RedisConfig) ReadTimeout() time.Duration {
+	return secondsOr(c.ReadTimeoutSeconds, 5)
+}
+
+func (c RedisConfig) WriteTimeout() time.Duration {
+	if c.WriteTimeoutSeconds > 0 {
+		return time.Duration(c.WriteTimeoutSeconds) * time.Second
+	}
+	return c.ReadTimeout()
+}
+
+func (c RedisConfig) PingTimeout() time.Duration {
+	t := c.DialTimeout() + c.ReadTimeout()
+	if t < 5*time.Second {
+		return 5 * time.Second
+	}
+	return t
+}
+
+func (c MilvusConfig) ConnectTimeout() time.Duration {
+	return secondsOr(c.ConnectTimeoutSeconds, 10)
 }
 
 type DeepSeekConfig struct {
@@ -116,6 +163,8 @@ type DeepSeekConfig struct {
 	BaseURL     string  `yaml:"base_url"`
 	MaxTokens   int     `yaml:"max_tokens"`
 	Temperature float32 `yaml:"temperature"`
+	// TimeoutSeconds 对话/Agent/摘要等 LLM HTTP 超时；0 表示 120s
+	TimeoutSeconds int `yaml:"timeout_seconds"`
 }
 
 type EmbeddingConfig struct {
@@ -229,6 +278,8 @@ type MemoryConfig struct {
 	SummaryEnabled bool `yaml:"summary_enabled"`
 	// SummaryTriggerMessages 活跃历史超过该条数时，将更早部分折叠为摘要
 	SummaryTriggerMessages int `yaml:"summary_trigger_messages"`
+	// SummaryTimeoutSeconds 滚动摘要 LLM 调用超时；0 表示 30s
+	SummaryTimeoutSeconds int `yaml:"summary_timeout_seconds"`
 }
 
 func Load(path string) (*Config, error) {
@@ -301,6 +352,39 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("OCR_ENDPOINT"); v != "" {
 		c.RAG.OCR.Endpoint = v
 	}
+	applyPositiveIntEnv(&c.DeepSeek.TimeoutSeconds, "DEEPSEEK_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Embedding.TimeoutSeconds, "EMBEDDING_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Rerank.TimeoutSeconds, "RERANK_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.RAG.OCR.TimeoutSeconds, "OCR_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.RAG.QueryExpandTimeoutSeconds, "QUERY_EXPAND_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Memory.SummaryTimeoutSeconds, "MEMORY_SUMMARY_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Postgres.ConnectTimeoutSeconds, "POSTGRES_CONNECT_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Redis.DialTimeoutSeconds, "REDIS_DIAL_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Redis.ReadTimeoutSeconds, "REDIS_READ_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Redis.WriteTimeoutSeconds, "REDIS_WRITE_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Milvus.ConnectTimeoutSeconds, "MILVUS_CONNECT_TIMEOUT_SECONDS")
+}
+
+func applyPositiveIntEnv(dst *int, key string) {
+	if dst == nil {
+		return
+	}
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return
+	}
+	*dst = n
+}
+
+func secondsOr(sec, fallback int) time.Duration {
+	if sec <= 0 {
+		sec = fallback
+	}
+	return time.Duration(sec) * time.Second
 }
 
 func (c *Config) setDefaults() {
@@ -334,6 +418,9 @@ func (c *Config) setDefaults() {
 	if c.Postgres.SSLMode == "" {
 		c.Postgres.SSLMode = "disable"
 	}
+	if c.Postgres.ConnectTimeoutSeconds <= 0 {
+		c.Postgres.ConnectTimeoutSeconds = 10
+	}
 	if c.Redis.IndexName == "" {
 		c.Redis.IndexName = "kb_index"
 	}
@@ -345,6 +432,15 @@ func (c *Config) setDefaults() {
 	}
 	if c.Redis.VectorDim == 0 {
 		c.Redis.VectorDim = 1536
+	}
+	if c.Redis.DialTimeoutSeconds <= 0 {
+		c.Redis.DialTimeoutSeconds = 5
+	}
+	if c.Redis.ReadTimeoutSeconds <= 0 {
+		c.Redis.ReadTimeoutSeconds = 5
+	}
+	if c.Redis.WriteTimeoutSeconds <= 0 {
+		c.Redis.WriteTimeoutSeconds = c.Redis.ReadTimeoutSeconds
 	}
 	if c.VectorIndex.Provider == "" {
 		c.VectorIndex.Provider = VectorIndexRedis
@@ -358,6 +454,9 @@ func (c *Config) setDefaults() {
 	if c.Milvus.MetricType == "" {
 		c.Milvus.MetricType = "COSINE"
 	}
+	if c.Milvus.ConnectTimeoutSeconds <= 0 {
+		c.Milvus.ConnectTimeoutSeconds = 10
+	}
 	if c.DeepSeek.Model == "" {
 		c.DeepSeek.Model = "deepseek-chat"
 	}
@@ -366,6 +465,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.DeepSeek.MaxTokens == 0 {
 		c.DeepSeek.MaxTokens = 2048
+	}
+	if c.DeepSeek.TimeoutSeconds <= 0 {
+		c.DeepSeek.TimeoutSeconds = 120
 	}
 	if c.Embedding.Model == "" {
 		c.Embedding.Model = "text-embedding-3-small"
@@ -481,6 +583,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Memory.SummaryTriggerMessages == 0 {
 		c.Memory.SummaryTriggerMessages = 8
+	}
+	if c.Memory.SummaryTimeoutSeconds <= 0 {
+		c.Memory.SummaryTimeoutSeconds = 30
 	}
 	if c.Agent.MaxSteps <= 0 {
 		c.Agent.MaxSteps = 4

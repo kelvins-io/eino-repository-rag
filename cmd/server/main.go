@@ -6,10 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
@@ -64,14 +62,8 @@ func main() {
 	authHandler := handler.NewAuthHandler(authSvc)
 
 	// Redis：Protocol=2 + UnstableResp3 是向量检索前置条件
-	rdb := redis.NewClient(&redis.Options{
-		Addr:          cfg.Redis.Addr,
-		Password:      cfg.Redis.Password,
-		DB:            cfg.Redis.DB,
-		Protocol:      2,
-		UnstableResp3: true,
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	rdb := config.RedisClient(cfg.Redis)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Redis.PingTimeout())
 	defer cancel()
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.L().Fatal("redis ping failed", zap.Error(err))

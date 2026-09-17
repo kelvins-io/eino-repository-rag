@@ -33,11 +33,14 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 		return nil, fmt.Errorf("milvus dimension is required (set milvus.dimension or embedding.dimensions)")
 	}
 
-	client, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
+	clientCfg := &milvusclient.ClientConfig{
 		Address:  cfg.Milvus.Address,
 		Username: cfg.Milvus.Username,
 		Password: cfg.Milvus.Password,
-	})
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, cfg.Milvus.ConnectTimeout())
+	client, err := milvusclient.New(dialCtx, clientCfg)
+	cancel()
 	if err != nil {
 		return nil, fmt.Errorf("connect milvus lite: %w", err)
 	}
@@ -76,8 +79,8 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 		return nil, fmt.Errorf("create milvus retriever: %w", err)
 	}
 
-	log.Printf("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s",
-		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType)
+	log.Printf("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s connect_timeout=%s",
+		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType, cfg.Milvus.ConnectTimeout())
 
 	return &milvusVectorStore{
 		cfg:       cfg,

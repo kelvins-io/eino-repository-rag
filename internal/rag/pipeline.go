@@ -74,13 +74,17 @@ func NewPipeline(
 	}
 	emb := newResilientEmbedder(rawEmb, cfg.Embedding)
 
+	chatTimeout := time.Duration(cfg.DeepSeek.TimeoutSeconds) * time.Second
+	if chatTimeout <= 0 {
+		chatTimeout = 120 * time.Second
+	}
 	chat, err := deepseek.NewChatModel(ctx, &deepseek.ChatModelConfig{
 		APIKey:      cfg.DeepSeek.APIKey,
 		Model:       cfg.DeepSeek.Model,
 		BaseURL:     cfg.DeepSeek.BaseURL,
 		MaxTokens:   cfg.DeepSeek.MaxTokens,
 		Temperature: cfg.DeepSeek.Temperature,
-		Timeout:     120 * time.Second,
+		Timeout:     chatTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create deepseek chat model: %w", err)
@@ -117,15 +121,21 @@ func NewPipeline(
 		expander = newLLMQueryExpander(chat, cfg.RAG.QueryExpandTimeoutSeconds)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v endpoint=%s embed_timeout=%s embed_batch=%d embed_retries=%d embed_concurrency=%d",
+	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v endpoint=%s chat_timeout=%s embed_timeout=%s rerank_timeout=%ds ocr_timeout=%ds expand_timeout=%ds summary_timeout=%ds embed_batch=%d embed_retries=%d embed_concurrency=%d",
 		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled,
 		cfg.RAG.QueryExpandEnabled, cfg.RAG.QueryExpandN,
 		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled,
 		cfg.RAG.OCR.Enabled, cfg.RAG.OCR.Endpoint,
-		embTimeout, cfg.Embedding.BatchSize, cfg.Embedding.MaxRetries, cfg.Embedding.MaxConcurrency)
+		chatTimeout, embTimeout, cfg.Rerank.TimeoutSeconds, cfg.RAG.OCR.TimeoutSeconds,
+		cfg.RAG.QueryExpandTimeoutSeconds, cfg.Memory.SummaryTimeoutSeconds,
+		cfg.Embedding.BatchSize, cfg.Embedding.MaxRetries, cfg.Embedding.MaxConcurrency)
 
 	if cfg.Memory.SummaryEnabled {
-		mem.SetSummarizer(&llmSummarizer{chat: chat})
+		sumTimeout := time.Duration(cfg.Memory.SummaryTimeoutSeconds) * time.Second
+		if sumTimeout <= 0 {
+			sumTimeout = 30 * time.Second
+		}
+		mem.SetSummarizer(&llmSummarizer{chat: chat, timeout: sumTimeout})
 	}
 
 	p := &Pipeline{
@@ -159,23 +169,23 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		parser.WithOCR(ocrFromConfig(p.cfg.RAG.OCR)),
 	)
 	if err != nil {
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		p.failDocument(ctx, docID, err.Error())
 		return fmt.Errorf("parse file: %w", err)
 	}
 	if strings.TrimSpace(parsed.Text) == "" {
 		errMsg := "parsed text is empty"
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, errMsg)
+		p.failDocument(ctx, docID, errMsg)
 		return fmt.Errorf("parse file: %s", errMsg)
 	}
 
 	chunks, err := splitDocument(ctx, p.splitter, parsed.Text, parsed.Format, p.cfg.RAG.ChunkSize, p.cfg.RAG.StructureSplitEnabled)
 	if err != nil {
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		p.failDocument(ctx, docID, err.Error())
 		return fmt.Errorf("split document: %w", err)
 	}
 	if len(chunks) == 0 {
 		errMsg := "split produced no chunks"
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, errMsg)
+		p.failDocument(ctx, docID, errMsg)
 		return fmt.Errorf("split document: %s", errMsg)
 	}
 
@@ -202,24 +212,24 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	// 写入前先清掉旧向量，避免 reindex 残留污染检索
 	docIDStr := strconv.FormatUint(uint64(doc.ID), 10)
 	if err := p.store.DeleteByDocID(ctx, docIDStr); err != nil {
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		p.failDocument(ctx, docID, err.Error())
 		return fmt.Errorf("delete old vectors: %w", err)
 	}
 	if p.bm25 != nil {
 		if err := p.bm25.DeleteByDocID(ctx, docIDStr); err != nil {
-			_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+			p.failDocument(ctx, docID, err.Error())
 			return fmt.Errorf("delete old bm25: %w", err)
 		}
 	}
 
 	log.Printf("[rag] indexing document id=%d format=%s chunks=%d", docID, parsed.Format, len(chunks))
 	if err := p.store.Store(ctx, chunks); err != nil {
-		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+		p.failDocument(ctx, docID, err.Error())
 		return err
 	}
 	if p.bm25 != nil {
 		if err := p.bm25.Upsert(ctx, chunks); err != nil {
-			_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
+			p.failDocument(ctx, docID, err.Error())
 			return fmt.Errorf("bm25 upsert: %w", err)
 		}
 	}
@@ -230,6 +240,14 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	log.Printf("[rag] indexed document id=%d format=%s chunks=%d provider=%s",
 		docID, parsed.Format, len(chunks), p.cfg.VectorIndex.Provider)
 	return nil
+}
+
+// failDocument 将文档标为失败。关停取消（Canceled）时跳过，避免把可回灌的在途任务写成 Failed。
+func (p *Pipeline) failDocument(ctx context.Context, docID uint, errMsg string) {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return
+	}
+	_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, errMsg)
 }
 
 // DeleteDocument 级联删除：向量索引 → 本地文件 → 数据库记录

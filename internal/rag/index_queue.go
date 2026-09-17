@@ -44,6 +44,9 @@ type IndexQueue struct {
 	wg      sync.WaitGroup
 	mu      sync.Mutex
 	started bool
+
+	// stopTimeout Stop 等待 worker 退出的上限；0 表示默认 15s
+	stopTimeout time.Duration
 }
 
 func NewIndexQueue(cfg *config.Config, rdb *redis.Client, pipe *Pipeline, docRepo *repository.DocumentRepo) *IndexQueue {
@@ -144,7 +147,9 @@ func (q *IndexQueue) Stop() {
 	if cancel != nil {
 		cancel()
 	}
-	q.wg.Wait()
+	if !waitGroupTimeout(&q.wg, q.waitStopTimeout()) {
+		log.Printf("[rag] index queue stop timed out after %s; in-flight jobs stay in active and will reclaim on next start", q.waitStopTimeout())
+	}
 
 	q.mu.Lock()
 	q.started = false
@@ -152,6 +157,29 @@ func (q *IndexQueue) Stop() {
 	q.runCtx = nil
 	q.mu.Unlock()
 	log.Printf("[rag] index queue stopped")
+}
+
+func (q *IndexQueue) waitStopTimeout() time.Duration {
+	if q.stopTimeout > 0 {
+		return q.stopTimeout
+	}
+	return 15 * time.Second
+}
+
+func waitGroupTimeout(wg *sync.WaitGroup, d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-done:
+		return true
+	case <-t.C:
+		return false
+	}
 }
 
 func (q *IndexQueue) reclaimActive(ctx context.Context) error {
@@ -215,11 +243,9 @@ func (q *IndexQueue) worker(ctx context.Context, id int) {
 	defer q.wg.Done()
 	log.Printf("[rag] index worker-%d started", id)
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			log.Printf("[rag] index worker-%d stopping", id)
 			return
-		default:
 		}
 
 		raw, err := q.rdb.BLMove(ctx, q.queueKey, q.activeKey, "RIGHT", "LEFT", 2*time.Second).Result()
@@ -227,25 +253,20 @@ func (q *IndexQueue) worker(ctx context.Context, id int) {
 			continue
 		}
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				log.Printf("[rag] index worker-%d stopping", id)
-				return
-			}
-			// go-redis 在 ctx cancel 时可能返回包装错误
-			if ctx.Err() != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
 				log.Printf("[rag] index worker-%d stopping", id)
 				return
 			}
 			log.Printf("[rag] index worker-%d blmove err=%v", id, err)
-			time.Sleep(500 * time.Millisecond)
+			q.sleep(ctx, 500*time.Millisecond)
 			continue
 		}
 
-		q.handleJob(raw)
+		q.handleJob(ctx, raw)
 	}
 }
 
-func (q *IndexQueue) handleJob(raw string) {
+func (q *IndexQueue) handleJob(parent context.Context, raw string) {
 	job, err := parseIndexJob(raw)
 	if err != nil {
 		log.Printf("[rag] index queue invalid job payload=%q err=%v", truncate(raw, 200), err)
@@ -255,14 +276,25 @@ func (q *IndexQueue) handleJob(raw string) {
 		return
 	}
 
+	if parent.Err() != nil {
+		log.Printf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
+		return
+	}
+
 	timeout := time.Duration(q.cfg.IndexJobTimeoutMinutes) * time.Minute
 	if timeout <= 0 {
 		timeout = 10 * time.Minute
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	if err := q.process(ctx, job); err != nil {
+	err = q.process(ctx, job)
+	if parent.Err() != nil {
+		// 关停：不要 onFailure（会 DLQ / 标失败），任务留在 active，下次 Start 回灌
+		log.Printf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
+		return
+	}
+	if err != nil {
 		q.onFailure(raw, job, err)
 		return
 	}
@@ -373,20 +405,24 @@ func isRetryableIndexErr(err error) bool {
 }
 
 func (q *IndexQueue) waitRetryBackoff(d time.Duration) {
-	if d <= 0 {
-		return
-	}
 	q.mu.Lock()
 	runCtx := q.runCtx
 	q.mu.Unlock()
 	if runCtx == nil {
-		time.Sleep(d)
+		q.sleep(context.Background(), d)
+		return
+	}
+	q.sleep(runCtx, d)
+}
+
+func (q *IndexQueue) sleep(ctx context.Context, d time.Duration) {
+	if d <= 0 {
 		return
 	}
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
-	case <-runCtx.Done():
+	case <-ctx.Done():
 	case <-t.C:
 	}
 }
