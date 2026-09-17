@@ -139,21 +139,48 @@
           </div>
 
           <div class="composer">
-            <el-input
-              v-model="query"
-              type="textarea"
-              :rows="3"
-              placeholder="输入问题，Enter 发送，Shift+Enter 换行"
-              @keydown="onKeydown"
-            />
-            <el-button
-              type="primary"
-              :loading="asking"
-              :disabled="!kbId || !query.trim()"
-              @click="ask"
-            >
-              发送
-            </el-button>
+            <div class="composer-input">
+              <el-input
+                v-model="query"
+                type="textarea"
+                :rows="3"
+                :placeholder="speechPlaceholder"
+                @keydown="onKeydown"
+              />
+              <div v-if="listening" class="speech-live">
+                <span class="speech-dot" />
+                <span class="speech-live-text">
+                  {{ recognizedText || '正在聆听，请开始说话…' }}
+                </span>
+                <span class="speech-live-hint">再次点击麦克风停止并填入</span>
+              </div>
+            </div>
+            <div class="composer-actions">
+              <el-tooltip :content="speechTip" placement="top">
+                <span class="speech-btn-wrap">
+                  <el-button
+                    class="speech-btn"
+                    :class="{ 'is-listening': listening }"
+                    :type="listening ? 'danger' : 'default'"
+                    :disabled="asking || !speechSupported"
+                    :aria-label="listening ? '停止语音输入' : '语音输入'"
+                    @click="toggleSpeech"
+                  >
+                    <el-icon>
+                      <Microphone />
+                    </el-icon>
+                  </el-button>
+                </span>
+              </el-tooltip>
+              <el-button
+                type="primary"
+                :loading="asking"
+                :disabled="!kbId || !query.trim() || listening"
+                @click="ask"
+              >
+                发送
+              </el-button>
+            </div>
           </div>
         </div>
       </el-col>
@@ -162,9 +189,11 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Microphone } from '@element-plus/icons-vue'
 import { api } from '@/api'
+import { useSpeechInput } from '@/composables/useSpeechInput'
 import { getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
 
 const sessionId = ref(getSessionId())
@@ -179,6 +208,24 @@ const query = ref('')
 const asking = ref(false)
 const listRef = ref()
 const chatMode = ref('rag')
+const {
+  listening,
+  recognizedText,
+  supported: speechSupported,
+  toggle: toggleSpeech,
+  stop: stopSpeech,
+} = useSpeechInput(query)
+
+const speechPlaceholder = computed(() =>
+  listening.value
+    ? '正在聆听，再次点击麦克风停止并填入输入框'
+    : '输入问题，Enter 发送，Shift+Enter 换行',
+)
+
+const speechTip = computed(() => {
+  if (!speechSupported.value) return '当前浏览器不支持语音识别，请使用 Chrome 或 Edge'
+  return listening.value ? '点击停止并填入输入框' : '语音输入'
+})
 
 function formatTime(v) {
   if (!v) return ''
@@ -268,6 +315,7 @@ async function onSessionChange(id) {
 }
 
 function resetSession() {
+  stopSpeech()
   sessionId.value = newSessionId()
   messages.value = []
   ElMessage.success('已开始新会话')
@@ -283,7 +331,7 @@ async function scrollBottom() {
 function onKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
-    ask()
+    if (!listening.value) ask()
   }
 }
 
@@ -507,5 +555,81 @@ onMounted(async () => {
   padding: 14px 16px;
   border-top: 1px solid #e2e8f0;
   background: #fff;
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.speech-btn-wrap {
+  display: inline-flex;
+}
+
+.speech-btn.is-listening {
+  animation: speech-pulse 1.2s ease-in-out infinite;
+}
+
+.speech-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 13px;
+  color: #b91c1c;
+  line-height: 1.4;
+}
+
+.speech-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+  animation: speech-dot 1s ease-in-out infinite;
+}
+
+.speech-live-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speech-live-hint {
+  color: #94a3b8;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+@keyframes speech-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+  }
+}
+
+@keyframes speech-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 </style>
