@@ -2,8 +2,9 @@ package parser
 
 import (
 	"bytes"
-	"context"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -12,33 +13,43 @@ import (
 )
 
 func extractPDF(path string) (*Result, error) {
-	f, r, err := gopdf.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("open pdf: %w", err)
+		return nil, fmt.Errorf("read pdf: %w", err)
 	}
-	defer f.Close()
+	data = rewriteUTF16CMaps(data)
+
+	r, err := gopdf.OpenBytes(data)
+	if err != nil {
+		return nil, permanentf("open pdf: %v", err)
+	}
 
 	totalPage := r.NumPage()
 	if totalPage == 0 {
-		return nil, fmt.Errorf("pdf has no pages")
+		return nil, permanentf("pdf 没有页面")
 	}
 
-	ctx := context.Background()
 	var b strings.Builder
 	extractedPages := 0
+	imageOnly := 0
+	degraded := 0
+	empty := 0
 	for i := 1; i <= totalPage; i++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
 		page := r.Page(i)
 		if page.V.IsNull() {
+			empty++
 			continue
 		}
-		text := extractPDFPage(page)
-		text = sanitizeExtractedText(text)
-		if text == "" {
+		text := sanitizeExtractedText(extractPDFPage(page))
+		if strings.TrimSpace(text) == "" {
+			switch page.ExtractionSignal() {
+			case gopdf.SignalImageOnly:
+				imageOnly++
+			case gopdf.SignalDegraded:
+				degraded++
+			default:
+				empty++
+			}
 			continue
 		}
 		extractedPages++
@@ -50,22 +61,20 @@ func extractPDF(path string) (*Result, error) {
 
 	plain := normalizeText(b.String())
 	if plain == "" {
-		reader, err := r.GetPlainText(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("pdf extract text empty (可能是扫描件/加密PDF，暂不支持 OCR): %w", err)
+		if imageOnly > 0 && extractedPages == 0 {
+			return nil, permanentf("pdf 未提取到文本：共 %d 页，其中扫描/图片页 %d 页，暂不支持 OCR", totalPage, imageOnly)
 		}
-		var buf bytes.Buffer
-		if _, err := buf.ReadFrom(reader); err != nil {
-			return nil, fmt.Errorf("read pdf plain text: %w", err)
+		if degraded > 0 && extractedPages == 0 {
+			return nil, permanentf("pdf 文本提取失败（%d 页内容流损坏）", degraded)
 		}
-		plain = normalizeText(sanitizeExtractedText(buf.String()))
-	}
-	if plain == "" {
-		return nil, fmt.Errorf("pdf 未提取到文本（可能是扫描件，暂不支持 OCR）")
+		return nil, permanentf("pdf 未提取到文本")
 	}
 	if looksGarbledPDF(plain, path) {
-		return nil, fmt.Errorf("pdf 文本解码失败（字体/CMap 未正确映射为 Unicode）。请尝试导出为 Word/纯文本后再导入，或使用带 ToUnicode 的 PDF")
+		return nil, permanentf("pdf 文本解码失败（字体/CMap 未正确映射为 Unicode）。请尝试导出为 Word/纯文本后再导入，或使用带 ToUnicode 的 PDF")
 	}
+
+	log.Printf("[parser] pdf pages=%d extracted=%d image_only=%d degraded=%d empty=%d",
+		totalPage, extractedPages, imageOnly, degraded, empty)
 
 	return &Result{
 		Text:        plain,
@@ -99,6 +108,36 @@ func extractPDFPage(page gopdf.Page) string {
 	return text
 }
 
+// rewriteUTF16CMaps 将 Uni*-UTF16-* 预定义 CMap 改写为同长度的 Uni*-UCS2-*。
+// gopdf v0.8.7 只识别 UCS2；UTF16 对 BMP 汉字与 UCS-2 相同，但未知编码会回退成单字节 PDFDoc，导致乱码。
+// 必须等长替换，避免破坏 xref 偏移。
+func rewriteUTF16CMaps(data []byte) []byte {
+	repls := [][2]string{
+		{"UniGB-UTF16-H", "UniGB-UCS2-H "},
+		{"UniGB-UTF16-V", "UniGB-UCS2-V "},
+		{"UniCNS-UTF16-H", "UniCNS-UCS2-H "},
+		{"UniCNS-UTF16-V", "UniCNS-UCS2-V "},
+		{"UniJIS-UTF16-H", "UniJIS-UCS2-H "},
+		{"UniJIS-UTF16-V", "UniJIS-UCS2-V "},
+		{"UniKS-UTF16-H", "UniKS-UCS2-H "},
+		{"UniKS-UTF16-V", "UniKS-UCS2-V "},
+	}
+	out := data
+	copied := false
+	for _, pair := range repls {
+		old, neu := []byte(pair[0]), []byte(pair[1])
+		if len(old) != len(neu) || !bytes.Contains(out, old) {
+			continue
+		}
+		if !copied {
+			out = bytes.Clone(data)
+			copied = true
+		}
+		out = bytes.ReplaceAll(out, old, neu)
+	}
+	return out
+}
+
 func sanitizeExtractedText(s string) string {
 	if s == "" {
 		return ""
@@ -110,7 +149,6 @@ func sanitizeExtractedText(s string) string {
 		case r == '\n' || r == '\t' || r == '\r':
 			b.WriteRune(r)
 		case r < 0x20 || r == 0x7f:
-			// PDF 未解码码点常以 NUL/SOH 等形式出现，直接丢弃
 			continue
 		case unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cs, r):
 			continue

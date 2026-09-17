@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
+	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 )
 
@@ -304,6 +306,12 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		return
 	}
 
+	if !isRetryableIndexErr(err) {
+		log.Printf("[rag] index queue permanent fail doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
+		q.deadLetter(ctx, cancel, member, job, err)
+		return
+	}
+
 	maxRetries := q.cfg.IndexMaxRetries
 	if maxRetries < 0 {
 		maxRetries = 0
@@ -333,7 +341,10 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		return
 	}
 
-	// 最终失败：IndexDocument 已写 failed；进死信并释放去重
+	q.deadLetter(ctx, cancel, member, job, err)
+}
+
+func (q *IndexQueue) deadLetter(ctx context.Context, cancel context.CancelFunc, member string, job IndexJob, err error) {
 	dlqJob := IndexJob{DocID: job.DocID, Attempt: job.Attempt, Error: err.Error()}
 	if payload, merr := json.Marshal(dlqJob); merr == nil {
 		_ = q.rdb.LPush(ctx, q.dlqKey, string(payload)).Err()
@@ -341,6 +352,24 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 	_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
 	cancel()
 	log.Printf("[rag] index queue dead-letter doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
+}
+
+func isRetryableIndexErr(err error) bool {
+	if err == nil || errors.Is(err, errDocGone) {
+		return false
+	}
+	if parser.IsPermanent(err) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "parse file:"):
+		return false
+	case strings.Contains(msg, "split document:"):
+		return false
+	default:
+		return true
+	}
 }
 
 func (q *IndexQueue) waitRetryBackoff(d time.Duration) {

@@ -1,8 +1,11 @@
 package rag
 
 import (
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 )
 
 func TestParseIndexJob(t *testing.T) {
@@ -31,5 +34,27 @@ func TestIndexRetryBackoff(t *testing.T) {
 	}
 	if got := indexRetryBackoff(3, 5); got != 20*time.Second {
 		t.Fatalf("attempt 3: got %s", got)
+	}
+}
+
+func TestIsRetryableIndexErr(t *testing.T) {
+	if isRetryableIndexErr(errDocGone) {
+		t.Fatal("doc gone should not retry")
+	}
+	_, err := parser.ExtractFile("old.doc", "")
+	if err == nil || !parser.IsPermanent(err) {
+		t.Fatalf("expected permanent .doc error, got %v", err)
+	}
+	if isRetryableIndexErr(fmt.Errorf("parse file: %w", err)) {
+		t.Fatal("wrapped permanent parse error should not retry")
+	}
+	if isRetryableIndexErr(fmt.Errorf("parse file: pdf 未提取到文本")) {
+		t.Fatal("parse errors should not retry")
+	}
+	if isRetryableIndexErr(fmt.Errorf("split document: boom")) {
+		t.Fatal("split errors should not retry")
+	}
+	if !isRetryableIndexErr(fmt.Errorf("milvus store vectors: context deadline exceeded")) {
+		t.Fatal("embed/milvus timeout should retry")
 	}
 }

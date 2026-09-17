@@ -51,7 +51,7 @@ func extractXLSX(path string) (*Result, error) {
 
 	plain := normalizeText(b.String())
 	if plain == "" {
-		return nil, fmt.Errorf("xlsx 未提取到文本")
+		return nil, permanentf("xlsx 未提取到文本")
 	}
 	return &Result{
 		Text:        plain,

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,87 @@ func TestSanitizeAndGarbledPDF(t *testing.T) {
 	if looksGarbledPDF(clean, "AI网关优化方案.pdf") {
 		t.Fatal("clean CJK text should not be garbled")
 	}
+}
+
+func TestRewriteUTF16CMaps(t *testing.T) {
+	pairs := [][2]string{
+		{"UniGB-UTF16-H", "UniGB-UCS2-H "},
+		{"UniGB-UTF16-V", "UniGB-UCS2-V "},
+		{"UniCNS-UTF16-H", "UniCNS-UCS2-H "},
+		{"UniJIS-UTF16-H", "UniJIS-UCS2-H "},
+		{"UniKS-UTF16-H", "UniKS-UCS2-H "},
+	}
+	for _, p := range pairs {
+		if len(p[0]) != len(p[1]) {
+			t.Fatalf("rewrite must keep length: %q (%d) vs %q (%d)", p[0], len(p[0]), p[1], len(p[1]))
+		}
+	}
+	in := []byte("<</Type/Font/Encoding/UniGB-UTF16-H/BaseFont/SimSun>>")
+	out := rewriteUTF16CMaps(in)
+	if len(out) != len(in) {
+		t.Fatalf("xref length changed %d -> %d", len(in), len(out))
+	}
+	if bytes.Contains(out, []byte("UniGB-UTF16-H")) {
+		t.Fatalf("utf16 cmap not rewritten: %s", out)
+	}
+	if !bytes.Contains(out, []byte("UniGB-UCS2-H")) {
+		t.Fatalf("ucs2 cmap missing: %s", out)
+	}
+}
+
+func TestPermanentExtractErrors(t *testing.T) {
+	_, err := ExtractFile("old.doc", "application/msword")
+	if err == nil || !IsPermanent(err) {
+		t.Fatalf("expected permanent .doc error, got %v", err)
+	}
+}
+
+func TestExtractLocalFailedPDFs(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "storage", "uploads", "1", "9")
+	cases := []struct {
+		name      string
+		wantOK    bool
+		permanent bool
+	}{
+		{"1789618268553295000_短线交易大师：工具和策略(高清).pdf", true, false},
+		{"1789618268634323000_通向金融王国的自由之路.pdf", false, true},
+		{"1789618268670966000_笑傲股市.pdf", false, true},
+	}
+	ran := false
+	for _, tc := range cases {
+		path := filepath.Join(root, tc.name)
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		ran = true
+		res, err := ExtractFile(path, "application/pdf")
+		if tc.wantOK {
+			if err != nil {
+				t.Fatalf("%s: unexpected err=%v", tc.name, err)
+			}
+			if !strings.Contains(res.Text, "手续费") && !strings.Contains(res.Text, "交易") {
+				t.Fatalf("%s: extracted text looks wrong: %q", tc.name, truncateRunes(res.Text, 80))
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatalf("%s: expected extract error", tc.name)
+		}
+		if tc.permanent && !IsPermanent(err) {
+			t.Fatalf("%s: expected permanent err, got %v", tc.name, err)
+		}
+	}
+	if !ran {
+		t.Skip("local upload samples not present")
+	}
+}
+
+func truncateRunes(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	return string(rs[:n]) + "..."
 }
 
 func TestExtractDOCRejected(t *testing.T) {

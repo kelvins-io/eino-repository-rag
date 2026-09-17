@@ -21,7 +21,7 @@ func extractDOCX(path string) (*Result, error) {
 	}
 	text = normalizeText(text)
 	if text == "" {
-		return nil, fmt.Errorf("docx 未提取到文本")
+		return nil, permanentf("docx 未提取到文本")
 	}
 	return &Result{
 		Text:        text,
@@ -52,7 +52,7 @@ func extractPPTX(path string) (*Result, error) {
 	}
 	sort.Slice(slides, func(i, j int) bool { return slides[i].num < slides[j].num })
 	if len(slides) == 0 {
-		return nil, fmt.Errorf("pptx 未找到幻灯片")
+		return nil, permanentf("pptx 未找到幻灯片")
 	}
 
 	var b strings.Builder
@@ -77,7 +77,7 @@ func extractPPTX(path string) (*Result, error) {
 	}
 	plain := normalizeText(b.String())
 	if plain == "" {
-		return nil, fmt.Errorf("pptx 未提取到文本")
+		return nil, permanentf("pptx 未提取到文本")
 	}
 	return &Result{
 		Text:        plain,

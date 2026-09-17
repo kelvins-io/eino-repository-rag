@@ -31,7 +31,7 @@ func ExtractFile(path, contentType string) (*Result, error) {
 	case "csv", "markdown", "text", "json":
 		return extractPlainFile(path, format)
 	case "doc":
-		return nil, fmt.Errorf("不支持旧版 .doc，请转换为 .docx 后导入")
+		return nil, permanentf("不支持旧版 .doc，请转换为 .docx 后导入")
 	default:
 		// 未知类型尝试按纯文本读取（兼容 .md/.txt 等）
 		res, err := extractPlainFile(path, "text")
@@ -40,7 +40,7 @@ func ExtractFile(path, contentType string) (*Result, error) {
 		}
 		// 若几乎全是不可打印二进制，判定失败
 		if looksBinary(res.Text) {
-			return nil, fmt.Errorf("不支持的二进制文件类型（扩展名=%s），请使用 PDF/DOCX/XLSX/PPTX/HTML/TXT/MD", filepath.Ext(path))
+			return nil, permanentf("不支持的二进制文件类型（扩展名=%s），请使用 PDF/DOCX/XLSX/PPTX/HTML/TXT/MD", filepath.Ext(path))
 		}
 		return res, nil
 	}

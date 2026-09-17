@@ -24,7 +24,7 @@ func extractHTMLFile(path string) (*Result, error) {
 	}
 	text = normalizeText(text)
 	if text == "" {
-		return nil, fmt.Errorf("html 未提取到文本")
+		return nil, permanentf("html 未提取到文本")
 	}
 	return &Result{
 		Text:        text,
