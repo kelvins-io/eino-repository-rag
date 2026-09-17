@@ -39,6 +39,7 @@ type DocumentListFilter struct {
 	UserID          string // 可选：仅列自己上传的文档
 	KnowledgeBaseID uint
 	DirectoryID     *uint
+	Status          string // 可选：按文档状态筛选
 }
 
 type DocumentRepo struct {
@@ -88,6 +89,9 @@ func (r *DocumentRepo) List(filter DocumentListFilter, limit, offset int) ([]mod
 	}
 	if filter.DirectoryID != nil {
 		q = q.Where("directory_id = ?", *filter.DirectoryID)
+	}
+	if filter.Status != "" {
+		q = q.Where("status = ?", filter.Status)
 	}
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err

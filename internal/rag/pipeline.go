@@ -53,10 +53,14 @@ func NewPipeline(
 	mem *memory.Manager,
 ) (*Pipeline, error) {
 	dim := cfg.Embedding.Dimensions
+	embTimeout := time.Duration(cfg.Embedding.TimeoutSeconds) * time.Second
+	if embTimeout <= 0 {
+		embTimeout = 120 * time.Second
+	}
 	embCfg := &openai.EmbeddingConfig{
 		APIKey:  cfg.Embedding.APIKey,
 		Model:   cfg.Embedding.Model,
-		Timeout: 60 * time.Second,
+		Timeout: embTimeout,
 	}
 	if cfg.Embedding.BaseURL != "" {
 		embCfg.BaseURL = cfg.Embedding.BaseURL
@@ -64,10 +68,11 @@ func NewPipeline(
 	if dim > 0 {
 		embCfg.Dimensions = &dim
 	}
-	emb, err := openai.NewEmbedder(ctx, embCfg)
+	rawEmb, err := openai.NewEmbedder(ctx, embCfg)
 	if err != nil {
 		return nil, fmt.Errorf("create embedder: %w", err)
 	}
+	emb := newResilientEmbedder(rawEmb, cfg.Embedding)
 
 	chat, err := deepseek.NewChatModel(ctx, &deepseek.ChatModelConfig{
 		APIKey:      cfg.DeepSeek.APIKey,
@@ -112,10 +117,11 @@ func NewPipeline(
 		expander = newLLMQueryExpander(chat, cfg.RAG.QueryExpandTimeoutSeconds)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v",
+	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v embed_timeout=%s embed_batch=%d embed_retries=%d embed_concurrency=%d",
 		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled,
 		cfg.RAG.QueryExpandEnabled, cfg.RAG.QueryExpandN,
-		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled)
+		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled,
+		embTimeout, cfg.Embedding.BatchSize, cfg.Embedding.MaxRetries, cfg.Embedding.MaxConcurrency)
 
 	if cfg.Memory.SummaryEnabled {
 		mem.SetSummarizer(&llmSummarizer{chat: chat})
@@ -202,6 +208,7 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		}
 	}
 
+	log.Printf("[rag] indexing document id=%d format=%s chunks=%d", docID, parsed.Format, len(chunks))
 	if err := p.store.Store(ctx, chunks); err != nil {
 		_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusFailed, 0, err.Error())
 		return err

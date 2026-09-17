@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
+	"github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 	"github.com/kelvins-io/eino-repository-rag/internal/service"
@@ -312,6 +313,15 @@ func (h *KnowledgeHandler) ListDocuments(c *gin.Context) {
 		}
 		dirID := uint(id)
 		filter.DirectoryID = &dirID
+	}
+	if v := c.Query("status"); v != "" {
+		switch model.DocumentStatus(v) {
+		case model.DocumentStatusPending, model.DocumentStatusIndexing, model.DocumentStatusReady, model.DocumentStatusFailed:
+			filter.Status = v
+		default:
+			fail(c, http.StatusBadRequest, "无效的 status，可选 pending/indexing/ready/failed")
+			return
+		}
 	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))

@@ -55,6 +55,10 @@ embedding:
   model: "BAAI/bge-m3"
   base_url: "https://api.siliconflow.cn/v1"
   dimensions: 0
+  timeout_seconds: 120
+  batch_size: 16
+  max_retries: 2
+  max_concurrency: 2
 
 rag:
   chunk_size: 800
@@ -69,6 +73,7 @@ rag:
   index_workers: 5
   index_max_retries: 3
   index_job_timeout_minutes: 10
+  index_retry_backoff_seconds: 5
   index_queue_key: "kb:index:queue"
   index_active_key: "kb:index:active"
   index_dlq_key: "kb:index:dlq"

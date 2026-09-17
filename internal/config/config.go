@@ -123,6 +123,14 @@ type EmbeddingConfig struct {
 	Model      string `yaml:"model"`
 	BaseURL    string `yaml:"base_url"`
 	Dimensions int    `yaml:"dimensions"`
+	// TimeoutSeconds 单次 embedding HTTP 超时；0 表示 120s
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+	// BatchSize 单次请求的文本条数；Milvus 会把整篇文档一次性 Embed，需在客户端拆批。0 表示 16
+	BatchSize int `yaml:"batch_size"`
+	// MaxRetries 单批 embedding 瞬时失败（超时/429/5xx）重试次数（不含首次）；0 表示 2
+	MaxRetries int `yaml:"max_retries"`
+	// MaxConcurrency 全局并发 embedding 请求数，避免多 worker 打满 SiliconFlow。0 表示 2
+	MaxConcurrency int `yaml:"max_concurrency"`
 }
 
 type RAGConfig struct {
@@ -147,6 +155,8 @@ type RAGConfig struct {
 	IndexMaxRetries int `yaml:"index_max_retries"`
 	// IndexJobTimeoutMinutes 单个索引任务超时（分钟）
 	IndexJobTimeoutMinutes int `yaml:"index_job_timeout_minutes"`
+	// IndexRetryBackoffSeconds 索引失败重试的基础等待；实际等待 = base * 2^(attempt-1)，0 表示 5s
+	IndexRetryBackoffSeconds int `yaml:"index_retry_backoff_seconds"`
 	// IndexQueueKey Redis 等待队列 List
 	IndexQueueKey string `yaml:"index_queue_key"`
 	// IndexActiveKey Redis 在途队列 List（BLMOVE 目标，用于崩溃回灌）
@@ -334,6 +344,18 @@ func (c *Config) setDefaults() {
 		c.Embedding.Model = "text-embedding-3-small"
 	}
 	// Embedding.Dimensions 为 0 表示不向 API 传 dimensions（SiliconFlow 的 BAAI/bge-m3 等会因此返回 20015）
+	if c.Embedding.TimeoutSeconds <= 0 {
+		c.Embedding.TimeoutSeconds = 120
+	}
+	if c.Embedding.BatchSize <= 0 {
+		c.Embedding.BatchSize = 16
+	}
+	if c.Embedding.MaxRetries <= 0 {
+		c.Embedding.MaxRetries = 2
+	}
+	if c.Embedding.MaxConcurrency <= 0 {
+		c.Embedding.MaxConcurrency = 2
+	}
 	if c.RAG.ChunkSize == 0 {
 		c.RAG.ChunkSize = 800
 	}
@@ -360,6 +382,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.RAG.IndexJobTimeoutMinutes <= 0 {
 		c.RAG.IndexJobTimeoutMinutes = 10
+	}
+	if c.RAG.IndexRetryBackoffSeconds <= 0 {
+		c.RAG.IndexRetryBackoffSeconds = 5
 	}
 	if c.RAG.IndexQueueKey == "" {
 		c.RAG.IndexQueueKey = "kb:index:queue"

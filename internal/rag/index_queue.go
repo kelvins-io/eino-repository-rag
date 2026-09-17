@@ -38,6 +38,7 @@ type IndexQueue struct {
 	dedupKey  string
 
 	cancel  context.CancelFunc
+	runCtx  context.Context
 	wg      sync.WaitGroup
 	mu      sync.Mutex
 	started bool
@@ -111,6 +112,7 @@ func (q *IndexQueue) Start(ctx context.Context) error {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	q.cancel = cancel
+	q.runCtx = runCtx
 	workers := q.cfg.IndexWorkers
 	if workers <= 0 {
 		workers = 2
@@ -145,6 +147,7 @@ func (q *IndexQueue) Stop() {
 	q.mu.Lock()
 	q.started = false
 	q.cancel = nil
+	q.runCtx = nil
 	q.mu.Unlock()
 	log.Printf("[rag] index queue stopped")
 }
@@ -292,12 +295,12 @@ func (q *IndexQueue) onSuccess(raw string, job IndexJob) {
 
 func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 	ctx, cancel := q.redisOpCtx()
-	defer cancel()
 	_ = q.rdb.LRem(ctx, q.activeKey, 1, raw).Err()
 	member := strconv.FormatUint(uint64(job.DocID), 10)
 
 	if errors.Is(err, errDocGone) {
 		_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
+		cancel()
 		return
 	}
 
@@ -312,15 +315,21 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		if merr != nil {
 			log.Printf("[rag] index queue marshal retry failed doc_id=%d err=%v", job.DocID, merr)
 			_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
+			cancel()
 			return
 		}
-		if perr := q.rdb.LPush(ctx, q.queueKey, string(payload)).Err(); perr != nil {
+		cancel()
+		backoff := indexRetryBackoff(retry.Attempt, q.cfg.IndexRetryBackoffSeconds)
+		log.Printf("[rag] index queue retry doc_id=%d attempt=%d/%d backoff=%s err=%v",
+			job.DocID, retry.Attempt, maxRetries, backoff, err)
+		q.waitRetryBackoff(backoff)
+		pushCtx, pushCancel := q.redisOpCtx()
+		defer pushCancel()
+		if perr := q.rdb.LPush(pushCtx, q.queueKey, string(payload)).Err(); perr != nil {
 			log.Printf("[rag] index queue requeue failed doc_id=%d err=%v", job.DocID, perr)
-			_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
+			_ = q.rdb.SRem(pushCtx, q.dedupKey, member).Err()
 			return
 		}
-		log.Printf("[rag] index queue retry doc_id=%d attempt=%d/%d err=%v",
-			job.DocID, retry.Attempt, maxRetries, err)
 		return
 	}
 
@@ -330,7 +339,41 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		_ = q.rdb.LPush(ctx, q.dlqKey, string(payload)).Err()
 	}
 	_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
+	cancel()
 	log.Printf("[rag] index queue dead-letter doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
+}
+
+func (q *IndexQueue) waitRetryBackoff(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	q.mu.Lock()
+	runCtx := q.runCtx
+	q.mu.Unlock()
+	if runCtx == nil {
+		time.Sleep(d)
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-runCtx.Done():
+	case <-t.C:
+	}
+}
+
+func indexRetryBackoff(attempt, baseSeconds int) time.Duration {
+	if baseSeconds <= 0 {
+		baseSeconds = 5
+	}
+	shift := attempt - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 5 {
+		shift = 5
+	}
+	return time.Duration(baseSeconds<<shift) * time.Second
 }
 
 func parseIndexJob(raw string) (IndexJob, error) {

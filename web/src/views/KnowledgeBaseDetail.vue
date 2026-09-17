@@ -54,7 +54,19 @@
               文档列表
               <el-tag v-if="currentDir" size="small" class="ml8">目录: {{ currentDir.name }}</el-tag>
             </span>
-            <div>
+            <div class="doc-toolbar">
+              <el-select
+                v-model="statusFilter"
+                clearable
+                placeholder="全部状态"
+                style="width: 140px"
+                @change="onStatusFilterChange"
+              >
+                <el-option label="待索引" value="pending" />
+                <el-option label="索引中" value="indexing" />
+                <el-option label="就绪" value="ready" />
+                <el-option label="失败" value="failed" />
+              </el-select>
               <el-button
                 size="small"
                 :disabled="!selectedIds.length"
@@ -236,9 +248,10 @@ const currentDir = ref(null)
 const docs = ref([])
 const docLoading = ref(false)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 const total = ref(0)
 const selectedIds = ref([])
+const statusFilter = ref('')
 
 const dirVisible = ref(false)
 const dirSaving = ref(false)
@@ -274,6 +287,9 @@ async function loadDocs() {
     if (currentDir.value?.id) {
       params.directory_id = currentDir.value.id
     }
+    if (statusFilter.value) {
+      params.status = statusFilter.value
+    }
     const data = await api.listDocuments(params)
     docs.value = data?.list || []
     total.value = data?.total || 0
@@ -283,6 +299,11 @@ async function loadDocs() {
 }
 
 function onDocSizeChange() {
+  page.value = 1
+  loadDocs()
+}
+
+function onStatusFilterChange() {
   page.value = 1
   loadDocs()
 }
@@ -460,6 +481,12 @@ onMounted(refreshAll)
   justify-content: space-between;
   margin-bottom: 12px;
   font-weight: 600;
+}
+
+.doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .tree-panel {
