@@ -3,7 +3,6 @@ package rag
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus2"
@@ -15,6 +14,7 @@ import (
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 type milvusVectorStore struct {
@@ -79,7 +79,7 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 		return nil, fmt.Errorf("create milvus retriever: %w", err)
 	}
 
-	log.Printf("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s connect_timeout=%s",
+	logger.S().Infof("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s connect_timeout=%s",
 		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType, cfg.Milvus.ConnectTimeout())
 
 	return &milvusVectorStore{

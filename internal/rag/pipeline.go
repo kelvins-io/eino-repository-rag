@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
@@ -121,7 +121,7 @@ func NewPipeline(
 		expander = newLLMQueryExpander(chat, cfg.RAG.QueryExpandTimeoutSeconds)
 	}
 
-	log.Printf("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v endpoint=%s chat_timeout=%s embed_timeout=%s rerank_timeout=%ds ocr_timeout=%ds expand_timeout=%ds summary_timeout=%ds embed_batch=%d embed_retries=%d embed_concurrency=%d",
+	logger.S().Infof("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v endpoint=%s chat_timeout=%s embed_timeout=%s rerank_timeout=%ds ocr_timeout=%ds expand_timeout=%ds summary_timeout=%ds embed_batch=%d embed_retries=%d embed_concurrency=%d",
 		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled,
 		cfg.RAG.QueryExpandEnabled, cfg.RAG.QueryExpandN,
 		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled,
@@ -222,7 +222,7 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		}
 	}
 
-	log.Printf("[rag] indexing document id=%d format=%s chunks=%d", docID, parsed.Format, len(chunks))
+	logger.S().Infof("[rag] indexing document id=%d format=%s chunks=%d", docID, parsed.Format, len(chunks))
 	if err := p.store.Store(ctx, chunks); err != nil {
 		p.failDocument(ctx, docID, err.Error())
 		return err
@@ -237,7 +237,7 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	if err := p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusReady, len(chunks), ""); err != nil {
 		return err
 	}
-	log.Printf("[rag] indexed document id=%d format=%s chunks=%d provider=%s",
+	logger.S().Infof("[rag] indexed document id=%d format=%s chunks=%d provider=%s",
 		docID, parsed.Format, len(chunks), p.cfg.VectorIndex.Provider)
 	return nil
 }
@@ -279,20 +279,20 @@ func (p *Pipeline) DeleteDocument(ctx context.Context, docID uint) error {
 	if err := p.docRepo.Delete(docID); err != nil {
 		return fmt.Errorf("delete document record: %w", err)
 	}
-	log.Printf("[rag] deleted document id=%d (vectors+file+db)", docID)
+	logger.S().Infof("[rag] deleted document id=%d (vectors+file+db)", docID)
 	return nil
 }
 
 // IndexDocumentAsync 将文档加入 Redis 索引队列（异步构建）
 func (p *Pipeline) IndexDocumentAsync(docID uint) {
 	if p.indexQueue == nil {
-		log.Printf("[rag] index queue not ready, skip doc_id=%d", docID)
+		logger.S().Warnf("[rag] index queue not ready, skip doc_id=%d", docID)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := p.indexQueue.Enqueue(ctx, docID); err != nil {
-		log.Printf("[rag] index enqueue failed doc_id=%d err=%v", docID, err)
+		logger.S().Errorf("[rag] index enqueue failed doc_id=%d err=%v", docID, err)
 	}
 }
 
@@ -456,7 +456,7 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	if p.cfg.RAG.CitationValidateEnabled {
 		check := validateCitations(answer, len(sources))
 		if check.Changed {
-			log.Printf("[rag] citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
+			logger.S().Infof("[rag] citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
 			answer = check.Answer
 			if p.cfg.RAG.CitationFilterSources {
 				finalSources = filterSourcesByCited(sources, check.ValidCited)
@@ -465,10 +465,10 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	}
 
 	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
-		log.Printf("[rag] append user memory failed: %v", err)
+		logger.S().Errorf("[rag] append user memory failed: %v", err)
 	}
 	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID); err != nil {
-		log.Printf("[rag] append assistant memory failed: %v", err)
+		logger.S().Errorf("[rag] append assistant memory failed: %v", err)
 	}
 
 	return onEvent(StreamEvent{
@@ -506,10 +506,10 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 		}
 		variants, err := p.expander.Expand(ctx, query, n)
 		if err != nil {
-			log.Printf("[rag] query expand failed, fallback single query: %v", err)
+			logger.S().Warnf("[rag] query expand failed, fallback single query: %v", err)
 		} else if len(variants) > 0 {
 			queries = buildExpandQueries(query, variants)
-			log.Printf("[rag] query expand original=%q variants=%v", query, variants)
+			logger.S().Infof("[rag] query expand original=%q variants=%v", query, variants)
 		}
 	}
 
@@ -530,7 +530,7 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 	fused := lists[0]
 	if len(lists) > 1 {
 		fused = fuseRRF(lists, p.cfg.RAG.RRFK)
-		log.Printf("[rag] multi-query fuse paths=%d fused=%d", len(lists), len(fused))
+		logger.S().Infof("[rag] multi-query fuse paths=%d fused=%d", len(lists), len(fused))
 	}
 
 	if p.cfg.Rerank.Enabled && p.reranker != nil && len(fused) > 0 {
@@ -542,10 +542,10 @@ func (p *Pipeline) retrieve(ctx context.Context, query string, filter *RetrieveF
 		candidates := truncateDocs(fused, poolK)
 		reranked, rerr := p.reranker.Rerank(ctx, query, candidates, rerankTopN)
 		if rerr != nil {
-			log.Printf("[rag] rerank failed, fallback fused top_k: %v", rerr)
+			logger.S().Warnf("[rag] rerank failed, fallback fused top_k: %v", rerr)
 			return truncateDocs(fused, topK), nil
 		}
-		log.Printf("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
+		logger.S().Infof("[rag] reranked candidates=%d -> %d", len(candidates), len(reranked))
 		return reranked, nil
 	}
 
@@ -563,10 +563,10 @@ func (p *Pipeline) retrieveOne(ctx context.Context, query string, filter *Retrie
 	if p.cfg.RAG.HybridEnabled && p.bm25 != nil {
 		sparse, serr := p.bm25.Search(ctx, query, filter, poolK)
 		if serr != nil {
-			log.Printf("[rag] bm25 search failed, fallback dense-only: %v", serr)
+			logger.S().Warnf("[rag] bm25 search failed, fallback dense-only: %v", serr)
 		} else if len(sparse) > 0 {
 			fused = fuseRRF([][]*schema.Document{dense, sparse}, p.cfg.RAG.RRFK)
-			log.Printf("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
+			logger.S().Infof("[rag] hybrid fuse dense=%d bm25=%d fused=%d", len(dense), len(sparse), len(fused))
 		}
 	}
 	return fused, nil

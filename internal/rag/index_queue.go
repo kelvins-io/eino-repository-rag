@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag/parser"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
@@ -87,10 +87,10 @@ return 1
 		return fmt.Errorf("enqueue index job doc_id=%d: %w", docID, err)
 	}
 	if n == 0 {
-		log.Printf("[rag] index queue skip duplicate doc_id=%d", docID)
+		logger.S().Warnf("[rag] index queue skip duplicate doc_id=%d", docID)
 		return nil
 	}
-	log.Printf("[rag] index queue enqueued doc_id=%d", docID)
+	logger.S().Infof("[rag] index queue enqueued doc_id=%d", docID)
 	return nil
 }
 
@@ -127,7 +127,7 @@ func (q *IndexQueue) Start(ctx context.Context) error {
 		go q.worker(runCtx, i)
 	}
 	q.started = true
-	log.Printf("[rag] index queue started workers=%d queue=%s", workers, q.queueKey)
+	logger.S().Infof("[rag] index queue started workers=%d queue=%s", workers, q.queueKey)
 	return nil
 }
 
@@ -148,7 +148,7 @@ func (q *IndexQueue) Stop() {
 		cancel()
 	}
 	if !waitGroupTimeout(&q.wg, q.waitStopTimeout()) {
-		log.Printf("[rag] index queue stop timed out after %s; in-flight jobs stay in active and will reclaim on next start", q.waitStopTimeout())
+		logger.S().Warnf("[rag] index queue stop timed out after %s; in-flight jobs stay in active and will reclaim on next start", q.waitStopTimeout())
 	}
 
 	q.mu.Lock()
@@ -156,7 +156,7 @@ func (q *IndexQueue) Stop() {
 	q.cancel = nil
 	q.runCtx = nil
 	q.mu.Unlock()
-	log.Printf("[rag] index queue stopped")
+	logger.S().Infof("[rag] index queue stopped")
 }
 
 func (q *IndexQueue) waitStopTimeout() time.Duration {
@@ -196,7 +196,7 @@ func (q *IndexQueue) reclaimActive(ctx context.Context) error {
 		moved++
 	}
 	if moved > 0 {
-		log.Printf("[rag] index queue reclaimed %d active job(s) to queue", moved)
+		logger.S().Infof("[rag] index queue reclaimed %d active job(s) to queue", moved)
 	}
 	return nil
 }
@@ -230,21 +230,21 @@ func (q *IndexQueue) reclaimFromDB(ctx context.Context) error {
 	}
 	for _, id := range ids {
 		if err := q.Enqueue(ctx, id); err != nil {
-			log.Printf("[rag] index queue reclaim enqueue failed doc_id=%d err=%v", id, err)
+			logger.S().Errorf("[rag] index queue reclaim enqueue failed doc_id=%d err=%v", id, err)
 		}
 	}
 	if len(ids) > 0 {
-		log.Printf("[rag] index queue db reclaim candidates=%d", len(ids))
+		logger.S().Infof("[rag] index queue db reclaim candidates=%d", len(ids))
 	}
 	return nil
 }
 
 func (q *IndexQueue) worker(ctx context.Context, id int) {
 	defer q.wg.Done()
-	log.Printf("[rag] index worker-%d started", id)
+	logger.S().Infof("[rag] index worker-%d started", id)
 	for {
 		if ctx.Err() != nil {
-			log.Printf("[rag] index worker-%d stopping", id)
+			logger.S().Infof("[rag] index worker-%d stopping", id)
 			return
 		}
 
@@ -254,10 +254,10 @@ func (q *IndexQueue) worker(ctx context.Context, id int) {
 		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
-				log.Printf("[rag] index worker-%d stopping", id)
+				logger.S().Infof("[rag] index worker-%d stopping", id)
 				return
 			}
-			log.Printf("[rag] index worker-%d blmove err=%v", id, err)
+			logger.S().Errorf("[rag] index worker-%d blmove err=%v", id, err)
 			q.sleep(ctx, 500*time.Millisecond)
 			continue
 		}
@@ -269,7 +269,7 @@ func (q *IndexQueue) worker(ctx context.Context, id int) {
 func (q *IndexQueue) handleJob(parent context.Context, raw string) {
 	job, err := parseIndexJob(raw)
 	if err != nil {
-		log.Printf("[rag] index queue invalid job payload=%q err=%v", truncate(raw, 200), err)
+		logger.S().Errorf("[rag] index queue invalid job payload=%q err=%v", truncate(raw, 200), err)
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = q.rdb.LRem(cleanupCtx, q.activeKey, 1, raw).Err()
 		cancel()
@@ -277,7 +277,7 @@ func (q *IndexQueue) handleJob(parent context.Context, raw string) {
 	}
 
 	if parent.Err() != nil {
-		log.Printf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
+		logger.S().Warnf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
 		return
 	}
 
@@ -291,7 +291,7 @@ func (q *IndexQueue) handleJob(parent context.Context, raw string) {
 	err = q.process(ctx, job)
 	if parent.Err() != nil {
 		// 关停：不要 onFailure（会 DLQ / 标失败），任务留在 active，下次 Start 回灌
-		log.Printf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
+		logger.S().Warnf("[rag] index queue interrupted doc_id=%d (left in active for reclaim)", job.DocID)
 		return
 	}
 	if err != nil {
@@ -305,7 +305,7 @@ func (q *IndexQueue) process(ctx context.Context, job IndexJob) error {
 	_, err := q.docRepo.GetByID(job.DocID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Printf("[rag] index queue skip missing doc_id=%d", job.DocID)
+			logger.S().Warnf("[rag] index queue skip missing doc_id=%d", job.DocID)
 			return errDocGone
 		}
 		return err
@@ -324,7 +324,7 @@ func (q *IndexQueue) onSuccess(raw string, job IndexJob) {
 	defer cancel()
 	_ = q.rdb.LRem(ctx, q.activeKey, 1, raw).Err()
 	_ = q.rdb.SRem(ctx, q.dedupKey, strconv.FormatUint(uint64(job.DocID), 10)).Err()
-	log.Printf("[rag] index queue done doc_id=%d attempt=%d", job.DocID, job.Attempt)
+	logger.S().Infof("[rag] index queue done doc_id=%d attempt=%d", job.DocID, job.Attempt)
 }
 
 func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
@@ -339,7 +339,7 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 	}
 
 	if !isRetryableIndexErr(err) {
-		log.Printf("[rag] index queue permanent fail doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
+		logger.S().Errorf("[rag] index queue permanent fail doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
 		q.deadLetter(ctx, cancel, member, job, err)
 		return
 	}
@@ -353,20 +353,20 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		retry := IndexJob{DocID: job.DocID, Attempt: job.Attempt + 1, Error: err.Error()}
 		payload, merr := json.Marshal(retry)
 		if merr != nil {
-			log.Printf("[rag] index queue marshal retry failed doc_id=%d err=%v", job.DocID, merr)
+			logger.S().Errorf("[rag] index queue marshal retry failed doc_id=%d err=%v", job.DocID, merr)
 			_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
 			cancel()
 			return
 		}
 		cancel()
 		backoff := indexRetryBackoff(retry.Attempt, q.cfg.IndexRetryBackoffSeconds)
-		log.Printf("[rag] index queue retry doc_id=%d attempt=%d/%d backoff=%s err=%v",
+		logger.S().Warnf("[rag] index queue retry doc_id=%d attempt=%d/%d backoff=%s err=%v",
 			job.DocID, retry.Attempt, maxRetries, backoff, err)
 		q.waitRetryBackoff(backoff)
 		pushCtx, pushCancel := q.redisOpCtx()
 		defer pushCancel()
 		if perr := q.rdb.LPush(pushCtx, q.queueKey, string(payload)).Err(); perr != nil {
-			log.Printf("[rag] index queue requeue failed doc_id=%d err=%v", job.DocID, perr)
+			logger.S().Errorf("[rag] index queue requeue failed doc_id=%d err=%v", job.DocID, perr)
 			_ = q.rdb.SRem(pushCtx, q.dedupKey, member).Err()
 			return
 		}
@@ -383,7 +383,7 @@ func (q *IndexQueue) deadLetter(ctx context.Context, cancel context.CancelFunc, 
 	}
 	_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
 	cancel()
-	log.Printf("[rag] index queue dead-letter doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
+	logger.S().Errorf("[rag] index queue dead-letter doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
 }
 
 func isRetryableIndexErr(err error) bool {

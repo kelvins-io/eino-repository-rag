@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 const maxUpload = 512 << 20
@@ -81,7 +82,7 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	}
 	up, cleanup, err := saveUpload(r, "file")
 	if err != nil {
-		log.Printf("[ocr] image reject: %v", err)
+		logger.S().Warnf("[ocr] image reject: %v", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -91,16 +92,16 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	psm, _ := strconv.Atoi(formOr(r, "psm", "6"))
 	job := nextJobID("image")
 	ctx := withJob(r.Context(), job)
-	log.Printf("[%s] start file=%s size=%s langs=%s psm=%d", job, up.Name, formatBytes(up.Size), langs, psm)
+	logger.S().Infof("[%s] start file=%s size=%s langs=%s psm=%d", job, up.Name, formatBytes(up.Size), langs, psm)
 	t0 := time.Now()
 	text, err := s.Image(ctx, up.Path, langs, psm)
 	dur := time.Since(t0).Round(time.Millisecond)
 	if err != nil {
-		log.Printf("[%s] fail dur=%s err=%v", job, dur, err)
+		logger.S().Errorf("[%s] fail dur=%s err=%v", job, dur, err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("[%s] done runes=%d dur=%s", job, len([]rune(text)), dur)
+	logger.S().Infof("[%s] done runes=%d dur=%s", job, len([]rune(text)), dur)
 	writeJSON(w, http.StatusOK, imageResponse{Text: text})
 }
 
@@ -111,7 +112,7 @@ func (s *Server) handlePDF(w http.ResponseWriter, r *http.Request) {
 	}
 	up, cleanup, err := saveUpload(r, "file")
 	if err != nil {
-		log.Printf("[ocr] pdf reject: %v", err)
+		logger.S().Warnf("[ocr] pdf reject: %v", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -119,12 +120,12 @@ func (s *Server) handlePDF(w http.ResponseWriter, r *http.Request) {
 
 	pages, err := parsePages(formOr(r, "pages", ""))
 	if err != nil {
-		log.Printf("[ocr] pdf reject: %v", err)
+		logger.S().Warnf("[ocr] pdf reject: %v", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if len(pages) == 0 {
-		log.Printf("[ocr] pdf reject: pages is required")
+		logger.S().Warnf("[ocr] pdf reject: pages is required")
 		writeError(w, http.StatusBadRequest, "pages is required")
 		return
 	}
@@ -133,7 +134,7 @@ func (s *Server) handlePDF(w http.ResponseWriter, r *http.Request) {
 	dpi, _ := strconv.Atoi(formOr(r, "dpi", "200"))
 	job := nextJobID("pdf")
 	ctx := withJob(r.Context(), job)
-	log.Printf("[%s] start file=%s size=%s pages=%d range=%s dpi=%d langs=%s",
+	logger.S().Infof("[%s] start file=%s size=%s pages=%d range=%s dpi=%d langs=%s",
 		job, up.Name, formatBytes(up.Size), len(pages), pageRange(pages), dpi, langs)
 	t0 := time.Now()
 	out, err := s.PDF(ctx, up.Path, pages, dpi, langs, psm)
@@ -147,14 +148,14 @@ func (s *Server) handlePDF(w http.ResponseWriter, r *http.Request) {
 	}
 	dur := time.Since(t0).Round(time.Millisecond)
 	if err != nil && ok == 0 {
-		log.Printf("[%s] fail pages=%d dur=%s err=%v", job, len(pages), dur, err)
+		logger.S().Errorf("[%s] fail pages=%d dur=%s err=%v", job, len(pages), dur, err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if err != nil {
-		log.Printf("[%s] done ok=%d empty=%d dur=%s partial_err=%v", job, ok, empty, dur, err)
+		logger.S().Warnf("[%s] done ok=%d empty=%d dur=%s partial_err=%v", job, ok, empty, dur, err)
 	} else {
-		log.Printf("[%s] done ok=%d empty=%d dur=%s", job, ok, empty, dur)
+		logger.S().Infof("[%s] done ok=%d empty=%d dur=%s", job, ok, empty, dur)
 	}
 	resp := pdfResponse{Pages: make([]pdfPageResponse, 0, len(pages))}
 	for _, p := range pages {

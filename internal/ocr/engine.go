@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 // Config 本地 tesseract / pdftoppm 执行参数。
@@ -73,7 +74,7 @@ func acquireSlot(ctx context.Context) error {
 	slotOnce.Do(func() {
 		n := maxProcs()
 		slots = make(chan struct{}, n)
-		log.Printf("[ocr] worker slots=%d", n)
+		logger.S().Infof("[ocr] worker slots=%d", n)
 	})
 	wait := time.Now()
 	select {
@@ -81,7 +82,7 @@ func acquireSlot(ctx context.Context) error {
 		return ctx.Err()
 	case slots <- struct{}{}:
 		if d := time.Since(wait); d >= time.Second {
-			log.Printf("[%s] wait slot %s", jobOf(ctx), d.Round(time.Millisecond))
+			logger.S().Warnf("[%s] wait slot %s", jobOf(ctx), d.Round(time.Millisecond))
 		}
 		return nil
 	}
@@ -254,7 +255,7 @@ func RecognizePDFPages(ctx context.Context, cfg Config, pdfPath string, pages []
 			func() {
 				defer releaseSlot()
 				job := jobOf(ctx)
-				log.Printf("[%s] page start p=%d dpi=%d", job, page, cfg.dpi())
+				logger.S().Infof("[%s] page start p=%d dpi=%d", job, page, cfg.dpi())
 				t0 := time.Now()
 				img, err := RenderPDFPage(ctx, cfg, pdfPath, page, dir)
 				renderDur := time.Since(t0)
@@ -267,10 +268,10 @@ func RecognizePDFPages(ctx context.Context, cfg Config, pdfPath string, pages []
 				}
 				n := int(done.Add(1))
 				if err != nil {
-					log.Printf("[%s] page %d/%d p=%d fail=%v render=%s ocr=%s",
+					logger.S().Errorf("[%s] page %d/%d p=%d fail=%v render=%s ocr=%s",
 						job, n, total, page, err, renderDur.Round(time.Millisecond), ocrDur.Round(time.Millisecond))
 				} else {
-					log.Printf("[%s] page %d/%d p=%d runes=%d render=%s ocr=%s",
+					logger.S().Infof("[%s] page %d/%d p=%d runes=%d render=%s ocr=%s",
 						job, n, total, page, len([]rune(text)), renderDur.Round(time.Millisecond), ocrDur.Round(time.Millisecond))
 				}
 				mu.Lock()

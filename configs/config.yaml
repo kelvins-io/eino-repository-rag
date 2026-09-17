@@ -108,7 +108,7 @@ rag:
     languages: "chi_sim+eng"
     dpi: 200
     concurrency: 1
-    timeout_seconds: 10
+    timeout_seconds: 60
     page_seg_mode: 6
 
 # Cross-Encoder 重排（OpenAI 兼容，如 SiliconFlow /v1/rerank）

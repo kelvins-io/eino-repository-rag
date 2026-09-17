@@ -3,13 +3,14 @@ package parser
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	gopdf "github.com/Detective-XH/gopdf"
+
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 type pdfPageWork struct {
@@ -87,7 +88,7 @@ func extractPDF(path string, s *extractSettings) (*Result, error) {
 			}
 		}
 		if ocrErr = ocrPDFPages(s.ctx, path, pages, s); ocrErr != nil {
-			log.Printf("[parser] pdf ocr partial/fail path=%s err=%v", path, ocrErr)
+			logger.S().Warnf("[parser] pdf ocr partial/fail path=%s err=%v", path, ocrErr)
 		}
 		extractedPages, imageOnly, empty, degraded = 0, 0, 0, 0
 		ocrPages := 0
@@ -109,7 +110,7 @@ func extractPDF(path string, s *extractSettings) (*Result, error) {
 			}
 		}
 		plain = joinPDFPages(pages)
-		log.Printf("[parser] pdf ocr pages=%d ocr_ok=%d", totalPage, ocrPages)
+		logger.S().Infof("[parser] pdf ocr pages=%d ocr_ok=%d", totalPage, ocrPages)
 	}
 
 	plain = normalizeText(plain)
@@ -132,7 +133,7 @@ func extractPDF(path string, s *extractSettings) (*Result, error) {
 		return nil, permanentf("pdf 文本解码失败（字体/CMap 未正确映射为 Unicode）。请尝试导出为 Word/纯文本后再导入，或使用带 ToUnicode 的 PDF")
 	}
 
-	log.Printf("[parser] pdf pages=%d extracted=%d image_only=%d degraded=%d empty=%d",
+	logger.S().Infof("[parser] pdf pages=%d extracted=%d image_only=%d degraded=%d empty=%d",
 		totalPage, extractedPages, imageOnly, degraded, empty)
 
 	return &Result{

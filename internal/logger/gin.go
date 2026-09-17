@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -61,7 +62,8 @@ func GinRecovery(stack bool) gin.HandlerFunc {
 			if err := recover(); err != nil {
 				var brokenPipe bool
 				if ne, ok := err.(*net.OpError); ok {
-					if se, ok := ne.Err.(*os.SyscallError); ok {
+					var se *os.SyscallError
+					if errors.As(ne.Err, &se) {
 						msg := strings.ToLower(se.Error())
 						brokenPipe = strings.Contains(msg, "broken pipe") ||
 							strings.Contains(msg, "connection reset by peer")

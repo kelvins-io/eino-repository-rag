@@ -3,7 +3,6 @@ package rag
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/cloudwego/eino/components/embedding"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 )
 
 const (
@@ -61,7 +61,7 @@ func (e *resilientEmbedder) EmbedStrings(ctx context.Context, texts []string, op
 		return nil, nil
 	}
 	if len(texts) > e.batchSize {
-		log.Printf("[rag] embed split texts=%d batch_size=%d", len(texts), e.batchSize)
+		logger.S().Infof("[rag] embed split texts=%d batch_size=%d", len(texts), e.batchSize)
 	}
 	out := make([][]float64, 0, len(texts))
 	for i := 0; i < len(texts); i += e.batchSize {
@@ -91,7 +91,7 @@ func (e *resilientEmbedder) embedBatch(ctx context.Context, texts []string, opts
 			if err := waitEmbedRetry(ctx, attempt-1, e.retryBackoff); err != nil {
 				return nil, err
 			}
-			log.Printf("[rag] embed batch retry attempt=%d/%d n=%d err=%v",
+			logger.S().Warnf("[rag] embed batch retry attempt=%d/%d n=%d err=%v",
 				attempt, e.maxRetries, len(texts), lastErr)
 		}
 

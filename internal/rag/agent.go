@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync/atomic"
 
@@ -17,6 +16,7 @@ import (
 	ub "github.com/cloudwego/eino/utils/callbacks"
 	"github.com/google/uuid"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/memory"
 	dbmodel "github.com/kelvins-io/eino-repository-rag/internal/model"
 )
@@ -167,7 +167,7 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 	if p.cfg.RAG.CitationValidateEnabled {
 		check := validateCitations(answer, len(sources))
 		if check.Changed {
-			log.Printf("[rag] agent citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
+			logger.S().Infof("[rag] agent citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
 			answer = check.Answer
 			if p.cfg.RAG.CitationFilterSources {
 				finalSources = filterSourcesByCited(sources, check.ValidCited)
@@ -182,10 +182,10 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 	}
 
 	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
-		log.Printf("[rag] agent append user memory failed: %v", err)
+		logger.S().Errorf("[rag] agent append user memory failed: %v", err)
 	}
 	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID); err != nil {
-		log.Printf("[rag] agent append assistant memory failed: %v", err)
+		logger.S().Errorf("[rag] agent append assistant memory failed: %v", err)
 	}
 
 	return onEvent(StreamEvent{
