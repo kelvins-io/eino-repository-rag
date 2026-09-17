@@ -10,26 +10,30 @@ import (
 type Result struct {
 	Text        string
 	ContentType string
-	Format      string // pdf|docx|xlsx|pptx|html|markdown|text|csv|json
+	Format      string // pdf|docx|xlsx|pptx|html|markdown|text|csv|json|image
 	Pages       int    // 可读页数（PDF/PPTX 有意义）
 }
 
-// ExtractFile 按扩展名/Content-Type 从本地文件提取纯文本
-func ExtractFile(path, contentType string) (*Result, error) {
+// ExtractFile 按扩展名/Content-Type 从本地文件提取纯文本。
+// 扫描件 / 图片页可通过 WithOCR 启用 Tesseract OCR。
+func ExtractFile(path, contentType string, opts ...ExtractOption) (*Result, error) {
+	s := applyExtractOptions(opts)
 	format := detectFormat(path, contentType)
 	switch format {
 	case "pdf":
-		return extractPDF(path)
+		return extractPDF(path, &s)
 	case "docx":
-		return extractDOCX(path)
+		return extractDOCX(path, &s)
 	case "xlsx":
 		return extractXLSX(path)
 	case "pptx":
-		return extractPPTX(path)
+		return extractPPTX(path, &s)
 	case "html":
 		return extractHTMLFile(path)
 	case "csv", "markdown", "text", "json":
 		return extractPlainFile(path, format)
+	case "image":
+		return extractImageFile(path, contentType, &s)
 	case "doc":
 		return nil, permanentf("不支持旧版 .doc，请转换为 .docx 后导入")
 	default:
@@ -40,7 +44,7 @@ func ExtractFile(path, contentType string) (*Result, error) {
 		}
 		// 若几乎全是不可打印二进制，判定失败
 		if looksBinary(res.Text) {
-			return nil, permanentf("不支持的二进制文件类型（扩展名=%s），请使用 PDF/DOCX/XLSX/PPTX/HTML/TXT/MD", filepath.Ext(path))
+			return nil, permanentf("不支持的二进制文件类型（扩展名=%s），请使用 PDF/DOCX/XLSX/PPTX/HTML/TXT/MD/图片", filepath.Ext(path))
 		}
 		return res, nil
 	}
@@ -69,6 +73,8 @@ func detectFormat(path, contentType string) string {
 		return "json"
 	case ".txt", ".log", ".text":
 		return "text"
+	case ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".gif":
+		return "image"
 	}
 
 	ct := strings.ToLower(strings.TrimSpace(contentType))
@@ -93,8 +99,62 @@ func detectFormat(path, contentType string) string {
 		return "json"
 	case strings.HasPrefix(ct, "text/"):
 		return "text"
+	case strings.HasPrefix(ct, "image/"):
+		return "image"
 	}
 	return ""
+}
+
+func extractImageFile(path, contentType string, s *extractSettings) (*Result, error) {
+	if !s.ocrEnabled() {
+		return nil, permanentf("图片文件需要开启 OCR（rag.ocr.enabled）")
+	}
+	text, err := ocrImageFile(s.ctx, s, path)
+	if err != nil {
+		return nil, fmt.Errorf("image OCR: %w", err)
+	}
+	text = normalizeText(text)
+	if text == "" {
+		return nil, permanentf("图片 OCR 未识别到文本")
+	}
+	ct := strings.TrimSpace(contentType)
+	if ct == "" || ct == "application/octet-stream" {
+		ct = guessImageContentType(path)
+	}
+	return &Result{
+		Text:        text,
+		ContentType: ct,
+		Format:      "image",
+		Pages:       1,
+	}, nil
+}
+
+func guessImageContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	case ".bmp":
+		return "image/bmp"
+	case ".gif":
+		return "image/gif"
+	default:
+		return "image/png"
+	}
+}
+
+func isImageZipEntry(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp", ".gif":
+		return true
+	default:
+		return false
+	}
 }
 
 func looksBinary(s string) bool {

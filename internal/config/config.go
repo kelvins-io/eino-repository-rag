@@ -179,6 +179,30 @@ type RAGConfig struct {
 	CitationValidateEnabled bool `yaml:"citation_validate_enabled"`
 	// CitationFilterSources 校验后仅在 done 事件中保留被引用的 sources（默认 false，保留全部召回）
 	CitationFilterSources bool `yaml:"citation_filter_sources"`
+
+	// OCR 扫描 PDF / 图片 / 无文字 PPTX·DOCX 的 Tesseract 识别
+	OCR OCRConfig `yaml:"ocr"`
+}
+
+// OCRConfig 文档解析 OCR（默认调用 compose ocr 服务）
+type OCRConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Endpoint OCR HTTP 服务，如 http://localhost:18080；为空则回退本机 tesseract
+	Endpoint string `yaml:"endpoint"`
+	// Languages tesseract -l，默认 chi_sim+eng
+	Languages string `yaml:"languages"`
+	// DPI pdftoppm 渲染分辨率，默认 200
+	DPI int `yaml:"dpi"`
+	// Concurrency 同时识别的页数，默认 2
+	Concurrency int `yaml:"concurrency"`
+	// TimeoutSeconds 单页 tesseract 超时，默认 60
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+	// PageSegMode tesseract --psm，默认 6（单块文本）
+	PageSegMode int `yaml:"page_seg_mode"`
+	// TesseractBin 可执行文件名或路径，默认 tesseract（仅 endpoint 为空时）
+	TesseractBin string `yaml:"tesseract_bin"`
+	// PDFToPPMBin 可执行文件名或路径，默认 pdftoppm（仅 endpoint 为空时）
+	PDFToPPMBin string `yaml:"pdftoppm_bin"`
 }
 
 // RerankConfig Cross-Encoder / API 重排（OpenAI 兼容，如 SiliconFlow）
@@ -273,6 +297,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		c.JWT.Secret = v
+	}
+	if v := os.Getenv("OCR_ENDPOINT"); v != "" {
+		c.RAG.OCR.Endpoint = v
 	}
 }
 
@@ -403,6 +430,27 @@ func (c *Config) setDefaults() {
 	}
 	if c.RAG.QueryExpandTimeoutSeconds <= 0 {
 		c.RAG.QueryExpandTimeoutSeconds = 20
+	}
+	if c.RAG.OCR.Languages == "" {
+		c.RAG.OCR.Languages = "chi_sim+eng"
+	}
+	if c.RAG.OCR.DPI <= 0 {
+		c.RAG.OCR.DPI = 200
+	}
+	if c.RAG.OCR.Concurrency <= 0 {
+		c.RAG.OCR.Concurrency = 1
+	}
+	if c.RAG.OCR.TimeoutSeconds <= 0 {
+		c.RAG.OCR.TimeoutSeconds = 60
+	}
+	if c.RAG.OCR.PageSegMode <= 0 {
+		c.RAG.OCR.PageSegMode = 6
+	}
+	if c.RAG.OCR.TesseractBin == "" {
+		c.RAG.OCR.TesseractBin = "tesseract"
+	}
+	if c.RAG.OCR.PDFToPPMBin == "" {
+		c.RAG.OCR.PDFToPPMBin = "pdftoppm"
 	}
 	if c.Rerank.APIKey == "" {
 		c.Rerank.APIKey = c.Embedding.APIKey

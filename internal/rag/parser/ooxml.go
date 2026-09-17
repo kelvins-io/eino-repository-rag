@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -12,15 +13,29 @@ import (
 	"strings"
 )
 
-var reSlideNum = regexp.MustCompile(`ppt/slides/slide(\d+)\.xml$`)
+var (
+	reSlideNum  = regexp.MustCompile(`ppt/slides/slide(\d+)\.xml$`)
+	reSlideRels = regexp.MustCompile(`ppt/slides/_rels/slide(\d+)\.xml.rels$`)
+	reRelTarget = regexp.MustCompile(`Target="([^"]+)"`)
+)
 
-func extractDOCX(path string) (*Result, error) {
+func extractDOCX(path string, s *extractSettings) (*Result, error) {
 	text, err := readZipEntryText(path, "word/document.xml", extractWordML)
 	if err != nil {
 		return nil, fmt.Errorf("docx: %w", err)
 	}
 	text = normalizeText(text)
+	if text == "" && s.ocrEnabled() {
+		ocrText, ocrErr := ocrOOXMLMedia(s, path, "word/")
+		if ocrErr != nil {
+			return nil, fmt.Errorf("docx OCR: %w", ocrErr)
+		}
+		text = normalizeText(ocrText)
+	}
 	if text == "" {
+		if s.ocrEnabled() {
+			return nil, permanentf("docx 未提取到文本（含 OCR）")
+		}
 		return nil, permanentf("docx 未提取到文本")
 	}
 	return &Result{
@@ -30,7 +45,7 @@ func extractDOCX(path string) (*Result, error) {
 	}, nil
 }
 
-func extractPPTX(path string) (*Result, error) {
+func extractPPTX(path string, s *extractSettings) (*Result, error) {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return nil, fmt.Errorf("open pptx: %w", err)
@@ -55,9 +70,19 @@ func extractPPTX(path string) (*Result, error) {
 		return nil, permanentf("pptx 未找到幻灯片")
 	}
 
+	rels := map[int]*zip.File{}
+	for _, f := range zr.File {
+		m := reSlideRels.FindStringSubmatch(filepath.ToSlash(f.Name))
+		if m == nil {
+			continue
+		}
+		n, _ := strconv.Atoi(m[1])
+		rels[n] = f
+	}
+
 	var b strings.Builder
-	for _, s := range slides {
-		rc, err := s.file.Open()
+	for _, sl := range slides {
+		rc, err := sl.file.Open()
 		if err != nil {
 			continue
 		}
@@ -67,16 +92,26 @@ func extractPPTX(path string) (*Result, error) {
 			continue
 		}
 		text := strings.TrimSpace(extractDrawingML(body))
+		if text == "" && s.ocrEnabled() {
+			if rel := rels[sl.num]; rel != nil {
+				if ocrText, ocrErr := ocrPPTXSlideImages(s, zr, rel); ocrErr == nil {
+					text = strings.TrimSpace(ocrText)
+				}
+			}
+		}
 		if text == "" {
 			continue
 		}
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		fmt.Fprintf(&b, "## 第 %d 页\n\n%s", s.num, text)
+		fmt.Fprintf(&b, "## 第 %d 页\n\n%s", sl.num, text)
 	}
 	plain := normalizeText(b.String())
 	if plain == "" {
+		if s.ocrEnabled() {
+			return nil, permanentf("pptx 未提取到文本（含 OCR）")
+		}
 		return nil, permanentf("pptx 未提取到文本")
 	}
 	return &Result{
@@ -201,4 +236,117 @@ func extractDrawingML(data []byte) string {
 
 func localName(n xml.Name) string {
 	return n.Local
+}
+
+func ocrOOXMLMedia(s *extractSettings, path, prefix string) (string, error) {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return "", err
+	}
+	defer zr.Close()
+
+	var names []string
+	for _, f := range zr.File {
+		name := filepath.ToSlash(f.Name)
+		if strings.HasPrefix(name, prefix) && strings.Contains(name, "/media/") && isImageZipEntry(name) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return ocrZipImages(s, zr, names)
+}
+
+func ocrPPTXSlideImages(s *extractSettings, zr *zip.ReadCloser, rel *zip.File) (string, error) {
+	rc, err := rel.Open()
+	if err != nil {
+		return "", err
+	}
+	body, err := io.ReadAll(rc)
+	_ = rc.Close()
+	if err != nil {
+		return "", err
+	}
+	base := filepath.ToSlash(filepath.Dir(rel.Name))
+	var names []string
+	seen := map[string]bool{}
+	for _, m := range reRelTarget.FindAllSubmatch(body, -1) {
+		target := filepath.ToSlash(string(m[1]))
+		if strings.HasPrefix(target, "/") {
+			target = strings.TrimPrefix(target, "/")
+		} else {
+			target = filepath.ToSlash(filepath.Clean(filepath.Join(base, target)))
+		}
+		if !isImageZipEntry(target) || seen[target] {
+			continue
+		}
+		seen[target] = true
+		names = append(names, target)
+	}
+	return ocrZipImages(s, zr, names)
+}
+
+func ocrZipImages(s *extractSettings, zr *zip.ReadCloser, names []string) (string, error) {
+	if len(names) == 0 || !s.ocrEnabled() {
+		return "", nil
+	}
+	if _, err := s.recognizer(); err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "rag-ocr-zip-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+
+	files := zipFileIndex(zr)
+	var b strings.Builder
+	var firstErr error
+	for _, name := range names {
+		f := files[name]
+		if f == nil {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		text, err := ocrImageBytes(s.ctx, s, dir, name, data)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(text)
+	}
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return "", firstErr
+	}
+	return out, nil
+}
+
+func zipFileIndex(zr *zip.ReadCloser) map[string]*zip.File {
+	out := make(map[string]*zip.File, len(zr.File))
+	for _, f := range zr.File {
+		out[filepath.ToSlash(f.Name)] = f
+	}
+	return out
 }

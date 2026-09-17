@@ -19,6 +19,8 @@ func TestDetectFormat(t *testing.T) {
 		"a.md":   "markdown",
 		"a.txt":  "text",
 		"a.doc":  "doc",
+		"a.png":  "image",
+		"a.jpg":  "image",
 	}
 	for name, want := range cases {
 		if got := detectFormat(name, ""); got != want {
@@ -166,14 +168,6 @@ func TestExtractLocalFailedPDFs(t *testing.T) {
 	if !ran {
 		t.Skip("local upload samples not present")
 	}
-}
-
-func truncateRunes(s string, n int) string {
-	rs := []rune(s)
-	if len(rs) <= n {
-		return s
-	}
-	return string(rs[:n]) + "..."
 }
 
 func TestExtractDOCRejected(t *testing.T) {

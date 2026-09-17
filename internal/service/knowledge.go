@@ -923,6 +923,18 @@ func guessContentType(name string) string {
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	case ".pptx":
 		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".tif", ".tiff":
+		return "image/tiff"
+	case ".bmp":
+		return "image/bmp"
+	case ".gif":
+		return "image/gif"
 	default:
 		return "application/octet-stream"
 	}

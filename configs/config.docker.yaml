@@ -72,7 +72,7 @@ rag:
   upload_dir: "/app/storage/uploads"
   index_workers: 5
   index_max_retries: 3
-  index_job_timeout_minutes: 10
+  index_job_timeout_minutes: 30
   index_retry_backoff_seconds: 5
   index_queue_key: "kb:index:queue"
   index_active_key: "kb:index:active"
@@ -84,6 +84,14 @@ rag:
   structure_split_enabled: true
   citation_validate_enabled: true
   citation_filter_sources: false
+  ocr:
+    enabled: true
+    endpoint: "http://ocr:8080"
+    languages: "chi_sim+eng"
+    dpi: 200
+    concurrency: 1
+    timeout_seconds: 60
+    page_seg_mode: 6
 
 rerank:
   enabled: true

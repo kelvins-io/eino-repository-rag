@@ -24,6 +24,7 @@ eval:
 
 docker-build:
 	docker build -t eino-repository-rag:latest .
+	docker build -t eino-repository-rag-ocr:latest -f Dockerfile.ocr .
 	docker build -t eino-repository-rag-web:latest ./web
 
 # 依赖 + 后端/前端镜像（需 .env 中 DEEPSEEK_API_KEY / EMBEDDING_API_KEY）

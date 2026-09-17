@@ -6,6 +6,7 @@
 
 - **用户认证**：租户（`tenants`）+ 用户注册/登录；JWT（HS256）鉴权；注册/登录须填写租户 ID，不存在则拦截提示
 - **文档导入**：`POST /api/v1/documents/import`，支持一次导入多个文件；按内容 MD5 在知识库内去重，重复导入直接返回成功且不触发索引；导入记录写入 PostgreSQL，新文件完成后经 **Redis 索引队列**异步构建向量索引（可限流、重试、崩溃回灌）
+- **文档解析 OCR**：扫描 PDF / 图片 / 无文字 PPTX·DOCX 回退 Tesseract；通过 compose `ocr` 服务（`pdftoppm` 渲染），本机无需 brew
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar 索引
@@ -30,7 +31,7 @@
 HTTP API (Gin) + JWT
   ├─ 公开：创建租户 / 注册 / 登录 / health
   ├─ 文档导入 → 落盘 + PostgreSQL 记录 → Redis 索引队列 → Index Pipeline
-  │                                      ├─ Parser（PDF/Office/文本）
+  │                                      ├─ Parser（PDF/Office/文本/图片 OCR）
   │                                      ├─ Recursive Splitter
   │                                      ├─ Embedding
   │                                      ├─ Vector Store（redis / milvus_lite）
@@ -49,7 +50,7 @@ HTTP API (Gin) + JWT
 ### 1. 启动依赖
 
 ```bash
-# 默认：PostgreSQL + Redis Stack
+# 默认：PostgreSQL + Redis Stack + OCR sidecar
 docker compose up -d
 
 # 若使用 milvus_lite 向量索引，额外启动本地 Milvus Standalone
@@ -153,6 +154,32 @@ agent:
 ```
 
 与线性 RAG（`/chat/query` 一次检索）不同，Agent 使用 Eino ReAct，由模型按需多次调用 `knowledge_retrieve`（仍走 Hybrid/Expand/Rerank），SSE 会额外推送 `step` / `tool_start` / `tool_result`。延迟与费用更高，适合需要多跳检索的问题。
+
+### 3.6 扫描件 / 图片 OCR
+
+解析器先抽 PDF 内嵌文本；**图片页、扫描件、乱码 CJK PDF** 以及 **PNG/JPG 等图片** 回退 Tesseract。无文字的 PPTX 幻灯片 / DOCX 会识别 `media` 里的图片。
+
+OCR 跑在 compose 的 `ocr` 服务里（镜像内含 tesseract + 中文语言包 + poppler），本机 **不必** `brew install`。
+
+```yaml
+rag:
+  ocr:
+    enabled: true
+    endpoint: "http://localhost:18080"  # 容器内为 http://ocr:8080
+    languages: "chi_sim+eng"
+    dpi: 200
+    concurrency: 1
+    timeout_seconds: 60
+    page_seg_mode: 6
+  index_job_timeout_minutes: 30
+```
+
+```bash
+docker compose up -d ocr
+# 或随依赖一起：docker compose up -d
+```
+
+环境变量 `OCR_ENDPOINT` 可覆盖 endpoint。留空 endpoint 时回退本机 `tesseract`/`pdftoppm`。关闭：`rag.ocr.enabled: false`。
 
 ### 4. 启动服务
 

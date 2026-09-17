@@ -12,7 +12,15 @@ import (
 	gopdf "github.com/Detective-XH/gopdf"
 )
 
-func extractPDF(path string) (*Result, error) {
+type pdfPageWork struct {
+	num     int
+	text    string
+	needOCR bool
+	ocrOK   bool
+	signal  gopdf.ExtractionSignal
+}
+
+func extractPDF(path string, s *extractSettings) (*Result, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read pdf: %w", err)
@@ -29,7 +37,7 @@ func extractPDF(path string) (*Result, error) {
 		return nil, permanentf("pdf 没有页面")
 	}
 
-	var b strings.Builder
+	pages := make([]pdfPageWork, 0, totalPage)
 	extractedPages := 0
 	imageOnly := 0
 	degraded := 0
@@ -38,11 +46,60 @@ func extractPDF(path string) (*Result, error) {
 		page := r.Page(i)
 		if page.V.IsNull() {
 			empty++
+			pages = append(pages, pdfPageWork{num: i, needOCR: s.ocrEnabled(), signal: gopdf.SignalEmpty})
 			continue
 		}
 		text := sanitizeExtractedText(extractPDFPage(page))
 		if strings.TrimSpace(text) == "" {
-			switch page.ExtractionSignal() {
+			sig := page.ExtractionSignal()
+			work := pdfPageWork{num: i, signal: sig}
+			switch sig {
+			case gopdf.SignalImageOnly:
+				imageOnly++
+				work.needOCR = s.ocrEnabled()
+			case gopdf.SignalDegraded:
+				degraded++
+			default:
+				empty++
+				work.needOCR = s.ocrEnabled()
+			}
+			pages = append(pages, work)
+			continue
+		}
+		extractedPages++
+		pages = append(pages, pdfPageWork{num: i, text: text, signal: gopdf.SignalText})
+	}
+
+	plain := joinPDFPages(pages)
+	needOCR := false
+	for _, p := range pages {
+		if p.needOCR {
+			needOCR = true
+			break
+		}
+	}
+	var ocrErr error
+	if s.ocrEnabled() && (needOCR || looksGarbledPDF(plain, path)) {
+		if looksGarbledPDF(plain, path) {
+			for i := range pages {
+				pages[i].needOCR = true
+				pages[i].text = ""
+			}
+		}
+		if ocrErr = ocrPDFPages(s.ctx, path, pages, s); ocrErr != nil {
+			log.Printf("[parser] pdf ocr partial/fail path=%s err=%v", path, ocrErr)
+		}
+		extractedPages, imageOnly, empty, degraded = 0, 0, 0, 0
+		ocrPages := 0
+		for _, p := range pages {
+			if p.ocrOK {
+				ocrPages++
+			}
+			if strings.TrimSpace(p.text) != "" {
+				extractedPages++
+				continue
+			}
+			switch p.signal {
 			case gopdf.SignalImageOnly:
 				imageOnly++
 			case gopdf.SignalDegraded:
@@ -50,19 +107,21 @@ func extractPDF(path string) (*Result, error) {
 			default:
 				empty++
 			}
-			continue
 		}
-		extractedPages++
-		if b.Len() > 0 {
-			b.WriteString("\n\n")
-		}
-		fmt.Fprintf(&b, "## 第 %d 页\n\n%s", i, text)
+		plain = joinPDFPages(pages)
+		log.Printf("[parser] pdf ocr pages=%d ocr_ok=%d", totalPage, ocrPages)
 	}
 
-	plain := normalizeText(b.String())
+	plain = normalizeText(plain)
 	if plain == "" {
-		if imageOnly > 0 && extractedPages == 0 {
-			return nil, permanentf("pdf 未提取到文本：共 %d 页，其中扫描/图片页 %d 页，暂不支持 OCR", totalPage, imageOnly)
+		if ocrErr != nil && extractedPages == 0 {
+			return nil, fmt.Errorf("pdf OCR 失败：共 %d 页: %w", totalPage, ocrErr)
+		}
+		if !s.ocrEnabled() && imageOnly > 0 && extractedPages == 0 {
+			return nil, permanentf("pdf 未提取到文本：共 %d 页，其中扫描/图片页 %d 页，请开启 rag.ocr.enabled 并启动 OCR 服务（docker compose up -d ocr）", totalPage, imageOnly)
+		}
+		if s.ocrEnabled() && imageOnly > 0 && extractedPages == 0 {
+			return nil, permanentf("pdf OCR 未识别到文本：共 %d 页，其中扫描/图片页 %d 页", totalPage, imageOnly)
 		}
 		if degraded > 0 && extractedPages == 0 {
 			return nil, permanentf("pdf 文本提取失败（%d 页内容流损坏）", degraded)
@@ -82,6 +141,21 @@ func extractPDF(path string) (*Result, error) {
 		Format:      "pdf",
 		Pages:       totalPage,
 	}, nil
+}
+
+func joinPDFPages(pages []pdfPageWork) string {
+	var b strings.Builder
+	for _, p := range pages {
+		text := strings.TrimSpace(p.text)
+		if text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString("\n\n")
+		}
+		fmt.Fprintf(&b, "## 第 %d 页\n\n%s", p.num, text)
+	}
+	return b.String()
 }
 
 func extractPDFPage(page gopdf.Page) string {

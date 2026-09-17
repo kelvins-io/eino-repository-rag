@@ -80,7 +80,7 @@ rag:
   # Redis 持久化索引队列
   index_workers: 5
   index_max_retries: 3
-  index_job_timeout_minutes: 10
+  index_job_timeout_minutes: 30
   index_retry_backoff_seconds: 5
   index_queue_key: "kb:index:queue"
   index_active_key: "kb:index:active"
@@ -95,6 +95,15 @@ rag:
   # 引用后校验：清洗越界 [n]；可选仅保留被引用的 sources
   citation_validate_enabled: true
   citation_filter_sources: false
+  # 扫描 PDF / 图片 OCR：调用 compose ocr 服务（docker compose up -d ocr）
+  ocr:
+    enabled: true
+    endpoint: "http://localhost:18080"
+    languages: "chi_sim+eng"
+    dpi: 200
+    concurrency: 1
+    timeout_seconds: 60
+    page_seg_mode: 6
 
 # Cross-Encoder 重排（OpenAI 兼容，如 SiliconFlow /v1/rerank）
 # api_key / base_url 为空时回退 embedding 配置

@@ -30,6 +30,28 @@ services:
       timeout: 5s
       retries: 10
 
+  # OCR sidecar：tesseract + pdftoppm。本地 go run 与 app 容器都通过 HTTP 调用，无需本机 brew。
+  ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    image: eino-repository-rag-ocr:latest
+    container_name: eino-rag-ocr
+    environment:
+      OMP_THREAD_LIMIT: "1"
+      OMP_NUM_THREADS: "1"
+      OCR_MAX_PROCS: "1"
+    cpus: 2.0
+    mem_limit: 2g
+    ports:
+      - "18080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
   # 本地 Milvus Standalone（Go SDK 可连；对应 vector_index.provider=milvus_lite）
   # 启动：docker compose --profile milvus up -d
   etcd:
@@ -116,6 +138,7 @@ services:
       # 默认 redis 向量库；Milvus：VECTOR_INDEX_PROVIDER=milvus_lite + --profile milvus
       VECTOR_INDEX_PROVIDER: ${VECTOR_INDEX_PROVIDER:-redis}
       MILVUS_ADDRESS: ${MILVUS_ADDRESS:-milvus:19530}
+      OCR_ENDPOINT: http://ocr:8080
     ports:
       - "8080:8080"
     volumes:
@@ -124,6 +147,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ocr:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
