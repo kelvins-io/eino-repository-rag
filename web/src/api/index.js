@@ -196,6 +196,7 @@ export const api = {
     http.post('/api/v1/documents/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  uploadLimits: () => http.get('/api/v1/system/upload-limits'),
 
   // 问答（SSE 流式）
   chatQueryStream,

@@ -187,6 +187,10 @@ type RAGConfig struct {
 	OverlapSize int    `yaml:"overlap_size"`
 	TopK        int    `yaml:"top_k"`
 	UploadDir   string `yaml:"upload_dir"`
+	// MaxUploadFileSizeMB 单个上传文件大小上限（MB）；0 表示默认 50
+	MaxUploadFileSizeMB int `yaml:"max_upload_file_size_mb"`
+	// MaxUploadFiles 单次导入最多文件数；0 表示默认 20
+	MaxUploadFiles int `yaml:"max_upload_files"`
 	// HybridEnabled 启用稠密向量 + BM25 稀疏检索，经 RRF 融合
 	HybridEnabled bool `yaml:"hybrid_enabled"`
 	// CandidateK Hybrid/Rerank 前每路召回候选数；0 表示 top_k*4
@@ -252,6 +256,16 @@ type OCRConfig struct {
 	TesseractBin string `yaml:"tesseract_bin"`
 	// PDFToPPMBin 可执行文件名或路径，默认 pdftoppm（仅 endpoint 为空时）
 	PDFToPPMBin string `yaml:"pdftoppm_bin"`
+}
+
+// MaxUploadFileSizeBytes 单个上传文件字节上限
+func (c RAGConfig) MaxUploadFileSizeBytes() int64 {
+	return int64(c.MaxUploadFileSizeMB) * 1024 * 1024
+}
+
+// MaxUploadBodyBytes 单次 multipart 请求体上限（按「单文件上限 × 文件数」估算，另加 1MiB 表单开销）
+func (c RAGConfig) MaxUploadBodyBytes() int64 {
+	return c.MaxUploadFileSizeBytes()*int64(c.MaxUploadFiles) + 1024*1024
 }
 
 // RerankConfig Cross-Encoder / API 重排（OpenAI 兼容，如 SiliconFlow）
@@ -363,6 +377,8 @@ func (c *Config) applyEnv() {
 	applyPositiveIntEnv(&c.Redis.ReadTimeoutSeconds, "REDIS_READ_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Redis.WriteTimeoutSeconds, "REDIS_WRITE_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Milvus.ConnectTimeoutSeconds, "MILVUS_CONNECT_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.RAG.MaxUploadFileSizeMB, "MAX_UPLOAD_FILE_SIZE_MB")
+	applyPositiveIntEnv(&c.RAG.MaxUploadFiles, "MAX_UPLOAD_FILES")
 }
 
 func applyPositiveIntEnv(dst *int, key string) {
@@ -493,6 +509,12 @@ func (c *Config) setDefaults() {
 	}
 	if c.RAG.UploadDir == "" {
 		c.RAG.UploadDir = "./storage/uploads"
+	}
+	if c.RAG.MaxUploadFileSizeMB <= 0 {
+		c.RAG.MaxUploadFileSizeMB = 50
+	}
+	if c.RAG.MaxUploadFiles <= 0 {
+		c.RAG.MaxUploadFiles = 20
 	}
 	if c.RAG.RRFK <= 0 {
 		c.RAG.RRFK = 60

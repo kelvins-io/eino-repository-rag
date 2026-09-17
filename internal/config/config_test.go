@@ -23,6 +23,12 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.RAG.OCR.TimeoutSeconds != 60 {
 		t.Fatalf("ocr timeout=%d", c.RAG.OCR.TimeoutSeconds)
 	}
+	if c.RAG.MaxUploadFileSizeMB != 50 {
+		t.Fatalf("max upload file size mb=%d", c.RAG.MaxUploadFileSizeMB)
+	}
+	if c.RAG.MaxUploadFiles != 20 {
+		t.Fatalf("max upload files=%d", c.RAG.MaxUploadFiles)
+	}
 	if c.RAG.QueryExpandTimeoutSeconds != 20 {
 		t.Fatalf("expand timeout=%d", c.RAG.QueryExpandTimeoutSeconds)
 	}

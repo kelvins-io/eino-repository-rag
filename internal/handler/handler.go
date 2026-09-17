@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/auth"
+	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/logger"
 	"github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/rag"
@@ -22,11 +23,19 @@ import (
 )
 
 type KnowledgeHandler struct {
-	svc *service.KnowledgeService
+	svc                 *service.KnowledgeService
+	maxUploadFileSize   int64
+	maxUploadFiles      int
+	maxUploadFileSizeMB int
 }
 
-func NewKnowledgeHandler(svc *service.KnowledgeService) *KnowledgeHandler {
-	return &KnowledgeHandler{svc: svc}
+func NewKnowledgeHandler(svc *service.KnowledgeService, uploadCfg config.RAGConfig) *KnowledgeHandler {
+	return &KnowledgeHandler{
+		svc:                 svc,
+		maxUploadFileSize:   uploadCfg.MaxUploadFileSizeBytes(),
+		maxUploadFiles:      uploadCfg.MaxUploadFiles,
+		maxUploadFileSizeMB: uploadCfg.MaxUploadFileSizeMB,
+	}
 }
 
 type APIResponse struct {
@@ -291,8 +300,19 @@ func (h *KnowledgeHandler) DeleteDirectory(c *gin.Context) {
 
 // ImportDocument POST /api/v1/documents/import
 func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
+	maxBody := h.maxUploadFileSize*int64(h.maxUploadFiles) + 1024*1024
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBody)
+
 	form, err := c.MultipartForm()
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) || strings.Contains(strings.ToLower(err.Error()), "request body too large") {
+			fail(c, http.StatusRequestEntityTooLarge, fmt.Sprintf(
+				"上传总大小超过限制：单文件 ≤ %dMB，单次最多 %d 个文件",
+				h.maxUploadFileSizeMB, h.maxUploadFiles,
+			))
+			return
+		}
 		fail(c, http.StatusBadRequest, "解析上传表单失败: "+err.Error())
 		return
 	}
@@ -312,6 +332,19 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 	if len(fileHeaders) == 0 {
 		fail(c, http.StatusBadRequest, "缺少上传文件 file/files")
 		return
+	}
+	if len(fileHeaders) > h.maxUploadFiles {
+		fail(c, http.StatusBadRequest, fmt.Sprintf("单次最多上传 %d 个文件，当前 %d 个", h.maxUploadFiles, len(fileHeaders)))
+		return
+	}
+	for _, fh := range fileHeaders {
+		if fh.Size > h.maxUploadFileSize {
+			fail(c, http.StatusBadRequest, fmt.Sprintf(
+				"文件 %q 大小 %.1fMB 超过限制 %dMB",
+				fh.Filename, float64(fh.Size)/(1024*1024), h.maxUploadFileSizeMB,
+			))
+			return
+		}
 	}
 
 	opts := service.ImportOptions{
@@ -343,6 +376,15 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 		return
 	}
 	ok(c, result)
+}
+
+// UploadLimits GET /api/v1/system/upload-limits
+func (h *KnowledgeHandler) UploadLimits(c *gin.Context) {
+	ok(c, gin.H{
+		"max_upload_file_size_mb": h.maxUploadFileSizeMB,
+		"max_upload_file_size":    h.maxUploadFileSize,
+		"max_upload_files":        h.maxUploadFiles,
+	})
 }
 
 // ListDocuments GET /api/v1/documents

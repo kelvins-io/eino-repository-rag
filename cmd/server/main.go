@@ -89,8 +89,9 @@ func main() {
 	}
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
-	kh := handler.NewKnowledgeHandler(svc)
+	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
 	router := server.NewRouter(cfg.Server.Mode, kh, authHandler, tokenMgr, cfg.Agent.Enabled)
+	router.MaxMultipartMemory = cfg.RAG.MaxUploadFileSizeBytes()
 
 	go func() {
 		logger.L().Info("eino knowledge base RAG listening", zap.String("addr", cfg.Server.Addr))

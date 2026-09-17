@@ -83,6 +83,9 @@ rag:
   bm25_index_name: "kb_bm25_index"
   bm25_key_prefix: "kb:bm25:"
   upload_dir: "./storage/uploads"
+  # 单文件大小上限（MB）；单次导入最多文件数（nginx client_max_body_size 需 ≥ 二者乘积）
+  max_upload_file_size_mb: 50
+  max_upload_files: 5
   # Redis 持久化索引队列
   index_workers: 3
   index_max_retries: 3

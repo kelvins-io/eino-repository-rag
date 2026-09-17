@@ -68,6 +68,8 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 				docs.DELETE("/:id", kh.DeleteDocument)
 			}
 
+			protected.GET("/system/upload-limits", kh.UploadLimits)
+
 			chat := protected.Group("/chat")
 			{
 				chat.POST("/query", kh.Query)

@@ -76,6 +76,8 @@ rag:
   bm25_index_name: "kb_bm25_index"
   bm25_key_prefix: "kb:bm25:"
   upload_dir: "/app/storage/uploads"
+  max_upload_file_size_mb: 50
+  max_upload_files: 20
   index_workers: 5
   index_max_retries: 3
   index_job_timeout_minutes: 30

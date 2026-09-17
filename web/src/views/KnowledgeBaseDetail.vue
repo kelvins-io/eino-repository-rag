@@ -181,13 +181,19 @@
             multiple
             accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.json,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.gif"
             :auto-upload="false"
+            :limit="maxUploadFiles"
             :on-change="onFileChange"
             :on-remove="onFileRemove"
+            :on-exceed="onFileExceed"
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">拖拽或 <em>点击选择</em> 文件</div>
             <template #tip>
-              <div class="el-upload__tip">支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）</div>
+              <div class="el-upload__tip">
+                支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
+                <br />
+                单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个
+              </div>
             </template>
           </el-upload>
         </el-form-item>
@@ -264,6 +270,9 @@ const importing = ref(false)
 const uploadRef = ref()
 const fileList = ref([])
 const importForm = reactive({ directory_id: undefined, title: '' })
+const maxUploadFileSizeMB = ref(50)
+const maxUploadFiles = ref(20)
+const maxUploadFileSize = computed(() => maxUploadFileSizeMB.value * 1024 * 1024)
 
 const docDetailVisible = ref(false)
 const docDetail = ref(null)
@@ -386,7 +395,16 @@ async function onDirDelete(data) {
   await loadTree()
 }
 
-function onFileChange(_file, files) {
+function onFileChange(file, files) {
+  const raw = file?.raw
+  if (raw && raw.size > maxUploadFileSize.value) {
+    ElMessage.warning(
+      `文件「${file.name}」大小 ${(raw.size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+    )
+    uploadRef.value?.handleRemove(file)
+    fileList.value = files.filter((f) => f.uid !== file.uid)
+    return
+  }
   fileList.value = files
 }
 
@@ -394,11 +412,30 @@ function onFileRemove(_file, files) {
   fileList.value = files
 }
 
-function openImport() {
+function onFileExceed() {
+  ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+}
+
+async function loadUploadLimits() {
+  try {
+    const data = await api.uploadLimits()
+    if (data?.max_upload_file_size_mb > 0) {
+      maxUploadFileSizeMB.value = data.max_upload_file_size_mb
+    }
+    if (data?.max_upload_files > 0) {
+      maxUploadFiles.value = data.max_upload_files
+    }
+  } catch {
+    // 使用默认值
+  }
+}
+
+async function openImport() {
   importForm.title = ''
   importForm.directory_id = currentDir.value?.id
   fileList.value = []
   uploadRef.value?.clearFiles()
+  await loadUploadLimits()
   importVisible.value = true
 }
 
@@ -406,6 +443,19 @@ async function doImport() {
   if (!fileList.value.length) {
     ElMessage.warning('请选择文件')
     return
+  }
+  if (fileList.value.length > maxUploadFiles.value) {
+    ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+    return
+  }
+  for (const f of fileList.value) {
+    const size = f.raw?.size || 0
+    if (size > maxUploadFileSize.value) {
+      ElMessage.warning(
+        `文件「${f.name}」大小 ${(size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+      )
+      return
+    }
   }
   const fd = new FormData()
   fd.append('knowledge_base_id', String(kbId.value))
