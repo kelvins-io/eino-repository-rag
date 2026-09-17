@@ -152,7 +152,7 @@
                 <span class="speech-live-text">
                   {{ statusText || (transcribing ? '正在识别，请稍候…' : '正在录音，请开始说话…') }}
                 </span>
-                <span v-if="listening" class="speech-live-hint">再次点击麦克风停止并识别</span>
+                <span v-if="listening" class="speech-live-hint">5 秒无声音将自动结束</span>
               </div>
             </div>
             <div class="composer-actions">
@@ -225,7 +225,7 @@ const {
 
 const speechPlaceholder = computed(() => {
   if (transcribing.value) return '正在识别语音…'
-  if (listening.value) return '正在录音，再次点击麦克风停止并识别'
+  if (listening.value) return '正在录音，5 秒无声音将自动结束'
   return '输入问题，Enter 发送，Shift+Enter 换行'
 })
 

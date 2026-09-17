@@ -4,6 +4,9 @@ import { api } from '@/api'
 
 const MAX_RECORD_MS = 60_000
 const MIN_RECORD_MS = 400
+const SILENCE_MS = 5_000
+const SILENCE_RMS = 0.02
+const SILENCE_POLL_MS = 100
 
 function canRecord() {
   return (
@@ -54,7 +57,12 @@ export function useSpeechInput(query, options = {}) {
   let startedAt = 0
   let tickTimer = null
   let maxTimer = null
+  let silenceTimer = null
+  let audioContext = null
+  let analyser = null
+  let lastVoiceAt = 0
   let commitOnStop = true
+  let stopping = false
 
   function clearTimers() {
     if (tickTimer) {
@@ -65,11 +73,68 @@ export function useSpeechInput(query, options = {}) {
       clearTimeout(maxTimer)
       maxTimer = null
     }
+    if (silenceTimer) {
+      clearInterval(silenceTimer)
+      silenceTimer = null
+    }
+  }
+
+  function stopAnalyser() {
+    analyser = null
+    if (audioContext) {
+      const ctx = audioContext
+      audioContext = null
+      ctx.close().catch(() => {})
+    }
   }
 
   function stopTracks() {
+    stopAnalyser()
     mediaStream?.getTracks().forEach((track) => track.stop())
     mediaStream = null
+  }
+
+  function currentRms() {
+    if (!analyser) return 0
+    const data = new Uint8Array(analyser.fftSize)
+    analyser.getByteTimeDomainData(data)
+    let sum = 0
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128
+      sum += v * v
+    }
+    return Math.sqrt(sum / data.length)
+  }
+
+  function startSilenceMonitor(stream) {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!Ctx) return
+    try {
+      audioContext = new Ctx()
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {})
+      }
+      const source = audioContext.createMediaStreamSource(stream)
+      analyser = audioContext.createAnalyser()
+      analyser.fftSize = 2048
+      analyser.smoothingTimeConstant = 0.3
+      source.connect(analyser)
+    } catch {
+      stopAnalyser()
+      return
+    }
+    lastVoiceAt = Date.now()
+    silenceTimer = setInterval(() => {
+      if (!listening.value || stopping) return
+      if (currentRms() >= SILENCE_RMS) {
+        lastVoiceAt = Date.now()
+        return
+      }
+      if (Date.now() - lastVoiceAt >= SILENCE_MS) {
+        ElMessage.info('检测到静音，开始识别')
+        stop()
+      }
+    }, SILENCE_POLL_MS)
   }
 
   function commitText(text) {
@@ -106,6 +171,7 @@ export function useSpeechInput(query, options = {}) {
     if (listening.value || transcribing.value) return
 
     commitOnStop = true
+    stopping = false
     chunks = []
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -134,6 +200,7 @@ export function useSpeechInput(query, options = {}) {
       stop()
     }
     recorder.onstop = async () => {
+      stopping = false
       clearTimers()
       listening.value = false
       const mimeType = recorder?.mimeType || mime || 'audio/webm'
@@ -177,6 +244,8 @@ export function useSpeechInput(query, options = {}) {
       stop()
     }, MAX_RECORD_MS)
 
+    startSilenceMonitor(mediaStream)
+
     try {
       recorder.start(200)
     } catch {
@@ -191,6 +260,8 @@ export function useSpeechInput(query, options = {}) {
   function stop(opts = {}) {
     if (opts.commit === false) commitOnStop = false
     if (!recorder && !listening.value) return
+    if (stopping) return
+    stopping = true
     clearTimers()
     if (recorder && recorder.state !== 'inactive') {
       try {
@@ -202,6 +273,7 @@ export function useSpeechInput(query, options = {}) {
     }
     listening.value = false
     recorder = null
+    stopping = false
     stopTracks()
     if (!commitOnStop) statusText.value = ''
   }
