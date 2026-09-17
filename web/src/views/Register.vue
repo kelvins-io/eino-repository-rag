@@ -38,25 +38,8 @@
       <div class="footer">
         已有账号？
         <router-link to="/login">去登录</router-link>
-        <span class="sep">·</span>
-        <el-button link type="primary" @click="showTenant = true">创建租户</el-button>
       </div>
     </div>
-
-    <el-dialog v-model="showTenant" title="创建租户" width="400px">
-      <el-form :model="tenantForm" label-position="top">
-        <el-form-item label="租户 ID" required>
-          <el-input v-model="tenantForm.code" placeholder="唯一标识，注册时填写" />
-        </el-form-item>
-        <el-form-item label="租户名称">
-          <el-input v-model="tenantForm.name" placeholder="可选，默认与 ID 相同" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showTenant = false">取消</el-button>
-        <el-button type="primary" :loading="tenantLoading" @click="createTenant">创建</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -69,8 +52,6 @@ import { setAuth } from '@/utils/auth'
 
 const router = useRouter()
 const loading = ref(false)
-const showTenant = ref(false)
-const tenantLoading = ref(false)
 const form = reactive({
   tenant_id: 'default',
   username: '',
@@ -78,26 +59,6 @@ const form = reactive({
   password: '',
   password2: '',
 })
-const tenantForm = reactive({ code: '', name: '' })
-
-async function createTenant() {
-  if (!tenantForm.code.trim()) {
-    ElMessage.warning('请填写租户 ID')
-    return
-  }
-  tenantLoading.value = true
-  try {
-    await api.createTenant({
-      code: tenantForm.code.trim(),
-      name: tenantForm.name.trim(),
-    })
-    form.tenant_id = tenantForm.code.trim()
-    ElMessage.success('租户已创建，请继续注册')
-    showTenant.value = false
-  } finally {
-    tenantLoading.value = false
-  }
-}
 
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
@@ -176,10 +137,5 @@ h1 {
 .footer a {
   color: #2563eb;
   text-decoration: none;
-}
-
-.sep {
-  margin: 0 6px;
-  color: #cbd5e1;
 }
 </style>

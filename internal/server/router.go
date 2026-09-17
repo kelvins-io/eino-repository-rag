@@ -28,8 +28,6 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 
 	api := r.Group("/api/v1")
 	{
-		// 公开：租户创建、注册、登录
-		api.POST("/tenants", ah.CreateTenant)
 		authGroup := api.Group("/auth")
 		{
 			authGroup.POST("/register", ah.Register)
@@ -39,6 +37,8 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 		protected := api.Group("")
 		protected.Use(auth.Middleware(tm))
 		{
+			// 公开：租户创建、注册、登录
+			protected.POST("/tenants", ah.CreateTenant)
 			protected.GET("/auth/me", ah.Me)
 
 			kbs := protected.Group("/knowledge-bases")
