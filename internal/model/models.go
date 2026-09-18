@@ -74,6 +74,21 @@ type Document struct {
 
 func (Document) TableName() string { return "documents" }
 
+// DocumentIndexBuild 文档一次索引构建的历史。入队时创建，成功或放弃重试时写入结束时间；重试不另开记录。
+type DocumentIndexBuild struct {
+	ID          uint           `gorm:"primaryKey" json:"id"`
+	TenantID    uint           `gorm:"index;not null" json:"tenant_id"`
+	DocumentID  uint           `gorm:"index;not null" json:"document_id"`
+	Status      DocumentStatus `gorm:"size:32;index;not null;default:pending" json:"status"`
+	TriggeredAt time.Time      `gorm:"not null" json:"triggered_at"`
+	FinishedAt  *time.Time     `json:"finished_at,omitempty"`
+	ErrorMsg    string         `gorm:"type:text" json:"error_msg,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+func (DocumentIndexBuild) TableName() string { return "document_index_builds" }
+
 // Conversation 会话（长期记忆的会话维度）
 type Conversation struct {
 	ID              uint      `gorm:"primaryKey" json:"id"`

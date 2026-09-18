@@ -726,6 +726,18 @@ func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*
 	return doc, nil
 }
 
+// ListIndexBuilds 返回文档的索引构建历史（租户内可读）。
+func (s *KnowledgeService) ListIndexBuilds(docID uint, userID string, tenantID uint) ([]model.DocumentIndexBuild, error) {
+	actor, err := requireActor(userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.requireDocAccess(docID, actor); err != nil {
+		return nil, err
+	}
+	return s.docRepo.ListIndexBuilds(docID, 100)
+}
+
 // DeleteDocument 删除文档并级联清理向量索引与本地文件（属主）
 func (s *KnowledgeService) DeleteDocument(ctx context.Context, id uint, userID string, tenantID uint) error {
 	if id == 0 {

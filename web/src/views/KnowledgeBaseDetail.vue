@@ -132,9 +132,10 @@
             <el-table-column label="创建时间" width="170">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="操作" width="230" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="showDoc(row)">详情</el-button>
+                <el-button link type="primary" @click="openIndexHistory(row)">构建记录</el-button>
                 <el-button link type="danger" @click="onDeleteOne(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -245,6 +246,28 @@
         </el-descriptions>
       </template>
     </el-drawer>
+
+    <!-- 索引构建记录 -->
+    <el-drawer v-model="indexHistoryVisible" :title="indexHistoryTitle" size="720px">
+      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引构建记录">
+        <el-table-column label="构建触发时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.triggered_at) }}</template>
+        </el-table-column>
+        <el-table-column label="构建结束时间" width="180">
+          <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
+        </el-table-column>
+        <el-table-column label="本次构建状态" width="120">
+          <template #default="{ row }">
+            <el-tag :type="statusType(row.status)" size="small">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="错误原因" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.error_msg || '-' }}</template>
+        </el-table-column>
+      </el-table>
+    </el-drawer>
   </div>
 </template>
 
@@ -299,6 +322,14 @@ const importQuotaFull = computed(
 
 const docDetailVisible = ref(false)
 const docDetail = ref(null)
+const indexHistoryVisible = ref(false)
+const indexHistoryLoading = ref(false)
+const indexHistory = ref([])
+const indexHistoryDoc = ref(null)
+const indexHistoryTitle = computed(() => {
+  const name = indexHistoryDoc.value?.file_name || indexHistoryDoc.value?.title
+  return name ? `索引构建记录 · ${name}` : '索引构建记录'
+})
 
 async function loadKb() {
   kb.value = await api.getKnowledgeBase(kbId.value)
@@ -515,6 +546,19 @@ function onSelectionChange(rows) {
   selectedIds.value = rows.map((r) => r.id)
 }
 
+async function openIndexHistory(row) {
+  indexHistoryDoc.value = row
+  indexHistoryVisible.value = true
+  indexHistoryLoading.value = true
+  indexHistory.value = []
+  try {
+    const data = await api.listIndexBuilds(row.id)
+    indexHistory.value = data?.list || []
+  } finally {
+    indexHistoryLoading.value = false
+  }
+}
+
 async function showDoc(row) {
   docDetail.value = await api.getDocument(row.id)
   docDetailVisible.value = true
@@ -526,6 +570,7 @@ async function onDeleteOne(row) {
   })
   await api.deleteDocument(row.id)
   ElMessage.success('已删除')
+  if (indexHistoryDoc.value?.id === row.id) indexHistoryVisible.value = false
   await loadDocs()
 }
 
@@ -533,8 +578,10 @@ async function onBatchDelete() {
   await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个文档？`, '批量删除', {
     type: 'warning',
   })
-  const result = await api.deleteDocuments(selectedIds.value)
+  const deletedIds = selectedIds.value.slice()
+  const result = await api.deleteDocuments(deletedIds)
   ElMessage.success(result?.message || '批量删除完成')
+  if (deletedIds.includes(indexHistoryDoc.value?.id)) indexHistoryVisible.value = false
   await loadDocs()
 }
 

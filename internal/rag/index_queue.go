@@ -74,21 +74,29 @@ func (q *IndexQueue) Enqueue(ctx context.Context, docID uint) error {
 	}
 	member := strconv.FormatUint(uint64(docID), 10)
 
-	// 原子：仅首次入去重集时 LPUSH，避免重复排队
+	// 先占去重位，落库构建记录后再入队，避免 worker 抢先补建第二条记录
 	script := redis.NewScript(`
 if redis.call('SADD', KEYS[1], ARGV[1]) == 0 then
   return 0
 end
-redis.call('LPUSH', KEYS[2], ARGV[2])
 return 1
 `)
-	n, err := script.Run(ctx, q.rdb, []string{q.dedupKey, q.queueKey}, member, string(raw)).Int()
+	n, err := script.Run(ctx, q.rdb, []string{q.dedupKey}, member).Int()
 	if err != nil {
 		return fmt.Errorf("enqueue index job doc_id=%d: %w", docID, err)
 	}
 	if n == 0 {
 		logger.S().Warnf("[rag] index queue skip duplicate doc_id=%d", docID)
 		return nil
+	}
+	if doc, derr := q.docRepo.GetByID(docID); derr != nil {
+		logger.S().Errorf("[rag] index build record skipped doc_id=%d err=%v", docID, derr)
+	} else if berr := q.docRepo.EnsureIndexBuild(doc); berr != nil {
+		logger.S().Errorf("[rag] index build record failed doc_id=%d err=%v", docID, berr)
+	}
+	if err := q.rdb.LPush(ctx, q.queueKey, string(raw)).Err(); err != nil {
+		_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
+		return fmt.Errorf("enqueue index job doc_id=%d: %w", docID, err)
 	}
 	logger.S().Infof("[rag] index queue enqueued doc_id=%d", docID)
 	return nil
@@ -324,6 +332,7 @@ func (q *IndexQueue) onSuccess(raw string, job IndexJob) {
 	defer cancel()
 	_ = q.rdb.LRem(ctx, q.activeKey, 1, raw).Err()
 	_ = q.rdb.SRem(ctx, q.dedupKey, strconv.FormatUint(uint64(job.DocID), 10)).Err()
+	q.finishIndexBuild(job.DocID, dbmodel.DocumentStatusReady, "")
 	logger.S().Infof("[rag] index queue done doc_id=%d attempt=%d", job.DocID, job.Attempt)
 }
 
@@ -350,10 +359,12 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 	}
 	if job.Attempt < maxRetries {
 		_ = q.docRepo.UpdateStatus(job.DocID, dbmodel.DocumentStatusPending, 0, err.Error())
+		_ = q.docRepo.NoteIndexBuildError(job.DocID, err.Error())
 		retry := IndexJob{DocID: job.DocID, Attempt: job.Attempt + 1, Error: err.Error()}
 		payload, merr := json.Marshal(retry)
 		if merr != nil {
 			logger.S().Errorf("[rag] index queue marshal retry failed doc_id=%d err=%v", job.DocID, merr)
+			q.finishIndexBuild(job.DocID, dbmodel.DocumentStatusFailed, err.Error())
 			_ = q.rdb.SRem(ctx, q.dedupKey, member).Err()
 			cancel()
 			return
@@ -367,6 +378,7 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 		defer pushCancel()
 		if perr := q.rdb.LPush(pushCtx, q.queueKey, string(payload)).Err(); perr != nil {
 			logger.S().Errorf("[rag] index queue requeue failed doc_id=%d err=%v", job.DocID, perr)
+			q.finishIndexBuild(job.DocID, dbmodel.DocumentStatusFailed, err.Error())
 			_ = q.rdb.SRem(pushCtx, q.dedupKey, member).Err()
 			return
 		}
@@ -376,8 +388,24 @@ func (q *IndexQueue) onFailure(raw string, job IndexJob, err error) {
 	q.deadLetter(ctx, cancel, member, job, err)
 }
 
+func (q *IndexQueue) finishIndexBuild(docID uint, status dbmodel.DocumentStatus, errMsg string) {
+	if q == nil || q.docRepo == nil || docID == 0 {
+		return
+	}
+	if err := q.docRepo.FinishIndexBuild(docID, status, errMsg); err != nil {
+		logger.S().Errorf("[rag] finish index build doc_id=%d err=%v", docID, err)
+	}
+}
+
 func (q *IndexQueue) deadLetter(ctx context.Context, cancel context.CancelFunc, member string, job IndexJob, err error) {
-	dlqJob := IndexJob{DocID: job.DocID, Attempt: job.Attempt, Error: err.Error()}
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	if err == nil || !errors.Is(err, context.Canceled) {
+		q.finishIndexBuild(job.DocID, dbmodel.DocumentStatusFailed, msg)
+	}
+	dlqJob := IndexJob{DocID: job.DocID, Attempt: job.Attempt, Error: msg}
 	if payload, merr := json.Marshal(dlqJob); merr == nil {
 		_ = q.rdb.LPush(ctx, q.dlqKey, string(payload)).Err()
 	}

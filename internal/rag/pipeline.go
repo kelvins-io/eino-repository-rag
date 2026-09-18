@@ -162,6 +162,9 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		return err
 	}
 
+	if err := p.docRepo.BeginIndexBuild(doc); err != nil {
+		logger.S().Errorf("[rag] begin index build doc_id=%d err=%v", docID, err)
+	}
 	_ = p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusIndexing, 0, "")
 
 	parsed, err := parser.ExtractFile(doc.FilePath, doc.ContentType,

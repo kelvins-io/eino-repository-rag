@@ -197,6 +197,7 @@ export const api = {
   // 文档
   listDocuments: (params) => http.get('/api/v1/documents', { params }),
   getDocument: (id) => http.get(`/api/v1/documents/${id}`),
+  listIndexBuilds: (id) => http.get(`/api/v1/documents/${id}/index-builds`),
   deleteDocument: (id) => http.delete(`/api/v1/documents/${id}`),
   deleteDocuments: (ids) => http.post('/api/v1/documents/delete', { ids }),
   reindexDocuments: (ids) => http.post('/api/v1/documents/reindex', { ids }),

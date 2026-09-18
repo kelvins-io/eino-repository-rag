@@ -507,6 +507,23 @@ func (h *KnowledgeHandler) GetDocument(c *gin.Context) {
 	ok(c, doc)
 }
 
+func (h *KnowledgeHandler) ListIndexBuilds(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "无效的文档 ID")
+		return
+	}
+	list, err := h.svc.ListIndexBuilds(uint(id), currentUserID(c), currentTenantID(c))
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	if list == nil {
+		list = []model.DocumentIndexBuild{}
+	}
+	ok(c, gin.H{"list": list})
+}
+
 func (h *KnowledgeHandler) DeleteDocument(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {

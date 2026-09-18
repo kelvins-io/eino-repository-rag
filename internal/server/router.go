@@ -69,6 +69,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 				docs.POST("/delete", kh.DeleteDocuments)
 				docs.GET("", kh.ListDocuments)
 				docs.GET("/:id", kh.GetDocument)
+				docs.GET("/:id/index-builds", kh.ListIndexBuilds)
 				docs.DELETE("/:id", kh.DeleteDocument)
 			}
 

@@ -39,11 +39,15 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 		&model.KnowledgeBase{},
 		&model.Directory{},
 		&model.Document{},
+		&model.DocumentIndexBuild{},
 		&model.Conversation{},
 		&model.Message{},
 		&model.TenantSpeechUsage{},
 	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
+	}
+	if err := MigrateIndexBuilds(db); err != nil {
+		return nil, fmt.Errorf("migrate index builds: %w", err)
 	}
 	return db, nil
 }
@@ -163,6 +167,9 @@ func (r *DocumentRepo) ListIDsByStatuses(statuses ...model.DocumentStatus) ([]ui
 }
 
 func (r *DocumentRepo) Delete(id uint) error {
+	if err := r.db.Where("document_id = ?", id).Delete(&model.DocumentIndexBuild{}).Error; err != nil {
+		return err
+	}
 	return r.db.Delete(&model.Document{}, id).Error
 }
 
