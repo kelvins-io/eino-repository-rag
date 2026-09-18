@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/config"
@@ -546,4 +548,38 @@ func (r *UserRepo) GetByID(id uint) (*model.User, error) {
 		return nil, err
 	}
 	return &u, nil
+}
+
+// MapUsernameByAuthIDs 按业务 user_id（数字字符串）批量查用户名。
+func (r *UserRepo) MapUsernameByAuthIDs(authIDs []string) (map[string]string, error) {
+	out := make(map[string]string, len(authIDs))
+	ids := make([]uint, 0, len(authIDs))
+	seen := make(map[uint]struct{}, len(authIDs))
+	for _, raw := range authIDs {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		id64, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || id64 == 0 {
+			continue
+		}
+		id := uint(id64)
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var users []model.User
+	if err := r.db.Select("id", "username").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		out[u.AuthUserID()] = u.Username
+	}
+	return out, nil
 }

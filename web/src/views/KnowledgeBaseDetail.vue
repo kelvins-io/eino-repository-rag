@@ -6,7 +6,12 @@
           ← 返回列表
         </el-button>
         <h2>{{ kb?.name || '知识库详情' }}</h2>
-        <p class="sub">{{ kb?.description || '管理目录树与文档导入' }}</p>
+        <p class="sub">
+          {{ kb?.description || '管理目录树与文档导入' }}
+          <template v-if="kb?.username || kb?.user_id">
+            · 创建用户 {{ kb.username || kb.user_id }}
+          </template>
+        </p>
       </div>
       <div class="actions">
         <el-button :icon="Upload" type="primary" @click="openImport">导入文档</el-button>

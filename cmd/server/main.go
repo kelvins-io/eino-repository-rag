@@ -94,7 +94,7 @@ func main() {
 		logger.L().Fatal("start index queue failed", zap.Error(err))
 	}
 
-	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, memMgr, pipeline)
+	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, userRepo, memMgr, pipeline)
 	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
 	if cfg.ASR.Enabled {
 		kh.WithASR(asr.NewClient(cfg.ASR), cfg.ASR.MaxAudioBytes())

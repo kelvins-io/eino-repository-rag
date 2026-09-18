@@ -22,6 +22,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
+        <el-table-column label="创建用户" width="140" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.username || row.user_id || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column
           prop="created_at"
           label="创建时间"

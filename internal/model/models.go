@@ -20,6 +20,7 @@ type KnowledgeBase struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	TenantID    uint      `gorm:"index;not null;default:0" json:"tenant_id"`
 	UserID      string    `gorm:"size:64;index;not null" json:"user_id"` // 创建者/属主
+	Username    string    `gorm:"-" json:"username,omitempty"`           // 创建者用户名（查询时填充）
 	Name        string    `gorm:"size:128;not null" json:"name"`
 	Description string    `gorm:"size:512" json:"description"`
 	CreatedAt   time.Time `json:"created_at"`

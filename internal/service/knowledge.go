@@ -31,12 +31,13 @@ type Actor struct {
 }
 
 type KnowledgeService struct {
-	docRepo *repository.DocumentRepo
-	kbRepo  *repository.KnowledgeBaseRepo
-	dirRepo *repository.DirectoryRepo
-	msgRepo *repository.MessageRepo
-	mem     *memory.Manager
-	rag     *rag.Pipeline
+	docRepo  *repository.DocumentRepo
+	kbRepo   *repository.KnowledgeBaseRepo
+	dirRepo  *repository.DirectoryRepo
+	msgRepo  *repository.MessageRepo
+	userRepo *repository.UserRepo
+	mem      *memory.Manager
+	rag      *rag.Pipeline
 }
 
 func NewKnowledgeService(
@@ -44,16 +45,18 @@ func NewKnowledgeService(
 	kbRepo *repository.KnowledgeBaseRepo,
 	dirRepo *repository.DirectoryRepo,
 	msgRepo *repository.MessageRepo,
+	userRepo *repository.UserRepo,
 	mem *memory.Manager,
 	pipeline *rag.Pipeline,
 ) *KnowledgeService {
 	return &KnowledgeService{
-		docRepo: docRepo,
-		kbRepo:  kbRepo,
-		dirRepo: dirRepo,
-		msgRepo: msgRepo,
-		mem:     mem,
-		rag:     pipeline,
+		docRepo:  docRepo,
+		kbRepo:   kbRepo,
+		dirRepo:  dirRepo,
+		msgRepo:  msgRepo,
+		userRepo: userRepo,
+		mem:      mem,
+		rag:      pipeline,
 	}
 }
 
@@ -66,6 +69,31 @@ func requireActor(userID string, tenantID uint) (Actor, error) {
 		return Actor{}, fmt.Errorf("tenant_id is required")
 	}
 	return Actor{UserID: userID, TenantID: tenantID}, nil
+}
+
+func (s *KnowledgeService) fillKBUsernames(kbs []*model.KnowledgeBase) {
+	if s.userRepo == nil || len(kbs) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(kbs))
+	for _, kb := range kbs {
+		if kb == nil || kb.UserID == "" {
+			continue
+		}
+		ids = append(ids, kb.UserID)
+	}
+	names, err := s.userRepo.MapUsernameByAuthIDs(ids)
+	if err != nil || len(names) == 0 {
+		return
+	}
+	for _, kb := range kbs {
+		if kb == nil {
+			continue
+		}
+		if name, ok := names[kb.UserID]; ok {
+			kb.Username = name
+		}
+	}
 }
 
 // requireKBAccess 同租户可读
@@ -199,6 +227,7 @@ func (s *KnowledgeService) CreateKnowledgeBase(userID string, tenantID uint, nam
 	if err := s.kbRepo.Create(kb); err != nil {
 		return nil, err
 	}
+	s.fillKBUsernames([]*model.KnowledgeBase{kb})
 	return kb, nil
 }
 
@@ -213,7 +242,16 @@ func (s *KnowledgeService) ListKnowledgeBases(userID string, tenantID uint, page
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 10
 	}
-	return s.kbRepo.ListByTenant(actor.TenantID, pageSize, (page-1)*pageSize)
+	list, total, err := s.kbRepo.ListByTenant(actor.TenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	ptrs := make([]*model.KnowledgeBase, len(list))
+	for i := range list {
+		ptrs[i] = &list[i]
+	}
+	s.fillKBUsernames(ptrs)
+	return list, total, nil
 }
 
 func (s *KnowledgeService) GetKnowledgeBase(id uint, userID string, tenantID uint) (*model.KnowledgeBase, error) {
@@ -221,7 +259,12 @@ func (s *KnowledgeService) GetKnowledgeBase(id uint, userID string, tenantID uin
 	if err != nil {
 		return nil, err
 	}
-	return s.requireKBAccess(id, actor)
+	kb, err := s.requireKBAccess(id, actor)
+	if err != nil {
+		return nil, err
+	}
+	s.fillKBUsernames([]*model.KnowledgeBase{kb})
+	return kb, nil
 }
 
 func (s *KnowledgeService) UpdateKnowledgeBase(id uint, userID string, tenantID uint, name, description string) (*model.KnowledgeBase, error) {
@@ -240,6 +283,7 @@ func (s *KnowledgeService) UpdateKnowledgeBase(id uint, userID string, tenantID 
 	if err := s.kbRepo.Update(kb); err != nil {
 		return nil, err
 	}
+	s.fillKBUsernames([]*model.KnowledgeBase{kb})
 	return kb, nil
 }
 
