@@ -28,7 +28,7 @@
     </div>
 
     <el-row :gutter="16">
-      <el-col :span="7">
+      <el-col :span="5">
         <div class="panel tree-panel">
           <div class="panel-title">
             <span>目录树</span>
@@ -60,7 +60,7 @@
         </div>
       </el-col>
 
-      <el-col :span="17">
+      <el-col :span="19">
         <div class="panel">
           <div class="panel-title">
             <span>
@@ -132,10 +132,18 @@
             <el-table-column label="创建时间" width="170">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="230" fixed="right">
+            <el-table-column label="操作" width="300" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="showDoc(row)">详情</el-button>
-                <el-button link type="primary" @click="openIndexHistory(row)">构建记录</el-button>
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="row.status === 'indexing'"
+                  @click="onReindexOne(row)"
+                >
+                  重新索引
+                </el-button>
+                <el-button link type="primary" @click="openIndexHistory(row)">索引记录</el-button>
                 <el-button link type="danger" @click="onDeleteOne(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -247,16 +255,16 @@
       </template>
     </el-drawer>
 
-    <!-- 索引构建记录 -->
+    <!-- 索引记录 -->
     <el-drawer v-model="indexHistoryVisible" :title="indexHistoryTitle" size="720px">
-      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引构建记录">
-        <el-table-column label="构建触发时间" width="180">
+      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引记录">
+        <el-table-column label="索引触发时间" width="180">
           <template #default="{ row }">{{ formatTime(row.triggered_at) }}</template>
         </el-table-column>
-        <el-table-column label="构建结束时间" width="180">
+        <el-table-column label="索引结束时间" width="180">
           <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
         </el-table-column>
-        <el-table-column label="本次构建状态" width="120">
+        <el-table-column label="本次索引状态" width="120">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">
               {{ statusLabel(row.status) }}
@@ -328,7 +336,7 @@ const indexHistory = ref([])
 const indexHistoryDoc = ref(null)
 const indexHistoryTitle = computed(() => {
   const name = indexHistoryDoc.value?.file_name || indexHistoryDoc.value?.title
-  return name ? `索引构建记录 · ${name}` : '索引构建记录'
+  return name ? `索引记录 · ${name}` : '索引记录'
 })
 
 async function loadKb() {
@@ -556,6 +564,20 @@ async function openIndexHistory(row) {
     indexHistory.value = data?.list || []
   } finally {
     indexHistoryLoading.value = false
+  }
+}
+
+async function onReindexOne(row) {
+  const result = await api.reindexDocuments([row.id])
+  const item = result?.items?.[0]
+  if (item?.skipped) {
+    ElMessage.warning(item.message || '未触发重新索引')
+  } else {
+    ElMessage.success(item?.message || '已触发重新索引')
+  }
+  await loadDocs()
+  if (indexHistoryVisible.value && indexHistoryDoc.value?.id === row.id) {
+    await openIndexHistory(indexHistoryDoc.value)
   }
 }
 
