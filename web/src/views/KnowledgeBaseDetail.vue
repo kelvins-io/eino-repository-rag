@@ -125,6 +125,11 @@
                 <span :title="recallTitle(row)">{{ formatRecall(row.recall) }}</span>
               </template>
             </el-table-column>
+            <el-table-column label="引用次数" width="90">
+              <template #default="{ row }">
+                <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ row.cited_count ?? 0 }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="上次索引时间" width="170">
               <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
             </el-table-column>
@@ -250,6 +255,7 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
+          <el-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</el-descriptions-item>
           <el-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
           <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
           <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>

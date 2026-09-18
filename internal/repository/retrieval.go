@@ -173,6 +173,62 @@ WHERE id = ? AND tenant_id = ? AND knowledge_base_id = ?
 	return out, nil
 }
 
+type docCitedStat struct {
+	DocID string `gorm:"column:doc_id"`
+	N     int64  `gorm:"column:n"`
+}
+
+// RefreshDocumentCitations 按 retrieval_hits.cited 重算文档被引用次数并写回 documents。
+// 次数是引用过该文档的回答数，同一条回答的多个分块只计 1 次。没有引用时写 0。不改 updated_at。
+func (r *RetrievalRepo) RefreshDocumentCitations(tenantID, knowledgeBaseID uint, docIDs []string) (map[string]int, error) {
+	out := map[string]int{}
+	if r == nil || r.db == nil || tenantID == 0 || knowledgeBaseID == 0 {
+		return out, nil
+	}
+	ids := uniqueNumericDocIDs(docIDs)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []docCitedStat
+	err := r.db.Raw(`
+SELECT doc_id AS doc_id, COUNT(DISTINCT assistant_message_id) AS n
+FROM retrieval_hits
+WHERE tenant_id = ?
+  AND knowledge_base_id = ?
+  AND doc_id IN ?
+  AND cited = true
+  AND assistant_message_id > 0
+GROUP BY doc_id
+`, tenantID, knowledgeBaseID, ids).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]int, len(rows))
+	for _, row := range rows {
+		if row.N < 0 {
+			continue
+		}
+		byID[row.DocID] = int(row.N)
+	}
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 64)
+		if err != nil || n == 0 {
+			continue
+		}
+		count := byID[id]
+		err = r.db.Exec(`
+UPDATE documents
+SET cited_count = ?
+WHERE id = ? AND tenant_id = ? AND knowledge_base_id = ?
+`, count, uint(n), tenantID, knowledgeBaseID).Error
+		if err != nil {
+			return out, err
+		}
+		out[id] = count
+	}
+	return out, nil
+}
+
 func uniqueNumericDocIDs(ids []string) []string {
 	seen := make(map[string]struct{}, len(ids))
 	out := make([]string, 0, len(ids))

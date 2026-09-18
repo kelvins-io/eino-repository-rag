@@ -70,12 +70,14 @@ type Document struct {
 	LastIndexedAt   *time.Time     `json:"last_indexed_at,omitempty"` // 上次索引构建完成时间（成功或失败）
 	// Recall 是按配置的 TopK 落库的文档召回率：rank≤K 命中的已标注问题数 / 把本文档标为相关的问题数。
 	// 没有相关标注时为 null，不是 0。不进入检索分数。
-	Recall         *float64  `json:"recall"`
-	RecallK        int       `gorm:"not null;default:0" json:"recall_k"`
-	LabeledQueries int       `gorm:"not null;default:0" json:"labeled_queries"`
-	HitQueries     int       `gorm:"not null;default:0" json:"hit_queries"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	Recall         *float64 `json:"recall"`
+	RecallK        int      `gorm:"not null;default:0" json:"recall_k"`
+	LabeledQueries int      `gorm:"not null;default:0" json:"labeled_queries"`
+	HitQueries     int      `gorm:"not null;default:0" json:"hit_queries"`
+	// CitedCount 是历史回答里用合法 [n] 引用过该文档的次数。同一条回答的多个分块只计 1 次。
+	CitedCount int       `gorm:"not null;default:0" json:"cited_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func (Document) TableName() string { return "documents" }

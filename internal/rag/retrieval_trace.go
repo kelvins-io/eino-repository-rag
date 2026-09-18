@@ -97,16 +97,17 @@ func (p *Pipeline) persistRetrievalHits(req QueryRequest, userMsg, assistantMsg 
 		logger.S().Errorf("[rag] save retrieval hits failed session=%s err=%v", req.SessionID, err)
 		return
 	}
-	p.refreshStoredRecalls(req, hits)
+	p.refreshStoredDocStats(req, hits)
 }
 
-type documentRecallRefresher interface {
+type documentStatRefresher interface {
 	RefreshDocumentRecalls(tenantID, knowledgeBaseID uint, docIDs []string, k int) (map[string]repository.StoredRecall, error)
+	RefreshDocumentCitations(tenantID, knowledgeBaseID uint, docIDs []string) (map[string]int, error)
 }
 
-func (p *Pipeline) refreshStoredRecalls(req QueryRequest, hits []dbmodel.RetrievalHit) {
-	refresher, ok := p.retrieval.(documentRecallRefresher)
-	if !ok || p.cfg == nil || p.cfg.RAG.TopK <= 0 || req.TenantID == 0 || req.KnowledgeBaseID == 0 {
+func (p *Pipeline) refreshStoredDocStats(req QueryRequest, hits []dbmodel.RetrievalHit) {
+	refresher, ok := p.retrieval.(documentStatRefresher)
+	if !ok || req.TenantID == 0 || req.KnowledgeBaseID == 0 {
 		return
 	}
 	seen := make(map[string]struct{}, len(hits))
@@ -124,8 +125,13 @@ func (p *Pipeline) refreshStoredRecalls(req QueryRequest, hits []dbmodel.Retriev
 	if len(ids) == 0 {
 		return
 	}
-	if _, err := refresher.RefreshDocumentRecalls(req.TenantID, req.KnowledgeBaseID, ids, p.cfg.RAG.TopK); err != nil {
-		logger.S().Errorf("[rag] save document recall failed session=%s err=%v", req.SessionID, err)
+	if p.cfg != nil && p.cfg.RAG.TopK > 0 {
+		if _, err := refresher.RefreshDocumentRecalls(req.TenantID, req.KnowledgeBaseID, ids, p.cfg.RAG.TopK); err != nil {
+			logger.S().Errorf("[rag] save document recall failed session=%s err=%v", req.SessionID, err)
+		}
+	}
+	if _, err := refresher.RefreshDocumentCitations(req.TenantID, req.KnowledgeBaseID, ids); err != nil {
+		logger.S().Errorf("[rag] save document cited count failed session=%s err=%v", req.SessionID, err)
 	}
 }
 

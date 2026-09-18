@@ -197,7 +197,19 @@ func (s *KnowledgeService) persistDocumentRecalls(tenantID, knowledgeBaseID uint
 	return snaps
 }
 
-// attachStoredRecalls 列表返回前重算当前页文档的召回率并写回，保证列上的值与标注、检索记录一致。
+// persistDocumentCitations 按已落库的合法引用重算并写回文档被引用次数。失败只记日志。
+func (s *KnowledgeService) persistDocumentCitations(tenantID, knowledgeBaseID uint, docIDs []string) map[string]int {
+	if s == nil || s.retrieval == nil || tenantID == 0 || knowledgeBaseID == 0 || len(docIDs) == 0 {
+		return nil
+	}
+	counts, err := s.retrieval.RefreshDocumentCitations(tenantID, knowledgeBaseID, docIDs)
+	if err != nil {
+		logger.S().Errorf("[recall] save document cited count tenant=%d kb=%d err=%v", tenantID, knowledgeBaseID, err)
+	}
+	return counts
+}
+
+// attachStoredRecalls 列表返回前重算当前页文档的召回率和引用次数并写回。
 func (s *KnowledgeService) attachStoredRecalls(list []model.Document) {
 	if len(list) == 0 {
 		return
@@ -216,21 +228,21 @@ func (s *KnowledgeService) attachStoredRecalls(list []model.Document) {
 	}
 	for key, ids := range groups {
 		snaps := s.persistDocumentRecalls(key.tenant, key.kb, ids)
-		if len(snaps) == 0 {
-			continue
-		}
+		cited := s.persistDocumentCitations(key.tenant, key.kb, ids)
 		for i := range list {
 			if list[i].TenantID != key.tenant || list[i].KnowledgeBaseID != key.kb {
 				continue
 			}
-			snap, ok := snaps[strconv.FormatUint(uint64(list[i].ID), 10)]
-			if !ok {
-				continue
+			id := strconv.FormatUint(uint64(list[i].ID), 10)
+			if snap, ok := snaps[id]; ok {
+				list[i].Recall = snap.Recall
+				list[i].RecallK = snap.K
+				list[i].LabeledQueries = snap.Labeled
+				list[i].HitQueries = snap.Hits
 			}
-			list[i].Recall = snap.Recall
-			list[i].RecallK = snap.K
-			list[i].LabeledQueries = snap.Labeled
-			list[i].HitQueries = snap.Hits
+			if n, ok := cited[id]; ok {
+				list[i].CitedCount = n
+			}
 		}
 	}
 }
