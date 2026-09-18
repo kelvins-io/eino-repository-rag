@@ -37,7 +37,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 		protected := api.Group("")
 		protected.Use(auth.Middleware(tm))
 		{
-			// 公开：租户创建、注册、登录
+			// 仅 default 租户的 admin 可创建租户
 			protected.POST("/tenants", ah.CreateTenant)
 			protected.GET("/auth/me", ah.Me)
 

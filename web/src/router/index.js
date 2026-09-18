@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
-import { isLoggedIn } from '@/utils/auth'
+import { isLoggedIn, isPlatformAdmin } from '@/utils/auth'
 
 const routes = [
   {
@@ -39,6 +39,12 @@ const routes = [
         component: () => import('@/views/Chat.vue'),
         meta: { title: '知识库问答', requiresAuth: true },
       },
+      {
+        path: 'tenants',
+        name: 'tenants',
+        component: () => import('@/views/Tenants.vue'),
+        meta: { title: '创建租户', requiresAuth: true, requiresPlatformAdmin: true },
+      },
     ],
   },
 ]
@@ -57,6 +63,9 @@ router.beforeEach((to) => {
   }
   if (to.meta.requiresAuth && !isLoggedIn()) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.requiresPlatformAdmin && !isPlatformAdmin()) {
+    return { path: '/knowledge-bases' }
   }
   return true
 })

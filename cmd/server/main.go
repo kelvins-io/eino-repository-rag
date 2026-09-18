@@ -55,12 +55,16 @@ func main() {
 	}
 
 	tenantRepo := repository.NewTenantRepo(db)
-	if _, err := tenantRepo.EnsureDefault(); err != nil {
+	defTenant, err := tenantRepo.EnsureDefault()
+	if err != nil {
 		logger.L().Fatal("ensure default tenant failed", zap.Error(err))
 	}
 	userRepo := repository.NewUserRepo(db)
 	tokenMgr := auth.NewTokenManager(cfg.JWT)
 	authSvc := service.NewAuthService(tenantRepo, userRepo, tokenMgr)
+	if err := authSvc.EnsureTenantAdmin(defTenant); err != nil {
+		logger.L().Fatal("ensure default tenant admin failed", zap.Error(err))
+	}
 	authHandler := handler.NewAuthHandler(authSvc)
 
 	// Redis：Protocol=2 + UnstableResp3 是向量检索前置条件

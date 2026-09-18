@@ -473,6 +473,13 @@ func (r *TenantRepo) Create(t *model.Tenant) error {
 	return r.db.Create(t).Error
 }
 
+// Transaction 在同一事务中操作租户与用户。
+func (r *TenantRepo) Transaction(fn func(tenants *TenantRepo, users *UserRepo) error) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return fn(&TenantRepo{db: tx}, &UserRepo{db: tx})
+	})
+}
+
 func (r *TenantRepo) GetByCode(code string) (*model.Tenant, error) {
 	var t model.Tenant
 	if err := r.db.Where("code = ?", code).First(&t).Error; err != nil {

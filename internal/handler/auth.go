@@ -31,7 +31,12 @@ func (h *AuthHandler) CreateTenant(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	t, err := h.svc.CreateTenant(service.CreateTenantInput{Code: req.Code, Name: req.Name})
+	t, err := h.svc.CreateTenant(service.CreateTenantInput{
+		Code:            req.Code,
+		Name:            req.Name,
+		ActorTenantCode: auth.TenantCodeFromContext(c),
+		ActorUsername:   auth.UsernameFromContext(c),
+	})
 	if err != nil {
 		failAuth(c, err)
 		return
@@ -111,6 +116,8 @@ func failAuth(c *gin.Context, err error) {
 		code = http.StatusBadRequest
 	case errors.Is(err, service.ErrInvalidCredentials):
 		code = http.StatusUnauthorized
+	case errors.Is(err, service.ErrNotPlatformAdmin):
+		code = http.StatusForbidden
 	case errors.Is(err, service.ErrUsernameTaken), errors.Is(err, service.ErrTenantCodeTaken):
 		code = http.StatusConflict
 	case strings.Contains(err.Error(), "不能为空"),

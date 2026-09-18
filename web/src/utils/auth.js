@@ -43,3 +43,10 @@ export function getAuthTenant() {
 export function isLoggedIn() {
   return !!getToken()
 }
+
+/** 仅 default 租户下的 admin 可创建租户 */
+export function isPlatformAdmin() {
+  const user = getAuthUser()
+  const tenant = getAuthTenant()
+  return tenant?.code === 'default' && user?.username === 'admin'
+}

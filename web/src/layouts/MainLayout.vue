@@ -23,6 +23,10 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>知识问答</span>
         </el-menu-item>
+        <el-menu-item v-if="canCreateTenant" index="/tenants">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span>创建租户</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -49,7 +53,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/api'
-import { clearAuth, getAuthTenant, getAuthUser } from '@/utils/auth'
+import { clearAuth, getAuthTenant, getAuthUser, isPlatformAdmin } from '@/utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -60,9 +64,11 @@ const user = getAuthUser()
 const tenant = getAuthTenant()
 const displayName = computed(() => user?.display_name || user?.username || '用户')
 const tenantCode = computed(() => tenant?.code || '-')
+const canCreateTenant = computed(() => isPlatformAdmin())
 
 const active = computed(() => {
   if (route.path.startsWith('/chat')) return '/chat'
+  if (route.path.startsWith('/tenants')) return '/tenants'
   return '/knowledge-bases'
 })
 

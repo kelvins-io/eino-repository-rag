@@ -24,6 +24,8 @@ var (
 	ErrUsernameTaken = errors.New("该租户下用户名已存在")
 	// ErrTenantCodeTaken 租户 Code 已占用
 	ErrTenantCodeTaken = errors.New("租户 ID 已存在")
+	// ErrNotPlatformAdmin 非平台管理员，无权创建租户
+	ErrNotPlatformAdmin = errors.New("仅 default 租户的 admin 可创建租户")
 )
 
 type AuthService struct {
@@ -41,11 +43,26 @@ func NewAuthService(
 }
 
 type CreateTenantInput struct {
-	Code string
-	Name string
+	Code            string
+	Name            string
+	ActorTenantCode string
+	ActorUsername   string
 }
 
-func (s *AuthService) CreateTenant(in CreateTenantInput) (*model.Tenant, error) {
+// CreateTenantResult 创建租户的返回。初始密码只写日志，不出现在响应里。
+type CreateTenantResult struct {
+	ID            uint      `json:"id"`
+	Code          string    `json:"code"`
+	Name          string    `json:"name"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	AdminUsername string    `json:"admin_username"`
+}
+
+func (s *AuthService) CreateTenant(in CreateTenantInput) (*CreateTenantResult, error) {
+	if !IsPlatformAdmin(in.ActorTenantCode, in.ActorUsername) {
+		return nil, ErrNotPlatformAdmin
+	}
 	code := strings.TrimSpace(in.Code)
 	name := strings.TrimSpace(in.Name)
 	if code == "" {
@@ -62,11 +79,31 @@ func (s *AuthService) CreateTenant(in CreateTenantInput) (*model.Tenant, error) 
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	t := &model.Tenant{Code: code, Name: name}
-	if err := s.tenants.Create(t); err != nil {
+
+	var tenant *model.Tenant
+	var password string
+	var createdAdmin bool
+	err := s.tenants.Transaction(func(tenants *repository.TenantRepo, users *repository.UserRepo) error {
+		t := &model.Tenant{Code: code, Name: name}
+		if err := tenants.Create(t); err != nil {
+			return err
+		}
+		created, pwd, err := ensureTenantAdmin(users, t)
+		if err != nil {
+			return err
+		}
+		tenant = t
+		password = pwd
+		createdAdmin = created
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	return t, nil
+	if createdAdmin {
+		logTenantAdminCreated(tenant, password)
+	}
+	return newCreateTenantResult(tenant), nil
 }
 
 type RegisterInput struct {
