@@ -14,7 +14,15 @@
         </p>
       </div>
       <div class="actions">
-        <el-button :icon="Upload" type="primary" @click="openImport">导入文档</el-button>
+        <el-tooltip
+          :disabled="!importQuotaFull"
+          content="已达到该租户导入文档数上限"
+          placement="top"
+        >
+          <span>
+            <el-button :icon="Upload" type="primary" :disabled="importQuotaFull" @click="openImport">导入文档</el-button>
+          </span>
+        </el-tooltip>
         <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
       </div>
     </div>
@@ -210,7 +218,7 @@
       </el-form>
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" @click="doImport">开始导入</el-button>
+        <el-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">开始导入</el-button>
       </template>
     </el-dialog>
 
@@ -285,6 +293,9 @@ const maxUploadFiles = ref(20)
 const maxTenantFiles = ref(5)
 const tenantFileCount = ref(0)
 const maxUploadFileSize = computed(() => maxUploadFileSizeMB.value * 1024 * 1024)
+const importQuotaFull = computed(
+  () => Number(tenantFileCount.value) >= Number(maxTenantFiles.value) && Number(maxTenantFiles.value) > 0,
+)
 
 const docDetailVisible = ref(false)
 const docDetail = ref(null)
@@ -332,7 +343,7 @@ function onStatusFilterChange() {
 async function refreshAll() {
   pageLoading.value = true
   try {
-    await Promise.all([loadKb(), loadTree(), loadDocs()])
+    await Promise.all([loadKb(), loadTree(), loadDocs(), loadUploadLimits()])
   } finally {
     pageLoading.value = false
   }
@@ -447,6 +458,7 @@ async function loadUploadLimits() {
 }
 
 async function openImport() {
+  if (importQuotaFull.value) return
   importForm.title = ''
   importForm.directory_id = currentDir.value?.id
   fileList.value = []
@@ -493,7 +505,7 @@ async function doImport() {
     importForm.directory_id = undefined
     fileList.value = []
     uploadRef.value?.clearFiles()
-    await loadDocs()
+    await Promise.all([loadDocs(), loadUploadLimits()])
   } finally {
     importing.value = false
   }
