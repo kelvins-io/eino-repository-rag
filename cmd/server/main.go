@@ -62,6 +62,7 @@ func main() {
 	userRepo := repository.NewUserRepo(db)
 	tokenMgr := auth.NewTokenManager(cfg.JWT)
 	authSvc := service.NewAuthService(tenantRepo, userRepo, tokenMgr)
+	authSvc.SetUploadSizeCeiling(cfg.RAG.MaxUploadFileSizeMB)
 	if err := authSvc.EnsureTenantAdmin(defTenant); err != nil {
 		logger.L().Fatal("ensure default tenant admin failed", zap.Error(err))
 	}
@@ -94,7 +95,7 @@ func main() {
 		logger.L().Fatal("start index queue failed", zap.Error(err))
 	}
 
-	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, userRepo, memMgr, pipeline)
+	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, userRepo, tenantRepo, memMgr, pipeline)
 	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
 	if cfg.ASR.Enabled {
 		kh.WithASR(asr.NewClient(cfg.ASR), cfg.ASR.MaxAudioBytes())

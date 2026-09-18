@@ -37,9 +37,10 @@ var (
 )
 
 type AuthService struct {
-	tenants *repository.TenantRepo
-	users   *repository.UserRepo
-	tokens  *auth.TokenManager
+	tenants              *repository.TenantRepo
+	users                *repository.UserRepo
+	tokens               *auth.TokenManager
+	maxFileSizeMBCeiling int
 }
 
 func NewAuthService(
@@ -92,7 +93,12 @@ func (s *AuthService) CreateTenant(in CreateTenantInput) (*CreateTenantResult, e
 	var password string
 	var createdAdmin bool
 	err := s.tenants.Transaction(func(tenants *repository.TenantRepo, users *repository.UserRepo) error {
-		t := &model.Tenant{Code: code, Name: name}
+		t := &model.Tenant{
+			Code:          code,
+			Name:          name,
+			MaxFiles:      model.DefaultTenantMaxFiles,
+			MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
+		}
 		if err := tenants.Create(t); err != nil {
 			return err
 		}
@@ -236,10 +242,12 @@ func (s *AuthService) ListTenantUsers(tenantID uint, page, pageSize int) ([]Tena
 
 // TenantListItem 平台管理员看到的租户列表项。
 type TenantListItem struct {
-	Code      string    `json:"code"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UserCount int64     `json:"user_count"`
+	Code          string    `json:"code"`
+	Name          string    `json:"name"`
+	CreatedAt     time.Time `json:"created_at"`
+	UserCount     int64     `json:"user_count"`
+	MaxFiles      int       `json:"max_files"`
+	MaxFileSizeMB int       `json:"max_file_size_mb"`
 }
 
 // ListTenants 分页列出全部租户及用户数。仅 default 租户的 admin 可调用。
@@ -260,13 +268,57 @@ func (s *AuthService) ListTenants(actorTenantCode, actorUsername string, page, p
 	out := make([]TenantListItem, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, TenantListItem{
-			Code:      row.Code,
-			Name:      row.Name,
-			CreatedAt: row.CreatedAt,
-			UserCount: row.UserCount,
+			Code:          row.Code,
+			Name:          row.Name,
+			CreatedAt:     row.CreatedAt,
+			UserCount:     row.UserCount,
+			MaxFiles:      normalizeLimit(row.MaxFiles, model.DefaultTenantMaxFiles),
+			MaxFileSizeMB: normalizeLimit(row.MaxFileSizeMB, model.DefaultTenantMaxFileSizeMB),
 		})
 	}
 	return out, total, nil
+}
+
+// SetUploadSizeCeiling 设置单文件大小的系统上限（MB）。0 表示不额外限制。
+func (s *AuthService) SetUploadSizeCeiling(mb int) {
+	if s == nil || mb <= 0 {
+		return
+	}
+	s.maxFileSizeMBCeiling = mb
+}
+
+// UpdateTenantUploadLimits 由 default 租户 admin 配置租户上传配额。
+func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, code string, maxFiles, maxFileSizeMB int) error {
+	if !IsPlatformAdmin(actorTenantCode, actorUsername) {
+		return ErrNotPlatformAdmin
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return fmt.Errorf("租户 ID 不能为空")
+	}
+	if maxFiles < 1 {
+		return fmt.Errorf("文件总数至少为 1")
+	}
+	if maxFileSizeMB < 1 {
+		return fmt.Errorf("单文件上限至少为 1MB")
+	}
+	if s.maxFileSizeMBCeiling > 0 && maxFileSizeMB > s.maxFileSizeMBCeiling {
+		return fmt.Errorf("单文件上限不能超过系统限制 %dMB", s.maxFileSizeMBCeiling)
+	}
+	if _, err := s.tenants.GetByCode(code); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrTenantNotFound
+		}
+		return err
+	}
+	return s.tenants.UpdateUploadLimits(code, maxFiles, maxFileSizeMB)
+}
+
+func normalizeLimit(v, fallback int) int {
+	if v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 // SetUserLoginEnabled 由租户 admin 开关本租户用户的登录权限。不能关闭 admin 自己。

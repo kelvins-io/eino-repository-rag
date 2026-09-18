@@ -67,6 +67,36 @@ func (h *AuthHandler) ListTenants(c *gin.Context) {
 	})
 }
 
+type updateTenantLimitsReq struct {
+	Code          string `json:"code"`
+	MaxFiles      int    `json:"max_files"`
+	MaxFileSizeMB int    `json:"max_file_size_mb"`
+}
+
+// UpdateTenantLimits PUT /api/v1/tenants/limits
+func (h *AuthHandler) UpdateTenantLimits(c *gin.Context) {
+	var req updateTenantLimitsReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+	if err := h.svc.UpdateTenantUploadLimits(
+		auth.TenantCodeFromContext(c),
+		auth.UsernameFromContext(c),
+		req.Code,
+		req.MaxFiles,
+		req.MaxFileSizeMB,
+	); err != nil {
+		failAuth(c, err)
+		return
+	}
+	ok(c, gin.H{
+		"code":             strings.TrimSpace(req.Code),
+		"max_files":        req.MaxFiles,
+		"max_file_size_mb": req.MaxFileSizeMB,
+	})
+}
+
 type registerReq struct {
 	TenantID    string `json:"tenant_id"`
 	Username    string `json:"username"`
@@ -220,6 +250,7 @@ func failAuth(c *gin.Context, err error) {
 	case strings.Contains(err.Error(), "不能为空"),
 		strings.Contains(err.Error(), "至少"),
 		strings.Contains(err.Error(), "过长"),
+		strings.Contains(err.Error(), "不能超过"),
 		strings.Contains(err.Error(), "用户不存在"):
 		code = http.StatusBadRequest
 	}

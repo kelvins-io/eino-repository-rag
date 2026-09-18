@@ -362,11 +362,26 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 		fail(c, http.StatusBadRequest, fmt.Sprintf("单次最多上传 %d 个文件，当前 %d 个", h.maxUploadFiles, len(fileHeaders)))
 		return
 	}
+	policy, used, err := h.svc.UploadPolicy(currentTenantID(c))
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	sizeMB := policy.UploadMaxFileSizeMB()
+	sizeBytes := policy.UploadMaxFileSizeBytes()
+	if h.maxUploadFileSize > 0 && h.maxUploadFileSize < sizeBytes {
+		sizeBytes = h.maxUploadFileSize
+		sizeMB = h.maxUploadFileSizeMB
+	}
+	if used+int64(len(fileHeaders)) > int64(policy.UploadMaxFiles()) {
+		fail(c, http.StatusBadRequest, fmt.Sprintf("已达到或将超过租户文件总数上限 %d（已有 %d）", policy.UploadMaxFiles(), used))
+		return
+	}
 	for _, fh := range fileHeaders {
-		if fh.Size > h.maxUploadFileSize {
+		if fh.Size > sizeBytes {
 			fail(c, http.StatusBadRequest, fmt.Sprintf(
 				"文件 %q 大小 %.1fMB 超过限制 %dMB",
-				fh.Filename, float64(fh.Size)/(1024*1024), h.maxUploadFileSizeMB,
+				fh.Filename, float64(fh.Size)/(1024*1024), sizeMB,
 			))
 			return
 		}
@@ -405,10 +420,28 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 
 // UploadLimits GET /api/v1/system/upload-limits
 func (h *KnowledgeHandler) UploadLimits(c *gin.Context) {
+	sizeMB := h.maxUploadFileSizeMB
+	maxFiles := 0
+	used := int64(0)
+	if h.svc != nil {
+		policy, n, err := h.svc.UploadPolicy(currentTenantID(c))
+		if err != nil {
+			failErr(c, err)
+			return
+		}
+		sizeMB = policy.UploadMaxFileSizeMB()
+		if h.maxUploadFileSizeMB > 0 && h.maxUploadFileSizeMB < sizeMB {
+			sizeMB = h.maxUploadFileSizeMB
+		}
+		maxFiles = policy.UploadMaxFiles()
+		used = n
+	}
 	ok(c, gin.H{
-		"max_upload_file_size_mb": h.maxUploadFileSizeMB,
-		"max_upload_file_size":    h.maxUploadFileSize,
+		"max_upload_file_size_mb": sizeMB,
+		"max_upload_file_size":    int64(sizeMB) * 1024 * 1024,
 		"max_upload_files":        h.maxUploadFiles,
+		"max_tenant_files":        maxFiles,
+		"tenant_file_count":       used,
 	})
 }
 

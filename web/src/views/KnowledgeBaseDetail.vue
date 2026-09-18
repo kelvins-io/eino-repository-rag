@@ -202,7 +202,7 @@
               <div class="el-upload__tip">
                 支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
                 <br />
-                单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个
+                单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个，本租户文件总数上限 {{ maxTenantFiles }}（已用 {{ tenantFileCount }}）
               </div>
             </template>
           </el-upload>
@@ -282,6 +282,8 @@ const fileList = ref([])
 const importForm = reactive({ directory_id: undefined, title: '' })
 const maxUploadFileSizeMB = ref(50)
 const maxUploadFiles = ref(20)
+const maxTenantFiles = ref(5)
+const tenantFileCount = ref(0)
 const maxUploadFileSize = computed(() => maxUploadFileSizeMB.value * 1024 * 1024)
 
 const docDetailVisible = ref(false)
@@ -435,6 +437,10 @@ async function loadUploadLimits() {
     if (data?.max_upload_files > 0) {
       maxUploadFiles.value = data.max_upload_files
     }
+    if (data?.max_tenant_files > 0) {
+      maxTenantFiles.value = data.max_tenant_files
+    }
+    tenantFileCount.value = data?.tenant_file_count || 0
   } catch {
     // 使用默认值
   }

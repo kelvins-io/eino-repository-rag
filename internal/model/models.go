@@ -114,14 +114,44 @@ func (Message) TableName() string { return "messages" }
 
 // Tenant 租户（注册/登录时填写的租户 ID 对应 Code）
 type Tenant struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Code      string    `gorm:"size:64;uniqueIndex;not null" json:"code"`
-	Name      string    `gorm:"size:128;not null" json:"name"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	Code          string    `gorm:"size:64;uniqueIndex;not null" json:"code"`
+	Name          string    `gorm:"size:128;not null" json:"name"`
+	MaxFiles      int       `gorm:"not null;default:5" json:"max_files"`
+	MaxFileSizeMB int       `gorm:"not null;default:5" json:"max_file_size_mb"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 func (Tenant) TableName() string { return "tenants" }
+
+const (
+	// DefaultTenantMaxFiles 租户默认可上传的文件总数
+	DefaultTenantMaxFiles = 5
+	// DefaultTenantMaxFileSizeMB 租户默认单个文件大小上限（MB）
+	DefaultTenantMaxFileSizeMB = 5
+)
+
+// UploadMaxFiles 有效的文件总数上限。未配置时用默认值。
+func (t Tenant) UploadMaxFiles() int {
+	if t.MaxFiles <= 0 {
+		return DefaultTenantMaxFiles
+	}
+	return t.MaxFiles
+}
+
+// UploadMaxFileSizeMB 有效的单文件大小上限（MB）。未配置时用默认值。
+func (t Tenant) UploadMaxFileSizeMB() int {
+	if t.MaxFileSizeMB <= 0 {
+		return DefaultTenantMaxFileSizeMB
+	}
+	return t.MaxFileSizeMB
+}
+
+// UploadMaxFileSizeBytes 有效的单文件字节上限。
+func (t Tenant) UploadMaxFileSizeBytes() int64 {
+	return int64(t.UploadMaxFileSizeMB()) * 1024 * 1024
+}
 
 // User 租户下的登录用户
 type User struct {

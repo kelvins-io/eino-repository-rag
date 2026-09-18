@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>租户管理</h2>
-        <p class="sub">全部租户及其用户数，仅 default 租户的 admin 可查看</p>
+        <p class="sub">全部租户及其上传配额，仅 default 租户的 admin 可查看和配置</p>
       </div>
     </div>
 
@@ -20,7 +20,22 @@
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="user_count" label="用户数" width="120" />
+        <el-table-column prop="user_count" label="用户数" width="90" />
+        <el-table-column label="文件总数" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.max_files" :min="1" :max="1000000" size="small" controls-position="right" />
+          </template>
+        </el-table-column>
+        <el-table-column label="单文件上限(MB)" width="170">
+          <template #default="{ row }">
+            <el-input-number v-model="row.max_file_size_mb" :min="1" :max="2048" size="small" controls-position="right" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">保存</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pager">
@@ -40,6 +55,7 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 
 const loading = ref(false)
@@ -47,6 +63,7 @@ const list = ref([])
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const saving = ref('')
 
 function formatTime(v) {
   if (!v) return '-'
@@ -70,6 +87,32 @@ async function load() {
 function onSizeChange() {
   page.value = 1
   load()
+}
+
+async function saveLimits(row) {
+  const maxFiles = Number(row.max_files)
+  const maxFileSizeMB = Number(row.max_file_size_mb)
+  if (!Number.isInteger(maxFiles) || maxFiles < 1) {
+    ElMessage.warning('文件总数至少为 1')
+    return
+  }
+  if (!Number.isInteger(maxFileSizeMB) || maxFileSizeMB < 1) {
+    ElMessage.warning('单文件上限至少为 1MB')
+    return
+  }
+  saving.value = row.code
+  try {
+    await api.updateTenantLimits({
+      code: row.code,
+      max_files: maxFiles,
+      max_file_size_mb: maxFileSizeMB,
+    })
+    ElMessage.success('已保存')
+  } catch {
+    await load()
+  } finally {
+    saving.value = ''
+  }
 }
 
 onMounted(load)

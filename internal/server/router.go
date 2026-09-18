@@ -40,6 +40,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 			// 仅 default 租户的 admin 可创建租户
 			protected.POST("/tenants", ah.CreateTenant)
 			protected.GET("/tenants", ah.ListTenants)
+			protected.PUT("/tenants/limits", ah.UpdateTenantLimits)
 			protected.GET("/users", ah.ListUsers)
 			protected.PUT("/users/login-enabled", ah.SetUserLoginEnabled)
 			protected.GET("/auth/me", ah.Me)

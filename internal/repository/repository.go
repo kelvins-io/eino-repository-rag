@@ -115,6 +115,12 @@ func (r *DocumentRepo) List(filter DocumentListFilter, limit, offset int) ([]mod
 	return docs, total, nil
 }
 
+func (r *DocumentRepo) CountByTenant(tenantID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&model.Document{}).Where("tenant_id = ?", tenantID).Count(&n).Error
+	return n, err
+}
+
 func (r *DocumentRepo) CountByKnowledgeBase(kbID uint) (int64, error) {
 	var n int64
 	err := r.db.Model(&model.Document{}).Where("knowledge_base_id = ?", kbID).Count(&n).Error
@@ -508,10 +514,12 @@ func (r *TenantRepo) Count() (int64, error) {
 
 // TenantUserCount 租户及其用户数。
 type TenantUserCount struct {
-	Code      string
-	Name      string
-	CreatedAt time.Time
-	UserCount int64
+	Code          string
+	Name          string
+	CreatedAt     time.Time
+	UserCount     int64
+	MaxFiles      int
+	MaxFileSizeMB int
 }
 
 // ListWithUserCount 分页列出全部租户，并统计每个租户下的用户数。
@@ -522,7 +530,7 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	}
 	var rows []TenantUserCount
 	err := r.db.Table("tenants").
-		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, COUNT(users.id) AS user_count").
+		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, COUNT(users.id) AS user_count").
 		Joins("LEFT JOIN users ON users.tenant_id = tenants.id").
 		Group("tenants.id").
 		Order("tenants.created_at DESC, tenants.id DESC").
@@ -535,6 +543,21 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	return rows, total, nil
 }
 
+// UpdateUploadLimits 更新租户的文件总数与单文件大小上限。
+func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB int) error {
+	res := r.db.Model(&model.Tenant{}).Where("code = ?", code).Updates(map[string]any{
+		"max_files":        maxFiles,
+		"max_file_size_mb": maxFileSizeMB,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // EnsureDefault 确保存在 code=default 的默认租户
 func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 	t, err := r.GetByCode("default")
@@ -544,7 +567,12 @@ func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	t = &model.Tenant{Code: "default", Name: "默认租户"}
+	t = &model.Tenant{
+		Code:          "default",
+		Name:          "默认租户",
+		MaxFiles:      model.DefaultTenantMaxFiles,
+		MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
+	}
 	if err := r.Create(t); err != nil {
 		return nil, err
 	}

@@ -31,13 +31,14 @@ type Actor struct {
 }
 
 type KnowledgeService struct {
-	docRepo  *repository.DocumentRepo
-	kbRepo   *repository.KnowledgeBaseRepo
-	dirRepo  *repository.DirectoryRepo
-	msgRepo  *repository.MessageRepo
-	userRepo *repository.UserRepo
-	mem      *memory.Manager
-	rag      *rag.Pipeline
+	docRepo    *repository.DocumentRepo
+	kbRepo     *repository.KnowledgeBaseRepo
+	dirRepo    *repository.DirectoryRepo
+	msgRepo    *repository.MessageRepo
+	userRepo   *repository.UserRepo
+	tenantRepo *repository.TenantRepo
+	mem        *memory.Manager
+	rag        *rag.Pipeline
 }
 
 func NewKnowledgeService(
@@ -46,17 +47,19 @@ func NewKnowledgeService(
 	dirRepo *repository.DirectoryRepo,
 	msgRepo *repository.MessageRepo,
 	userRepo *repository.UserRepo,
+	tenantRepo *repository.TenantRepo,
 	mem *memory.Manager,
 	pipeline *rag.Pipeline,
 ) *KnowledgeService {
 	return &KnowledgeService{
-		docRepo:  docRepo,
-		kbRepo:   kbRepo,
-		dirRepo:  dirRepo,
-		msgRepo:  msgRepo,
-		userRepo: userRepo,
-		mem:      mem,
-		rag:      pipeline,
+		docRepo:    docRepo,
+		kbRepo:     kbRepo,
+		dirRepo:    dirRepo,
+		msgRepo:    msgRepo,
+		userRepo:   userRepo,
+		tenantRepo: tenantRepo,
+		mem:        mem,
+		rag:        pipeline,
 	}
 }
 
@@ -69,6 +72,25 @@ func requireActor(userID string, tenantID uint) (Actor, error) {
 		return Actor{}, fmt.Errorf("tenant_id is required")
 	}
 	return Actor{UserID: userID, TenantID: tenantID}, nil
+}
+
+// UploadPolicy 返回租户上传配额和已有文件数。
+func (s *KnowledgeService) UploadPolicy(tenantID uint) (model.Tenant, int64, error) {
+	if s.tenantRepo == nil || tenantID == 0 {
+		return model.Tenant{}, 0, nil
+	}
+	t, err := s.tenantRepo.GetByID(tenantID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.Tenant{}, 0, fmt.Errorf("租户不存在")
+		}
+		return model.Tenant{}, 0, err
+	}
+	n, err := s.docRepo.CountByTenant(tenantID)
+	if err != nil {
+		return model.Tenant{}, 0, err
+	}
+	return *t, n, nil
 }
 
 func (s *KnowledgeService) fillKBUsernames(kbs []*model.KnowledgeBase) {
@@ -511,6 +533,21 @@ func (s *KnowledgeService) ImportDocuments(
 		if dir.KnowledgeBaseID != kbID {
 			return nil, fmt.Errorf("directory 不属于指定知识库")
 		}
+	}
+
+	tenant, used, err := s.UploadPolicy(actor.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	maxFiles := tenant.UploadMaxFiles()
+	maxBytes := tenant.UploadMaxFileSizeBytes()
+	for _, fh := range fileHeaders {
+		if maxBytes > 0 && fh.Size > maxBytes {
+			return nil, fmt.Errorf("文件 %q 大小超过限制 %dMB", fh.Filename, tenant.UploadMaxFileSizeMB())
+		}
+	}
+	if used+int64(len(fileHeaders)) > int64(maxFiles) {
+		return nil, fmt.Errorf("已达到或将超过租户文件总数上限 %d（已有 %d）", maxFiles, used)
 	}
 
 	result := &ImportResult{

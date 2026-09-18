@@ -173,6 +173,7 @@ export const api = {
   // 租户 / 认证
   createTenant: (data) => http.post('/api/v1/tenants', data),
   listTenants: (params) => http.get('/api/v1/tenants', { params }),
+  updateTenantLimits: (data) => http.put('/api/v1/tenants/limits', data),
   register: (data) => http.post('/api/v1/auth/register', data),
   login: (data) => http.post('/api/v1/auth/login', data),
   me: () => http.get('/api/v1/auth/me'),
