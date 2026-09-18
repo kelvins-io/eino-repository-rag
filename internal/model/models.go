@@ -132,7 +132,7 @@ const (
 	DefaultTenantMaxFiles = 5
 	// DefaultTenantMaxFileSizeMB 租户默认单个文件大小上限（MB）
 	DefaultTenantMaxFileSizeMB = 5
-	// DefaultTenantMaxSessions 租户默认知识库问答会话总数上限
+	// DefaultTenantMaxSessions 租户默认每天可新建的知识库问答会话数
 	DefaultTenantMaxSessions = 5
 	// DefaultTenantMaxTurns 租户默认单条会话的提问轮次上限
 	DefaultTenantMaxTurns = 5
@@ -159,7 +159,7 @@ func (t Tenant) UploadMaxFileSizeBytes() int64 {
 	return int64(t.UploadMaxFileSizeMB()) * 1024 * 1024
 }
 
-// SessionMax 有效的知识库问答会话总数上限。未配置时用默认值。
+// SessionMax 有效的每日新建会话上限。未配置时用默认值。
 func (t Tenant) SessionMax() int {
 	if t.MaxSessions <= 0 {
 		return DefaultTenantMaxSessions

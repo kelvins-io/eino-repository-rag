@@ -402,9 +402,11 @@ func (r *ConversationRepo) GetOrCreate(
 	return &conv, nil
 }
 
-func (r *ConversationRepo) CountByTenant(tenantID uint) (int64, error) {
+func (r *ConversationRepo) CountCreatedSince(tenantID uint, since time.Time) (int64, error) {
 	var n int64
-	err := r.db.Model(&model.Conversation{}).Where("tenant_id = ?", tenantID).Count(&n).Error
+	err := r.db.Model(&model.Conversation{}).
+		Where("tenant_id = ? AND created_at >= ?", tenantID, since).
+		Count(&n).Error
 	return n, err
 }
 
@@ -559,7 +561,7 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	return rows, total, nil
 }
 
-// UpdateUploadLimits 更新租户的文件、会话总数和单会话轮次上限。
+// UpdateUploadLimits 更新租户的文件、每日新建会话和单会话轮次上限。
 func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns int) error {
 	res := r.db.Model(&model.Tenant{}).Where("code = ?", code).Updates(map[string]any{
 		"max_files":        maxFiles,

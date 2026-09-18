@@ -309,7 +309,7 @@ func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, c
 		return fmt.Errorf("单文件上限至少为 1MB")
 	}
 	if maxSessions < 1 {
-		return fmt.Errorf("会话总数至少为 1")
+		return fmt.Errorf("每日新建会话至少为 1")
 	}
 	if maxTurns < 1 {
 		return fmt.Errorf("每会话轮次至少为 1")
