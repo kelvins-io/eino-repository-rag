@@ -171,6 +171,7 @@ export const api = {
   register: (data) => http.post('/api/v1/auth/register', data),
   login: (data) => http.post('/api/v1/auth/login', data),
   me: () => http.get('/api/v1/auth/me'),
+  listUsers: (params) => http.get('/api/v1/users', { params }),
 
   // 知识库
   listKnowledgeBases: (params) => http.get('/api/v1/knowledge-bases', { params }),

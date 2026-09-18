@@ -187,6 +187,39 @@ func (s *AuthService) Register(in RegisterInput) (*AuthResult, error) {
 	return s.issueAuth(user, tenant)
 }
 
+// TenantUserView 租户用户列表项，不包含密码等敏感字段。
+type TenantUserView struct {
+	Username  string    `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
+	IsAdmin   bool      `json:"is_admin"`
+}
+
+// ListTenantUsers 分页列出当前租户下的用户。用户名为 admin 的账号视为租户管理员。
+func (s *AuthService) ListTenantUsers(tenantID uint, page, pageSize int) ([]TenantUserView, int64, error) {
+	if tenantID == 0 {
+		return nil, 0, fmt.Errorf("无效租户")
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 10
+	}
+	users, total, err := s.users.ListByTenant(tenantID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]TenantUserView, 0, len(users))
+	for _, u := range users {
+		out = append(out, TenantUserView{
+			Username:  u.Username,
+			CreatedAt: u.CreatedAt,
+			IsAdmin:   u.Username == tenantAdminUsername,
+		})
+	}
+	return out, total, nil
+}
+
 type LoginInput struct {
 	TenantCode string
 	Username   string

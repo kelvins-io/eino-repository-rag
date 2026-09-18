@@ -40,6 +40,12 @@ const routes = [
         meta: { title: '知识库问答', requiresAuth: true },
       },
       {
+        path: 'users',
+        name: 'users',
+        component: () => import('@/views/Users.vue'),
+        meta: { title: '用户管理', requiresAuth: true },
+      },
+      {
         path: 'tenants',
         name: 'tenants',
         component: () => import('@/views/Tenants.vue'),

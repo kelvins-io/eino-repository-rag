@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -104,6 +105,23 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 	ok(c, result)
+}
+
+// ListUsers GET /api/v1/users
+func (h *AuthHandler) ListUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	list, total, err := h.svc.ListTenantUsers(auth.TenantIDFromContext(c), page, pageSize)
+	if err != nil {
+		failAuth(c, err)
+		return
+	}
+	ok(c, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
 }
 
 func failAuth(c *gin.Context, err error) {

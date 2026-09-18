@@ -550,6 +550,22 @@ func (r *UserRepo) GetByID(id uint) (*model.User, error) {
 	return &u, nil
 }
 
+// ListByTenant 分页列出租户下的用户，按创建时间倒序。
+func (r *UserRepo) ListByTenant(tenantID uint, limit, offset int) ([]model.User, int64, error) {
+	var (
+		list  []model.User
+		total int64
+	)
+	q := r.db.Model(&model.User{}).Where("tenant_id = ?", tenantID)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := q.Order("created_at desc, id desc").Limit(limit).Offset(offset).Find(&list).Error; err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
+}
+
 // MapUsernameByAuthIDs 按业务 user_id（数字字符串）批量查用户名。
 func (r *UserRepo) MapUsernameByAuthIDs(authIDs []string) (map[string]string, error) {
 	out := make(map[string]string, len(authIDs))
