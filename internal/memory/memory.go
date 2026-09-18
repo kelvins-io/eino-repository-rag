@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/kelvins-io/eino-repository-rag/internal/model"
 	"github.com/kelvins-io/eino-repository-rag/internal/repository"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 // ChatTurn 单轮对话（短期记忆条目）
@@ -24,15 +26,16 @@ type Manager struct {
 	rdb      *redis.Client
 	msgRepo  *repository.MessageRepo
 	convRepo *repository.ConversationRepo
+	tenants  *repository.TenantRepo
 	ttl      time.Duration
 	shortMax int
 	longMax  int
 
-	tokenBudget     int
-	keepRecent      int
-	summaryEnabled  bool
-	summaryTrigger  int
-	summarizer      Summarizer
+	tokenBudget    int
+	keepRecent     int
+	summaryEnabled bool
+	summaryTrigger int
+	summarizer     Summarizer
 }
 
 func NewManager(
@@ -55,6 +58,13 @@ func NewManager(
 	}
 }
 
+// SetTenantRepo 注入租户仓储，用于限制新建会话总数。
+func (m *Manager) SetTenantRepo(tenants *repository.TenantRepo) {
+	if m != nil {
+		m.tenants = tenants
+	}
+}
+
 func shortKey(sessionID string) string {
 	return fmt.Sprintf("memory:short:%s", sessionID)
 }
@@ -72,6 +82,9 @@ func (m *Manager) Append(
 	title := content
 	if len([]rune(title)) > 40 {
 		title = string([]rune(title)[:40]) + "..."
+	}
+	if err := m.ensureNewSessionAllowed(tenantID, sessionID); err != nil {
+		return err
 	}
 	conv, err := m.convRepo.GetOrCreate(tenantID, userID, sessionID, title, knowledgeBaseID, directoryID)
 	if err != nil {
@@ -108,6 +121,34 @@ func (m *Manager) Append(
 	pipe.Expire(ctx, summaryKey(sessionID), m.ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("save short-term memory: %w", err)
+	}
+	return nil
+}
+
+// EnsureNewSessionAllowed 已有会话直接通过；新建时不能超过租户会话总数上限。
+func (m *Manager) EnsureNewSessionAllowed(tenantID uint, sessionID string) error {
+	return m.ensureNewSessionAllowed(tenantID, sessionID)
+}
+
+func (m *Manager) ensureNewSessionAllowed(tenantID uint, sessionID string) error {
+	if m == nil || m.tenants == nil || m.convRepo == nil || tenantID == 0 || sessionID == "" {
+		return nil
+	}
+	if _, err := m.convRepo.GetBySessionID(sessionID); err == nil {
+		return nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	tenant, err := m.tenants.GetByID(tenantID)
+	if err != nil {
+		return err
+	}
+	n, err := m.convRepo.CountByTenant(tenantID)
+	if err != nil {
+		return err
+	}
+	if n >= int64(tenant.SessionMax()) {
+		return fmt.Errorf("已达到租户会话总数上限 %d", tenant.SessionMax())
 	}
 	return nil
 }

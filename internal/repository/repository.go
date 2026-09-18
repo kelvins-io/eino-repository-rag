@@ -402,6 +402,12 @@ func (r *ConversationRepo) GetOrCreate(
 	return &conv, nil
 }
 
+func (r *ConversationRepo) CountByTenant(tenantID uint) (int64, error) {
+	var n int64
+	err := r.db.Model(&model.Conversation{}).Where("tenant_id = ?", tenantID).Count(&n).Error
+	return n, err
+}
+
 func (r *ConversationRepo) GetBySessionID(sessionID string) (*model.Conversation, error) {
 	var conv model.Conversation
 	if err := r.db.Where("session_id = ?", sessionID).First(&conv).Error; err != nil {
@@ -520,6 +526,7 @@ type TenantUserCount struct {
 	UserCount     int64
 	MaxFiles      int
 	MaxFileSizeMB int
+	MaxSessions   int
 }
 
 // ListWithUserCount 分页列出全部租户，并统计每个租户下的用户数。
@@ -530,7 +537,7 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	}
 	var rows []TenantUserCount
 	err := r.db.Table("tenants").
-		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, COUNT(users.id) AS user_count").
+		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, tenants.max_sessions AS max_sessions, COUNT(users.id) AS user_count").
 		Joins("LEFT JOIN users ON users.tenant_id = tenants.id").
 		Group("tenants.id").
 		Order("tenants.created_at DESC, tenants.id DESC").
@@ -543,11 +550,12 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	return rows, total, nil
 }
 
-// UpdateUploadLimits 更新租户的文件总数与单文件大小上限。
-func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB int) error {
+// UpdateUploadLimits 更新租户的文件总数、单文件大小上限和会话总数上限。
+func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions int) error {
 	res := r.db.Model(&model.Tenant{}).Where("code = ?", code).Updates(map[string]any{
 		"max_files":        maxFiles,
 		"max_file_size_mb": maxFileSizeMB,
+		"max_sessions":     maxSessions,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -572,6 +580,7 @@ func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 		Name:          "默认租户",
 		MaxFiles:      model.DefaultTenantMaxFiles,
 		MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
+		MaxSessions:   model.DefaultTenantMaxSessions,
 	}
 	if err := r.Create(t); err != nil {
 		return nil, err

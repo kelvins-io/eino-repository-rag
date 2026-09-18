@@ -922,6 +922,11 @@ func (s *KnowledgeService) prepareQueryRequest(req *rag.QueryRequest) error {
 	if req.SessionID == "" {
 		req.SessionID = uuid.NewString()
 	}
+	if s.mem != nil {
+		if err := s.mem.EnsureNewSessionAllowed(actor.TenantID, req.SessionID); err != nil {
+			return err
+		}
+	}
 
 	// 共享知识库：按租户过滤，不按上传者 user_id 收窄
 	filter := &rag.RetrieveFilter{

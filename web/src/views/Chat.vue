@@ -457,11 +457,12 @@ async function ask() {
         await scrollBottom()
       },
     })
-  } catch {
+  } catch (err) {
+    const msg = err?.message || '流式回答失败'
     if (!messages.value[assistantIdx].content) {
-      messages.value[assistantIdx].content = '请求失败，请稍后重试。'
+      messages.value[assistantIdx].content = msg
     }
-    ElMessage.error('流式回答失败')
+    ElMessage.error(msg)
   } finally {
     asking.value = false
   }

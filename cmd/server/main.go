@@ -83,6 +83,7 @@ func main() {
 	msgRepo := repository.NewMessageRepo(db)
 
 	memMgr := memory.NewManager(rdb, msgRepo, convRepo, cfg.Memory)
+	memMgr.SetTenantRepo(tenantRepo)
 
 	pipeline, err := rag.NewPipeline(context.Background(), cfg, rdb, docRepo, memMgr)
 	if err != nil {

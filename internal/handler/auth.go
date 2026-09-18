@@ -71,6 +71,7 @@ type updateTenantLimitsReq struct {
 	Code          string `json:"code"`
 	MaxFiles      int    `json:"max_files"`
 	MaxFileSizeMB int    `json:"max_file_size_mb"`
+	MaxSessions   int    `json:"max_sessions"`
 }
 
 // UpdateTenantLimits PUT /api/v1/tenants/limits
@@ -86,6 +87,7 @@ func (h *AuthHandler) UpdateTenantLimits(c *gin.Context) {
 		req.Code,
 		req.MaxFiles,
 		req.MaxFileSizeMB,
+		req.MaxSessions,
 	); err != nil {
 		failAuth(c, err)
 		return
@@ -94,6 +96,7 @@ func (h *AuthHandler) UpdateTenantLimits(c *gin.Context) {
 		"code":             strings.TrimSpace(req.Code),
 		"max_files":        req.MaxFiles,
 		"max_file_size_mb": req.MaxFileSizeMB,
+		"max_sessions":     req.MaxSessions,
 	})
 }
 
