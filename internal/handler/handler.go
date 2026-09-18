@@ -560,6 +560,16 @@ func (h *KnowledgeHandler) Query(c *gin.Context) {
 	h.streamChat(c, h.svc.QueryStream)
 }
 
+// ChatQuota GET /api/v1/chat/quota — 当前租户今日剩余新建会话和语音输入次数
+func (h *KnowledgeHandler) ChatQuota(c *gin.Context) {
+	quota, err := h.svc.ChatQuota(currentTenantID(c))
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, quota)
+}
+
 // TranscribeSpeech POST /api/v1/chat/transcribe — 上传录音，返回识别文本
 func (h *KnowledgeHandler) TranscribeSpeech(c *gin.Context) {
 	if h.transcriber == nil {

@@ -158,6 +158,14 @@ func (m *Manager) ensureNewSessionAllowed(tenantID uint, sessionID string) error
 	return nil
 }
 
+// CountNewSessionsSince 统计租户自 since 起新建的会话数。
+func (m *Manager) CountNewSessionsSince(tenantID uint, since time.Time) (int64, error) {
+	if m == nil || m.convRepo == nil || tenantID == 0 {
+		return 0, nil
+	}
+	return m.convRepo.CountCreatedSince(tenantID, since)
+}
+
 // EnsureTurnAllowed 本会话用户提问次数未达上限时才允许继续提问。
 func (m *Manager) EnsureTurnAllowed(tenantID uint, sessionID string) error {
 	return m.ensureTurnAllowed(tenantID, sessionID)

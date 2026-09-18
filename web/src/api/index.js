@@ -205,6 +205,7 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   uploadLimits: () => http.get('/api/v1/system/upload-limits'),
+  chatQuota: () => http.get('/api/v1/chat/quota'),
   transcribeSpeech: (file, { prompt, language } = {}) => {
     const formData = new FormData()
     formData.append('file', file)

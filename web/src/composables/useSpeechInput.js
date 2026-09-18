@@ -155,6 +155,7 @@ export function useSpeechInput(query, options = {}) {
       const data = await api.transcribeSpeech(file, { prompt })
       const text = typeof data === 'string' ? data : data?.text
       commitText(text)
+      await options.onTranscribed?.()
     } catch {
       // axios interceptor already shows the error
     } finally {

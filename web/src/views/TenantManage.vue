@@ -94,7 +94,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 
@@ -186,7 +186,18 @@ async function saveLimits(row) {
   }
 }
 
-onMounted(load)
+function reloadIfVisible() {
+  if (document.visibilityState === 'visible') load()
+}
+
+onMounted(() => {
+  load()
+  document.addEventListener('visibilitychange', reloadIfVisible)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', reloadIfVisible)
+})
 </script>
 
 <style scoped>

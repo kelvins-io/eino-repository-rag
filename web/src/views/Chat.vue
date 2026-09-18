@@ -5,7 +5,7 @@
         <h2>知识库问答</h2>
         <p class="sub">基于 RAG 检索 + 会话记忆回答问题；可选 Agent 多步检索</p>
       </div>
-      <el-button @click="resetSession">新会话</el-button>
+      <el-button :disabled="sessionRemaining === 0" @click="resetSession">{{ newSessionLabel }}</el-button>
     </div>
 
     <el-row :gutter="16">
@@ -107,8 +107,9 @@
                   size="small"
                   :loading="loadingIdx === idx"
                   :type="speakingIdx === idx ? 'primary' : ''"
-                  :aria-label="speakingIdx === idx ? '停止朗读' : '朗读回答'"
-                  @click="toggleSpeak(idx, m.content)"
+                  :disabled="ttsRemaining === 0 && speakingIdx !== idx && loadingIdx !== idx"
+                  :aria-label="ttsButtonLabel(idx)"
+                  @click="speak(idx, m.content)"
                 >
                   <el-icon>
                     <VideoPause v-if="speakingIdx === idx" />
@@ -180,13 +181,14 @@
                     :class="{ 'is-listening': listening }"
                     :type="listening ? 'danger' : 'default'"
                     :loading="transcribing"
-                    :disabled="asking || transcribing || !speechSupported"
+                    :disabled="asking || transcribing || !speechSupported || voiceRemaining === 0"
                     :aria-label="speechAriaLabel"
                     @click="toggleSpeech"
                   >
                     <el-icon>
                       <Microphone />
                     </el-icon>
+                    <span>{{ voiceButtonLabel }}</span>
                   </el-button>
                 </span>
               </el-tooltip>
@@ -225,6 +227,9 @@ const directoryId = ref()
 const messages = ref([])
 const query = ref('')
 const asking = ref(false)
+const sessionRemaining = ref(null)
+const voiceRemaining = ref(null)
+const ttsRemaining = ref(null)
 const listRef = ref()
 const chatMode = ref('rag')
 const {
@@ -239,6 +244,7 @@ const {
     const kb = kbs.value.find((item) => item.id === kbId.value)
     return kb?.name ? `知识库问答，相关主题：${kb.name}` : '知识库问答'
   },
+  onTranscribed: () => loadQuota(),
 })
 const {
   speakingIdx,
@@ -251,6 +257,10 @@ watch(listening, (on) => {
   if (on) stopSpeak()
 })
 
+watch(transcribing, (on, prev) => {
+  if (prev && !on) loadQuota()
+})
+
 const speechPlaceholder = computed(() => {
   if (transcribing.value) return '正在识别语音…'
   if (listening.value) return '正在录音，5 秒无声音将自动结束'
@@ -258,6 +268,7 @@ const speechPlaceholder = computed(() => {
 })
 
 const speechTip = computed(() => {
+  if (voiceRemaining.value === 0) return '今日语音输入次数已用完'
   if (!speechSupported.value) return '当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari'
   if (transcribing.value) return '正在识别'
   if (listening.value) return '点击停止并识别为文字'
@@ -269,6 +280,27 @@ const speechAriaLabel = computed(() => {
   if (listening.value) return '停止语音输入'
   return '语音输入'
 })
+
+const newSessionLabel = computed(() => {
+  if (sessionRemaining.value == null) return '新会话'
+  return `新会话（今日剩余 ${sessionRemaining.value}）`
+})
+
+const voiceButtonLabel = computed(() => {
+  if (voiceRemaining.value == null) return '语音输入'
+  return `语音输入（今日剩余 ${voiceRemaining.value}）`
+})
+
+async function loadQuota() {
+  try {
+    const data = await api.chatQuota()
+    sessionRemaining.value = Number(data?.remaining_sessions ?? 0)
+    voiceRemaining.value = Number(data?.remaining_voice_inputs ?? 0)
+    ttsRemaining.value = Number(data?.remaining_tts ?? 0)
+  } catch {
+    /* 保留上次结果，避免暂时失败把按钮锁死 */
+  }
+}
 
 function formatTime(v) {
   if (!v) return ''
@@ -359,6 +391,7 @@ async function onSessionChange(id) {
 }
 
 function resetSession() {
+  if (sessionRemaining.value === 0) return
   stopSpeech({ commit: false })
   stopSpeak()
   sessionId.value = newSessionId()
@@ -386,6 +419,17 @@ function canSpeak(m, idx) {
   if (!text || text === '(空回答)') return false
   if (asking.value && idx === messages.value.length - 1) return false
   return true
+}
+
+function ttsButtonLabel(idx) {
+  if (speakingIdx.value === idx) return '停止朗读'
+  if (ttsRemaining.value === 0) return '今日文字转语音次数已用完'
+  return '朗读回答'
+}
+
+async function speak(idx, text) {
+  await toggleSpeak(idx, text)
+  await loadQuota()
 }
 
 async function ask() {
@@ -465,11 +509,12 @@ async function ask() {
     ElMessage.error(msg)
   } finally {
     asking.value = false
+    await loadQuota()
   }
 }
 
 onMounted(async () => {
-  await loadKbs()
+  await Promise.all([loadKbs(), loadQuota()])
 })
 </script>
 

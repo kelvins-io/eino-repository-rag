@@ -55,7 +55,7 @@ func (r *SpeechUsageRepo) increment(tenantID uint, day string, voice bool) error
 	return r.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "day"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			column:       gorm.Expr(column + " + 1"),
+			column:       gorm.Expr("tenant_speech_usages." + column + " + 1"),
 			"updated_at": time.Now(),
 		}),
 	}).Select("TenantID", "Day", "VoiceInputs", "TTSCount").Create(&row).Error
