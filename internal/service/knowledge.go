@@ -31,14 +31,15 @@ type Actor struct {
 }
 
 type KnowledgeService struct {
-	docRepo    *repository.DocumentRepo
-	kbRepo     *repository.KnowledgeBaseRepo
-	dirRepo    *repository.DirectoryRepo
-	msgRepo    *repository.MessageRepo
-	userRepo   *repository.UserRepo
-	tenantRepo *repository.TenantRepo
-	mem        *memory.Manager
-	rag        *rag.Pipeline
+	docRepo     *repository.DocumentRepo
+	kbRepo      *repository.KnowledgeBaseRepo
+	dirRepo     *repository.DirectoryRepo
+	msgRepo     *repository.MessageRepo
+	userRepo    *repository.UserRepo
+	tenantRepo  *repository.TenantRepo
+	speechUsage *repository.SpeechUsageRepo
+	mem         *memory.Manager
+	rag         *rag.Pipeline
 }
 
 func NewKnowledgeService(
@@ -60,6 +61,13 @@ func NewKnowledgeService(
 		tenantRepo: tenantRepo,
 		mem:        mem,
 		rag:        pipeline,
+	}
+}
+
+// SetSpeechUsage 注入语音用量仓储，用于限制每天的语音输入和文字转语音次数。
+func (s *KnowledgeService) SetSpeechUsage(repo *repository.SpeechUsageRepo) {
+	if s != nil {
+		s.speechUsage = repo
 	}
 }
 

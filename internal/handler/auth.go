@@ -68,11 +68,13 @@ func (h *AuthHandler) ListTenants(c *gin.Context) {
 }
 
 type updateTenantLimitsReq struct {
-	Code          string `json:"code"`
-	MaxFiles      int    `json:"max_files"`
-	MaxFileSizeMB int    `json:"max_file_size_mb"`
-	MaxSessions   int    `json:"max_sessions"`
-	MaxTurns      int    `json:"max_turns"`
+	Code           string `json:"code"`
+	MaxFiles       int    `json:"max_files"`
+	MaxFileSizeMB  int    `json:"max_file_size_mb"`
+	MaxSessions    int    `json:"max_sessions"`
+	MaxTurns       int    `json:"max_turns"`
+	MaxVoiceInputs int    `json:"max_voice_inputs"`
+	MaxTTS         int    `json:"max_tts"`
 }
 
 // UpdateTenantLimits PUT /api/v1/tenants/limits
@@ -90,6 +92,8 @@ func (h *AuthHandler) UpdateTenantLimits(c *gin.Context) {
 		req.MaxFileSizeMB,
 		req.MaxSessions,
 		req.MaxTurns,
+		req.MaxVoiceInputs,
+		req.MaxTTS,
 	); err != nil {
 		failAuth(c, err)
 		return
@@ -100,6 +104,8 @@ func (h *AuthHandler) UpdateTenantLimits(c *gin.Context) {
 		"max_file_size_mb": req.MaxFileSizeMB,
 		"max_sessions":     req.MaxSessions,
 		"max_turns":        req.MaxTurns,
+		"max_voice_inputs": req.MaxVoiceInputs,
+		"max_tts":          req.MaxTTS,
 	})
 }
 

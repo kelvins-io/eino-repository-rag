@@ -41,6 +41,7 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 		&model.Document{},
 		&model.Conversation{},
 		&model.Message{},
+		&model.TenantSpeechUsage{},
 	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
@@ -530,14 +531,20 @@ func (r *TenantRepo) Count() (int64, error) {
 
 // TenantUserCount 租户及其用户数。
 type TenantUserCount struct {
-	Code          string
-	Name          string
-	CreatedAt     time.Time
-	UserCount     int64
-	MaxFiles      int
-	MaxFileSizeMB int
-	MaxSessions   int
-	MaxTurns      int
+	Code              string
+	Name              string
+	CreatedAt         time.Time
+	UserCount         int64
+	MaxFiles          int
+	MaxFileSizeMB     int
+	MaxSessions       int
+	MaxTurns          int
+	MaxVoiceInputs    int
+	MaxTTS            int
+	FileCount         int64
+	TodaySessionCount int64
+	TodayVoiceInputs  int
+	TodayTTSCount     int
 }
 
 // ListWithUserCount 分页列出全部租户，并统计每个租户下的用户数。
@@ -546,9 +553,16 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	if err := r.db.Model(&model.Tenant{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	day := model.TodayShanghai()
+	since := model.StartOfTodayShanghai()
 	var rows []TenantUserCount
 	err := r.db.Table("tenants").
-		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, tenants.max_sessions AS max_sessions, tenants.max_turns AS max_turns, COUNT(users.id) AS user_count").
+		Select(`tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, tenants.max_sessions AS max_sessions, tenants.max_turns AS max_turns, tenants.max_voice_inputs AS max_voice_inputs, tenants.max_tts AS max_tts, COUNT(users.id) AS user_count,
+			COALESCE((SELECT COUNT(*) FROM documents WHERE documents.tenant_id = tenants.id), 0) AS file_count,
+			COALESCE((SELECT COUNT(*) FROM conversations WHERE conversations.tenant_id = tenants.id AND conversations.created_at >= ?), 0) AS today_session_count,
+			COALESCE((SELECT tenant_speech_usages.voice_inputs FROM tenant_speech_usages WHERE tenant_speech_usages.tenant_id = tenants.id AND tenant_speech_usages.day = ?), 0) AS today_voice_inputs,
+			COALESCE((SELECT tenant_speech_usages.tts_count FROM tenant_speech_usages WHERE tenant_speech_usages.tenant_id = tenants.id AND tenant_speech_usages.day = ?), 0) AS today_tts_count`,
+			since, day, day).
 		Joins("LEFT JOIN users ON users.tenant_id = tenants.id").
 		Group("tenants.id").
 		Order("tenants.created_at DESC, tenants.id DESC").
@@ -561,13 +575,15 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	return rows, total, nil
 }
 
-// UpdateUploadLimits 更新租户的文件、每日新建会话和单会话轮次上限。
-func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns int) error {
+// UpdateUploadLimits 更新租户的文件、会话、轮次和语音次数上限。
+func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns, maxVoiceInputs, maxTTS int) error {
 	res := r.db.Model(&model.Tenant{}).Where("code = ?", code).Updates(map[string]any{
 		"max_files":        maxFiles,
 		"max_file_size_mb": maxFileSizeMB,
 		"max_sessions":     maxSessions,
 		"max_turns":        maxTurns,
+		"max_voice_inputs": maxVoiceInputs,
+		"max_tts":          maxTTS,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -588,12 +604,14 @@ func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 		return nil, err
 	}
 	t = &model.Tenant{
-		Code:          "default",
-		Name:          "默认租户",
-		MaxFiles:      model.DefaultTenantMaxFiles,
-		MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
-		MaxSessions:   model.DefaultTenantMaxSessions,
-		MaxTurns:      model.DefaultTenantMaxTurns,
+		Code:           "default",
+		Name:           "默认租户",
+		MaxFiles:       model.DefaultTenantMaxFiles,
+		MaxFileSizeMB:  model.DefaultTenantMaxFileSizeMB,
+		MaxSessions:    model.DefaultTenantMaxSessions,
+		MaxTurns:       model.DefaultTenantMaxTurns,
+		MaxVoiceInputs: model.DefaultTenantMaxVoiceInputs,
+		MaxTTS:         model.DefaultTenantMaxTTS,
 	}
 	if err := r.Create(t); err != nil {
 		return nil, err

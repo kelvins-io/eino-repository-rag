@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>租户管理</h2>
-        <p class="sub">全部租户及其上传、每日会话与轮次配额，仅 default 租户的 admin 可查看和配置</p>
+        <p class="sub">全部租户及其上传、会话、轮次与语音配额，仅 default 租户的 admin 可查看和配置</p>
       </div>
     </div>
 
@@ -26,6 +26,7 @@
             <el-input-number v-model="row.max_files" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
+        <el-table-column prop="file_count" label="已上传文件数" width="120" />
         <el-table-column label="单文件上限(MB)" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_file_size_mb" :min="1" :max="2048" size="small" controls-position="right" />
@@ -36,11 +37,24 @@
             <el-input-number v-model="row.max_sessions" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
+        <el-table-column prop="today_session_count" label="今日已建会话数" width="130" />
         <el-table-column label="每会话轮次" width="150">
           <template #default="{ row }">
             <el-input-number v-model="row.max_turns" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
+        <el-table-column label="每日语音输入" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.max_voice_inputs" :min="1" :max="1000000" size="small" controls-position="right" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="today_voice_inputs" label="今日已使用语音输入数" width="170" />
+        <el-table-column label="每日文字转语音" width="160">
+          <template #default="{ row }">
+            <el-input-number v-model="row.max_tts" :min="1" :max="1000000" size="small" controls-position="right" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="today_tts_count" label="今日已使用文字转语音数" width="190" />
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">保存</el-button>
@@ -104,6 +118,8 @@ async function saveLimits(row) {
   const maxFileSizeMB = Number(row.max_file_size_mb)
   const maxSessions = Number(row.max_sessions)
   const maxTurns = Number(row.max_turns)
+  const maxVoiceInputs = Number(row.max_voice_inputs)
+  const maxTTS = Number(row.max_tts)
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
     ElMessage.warning('文件总数至少为 1')
     return
@@ -120,6 +136,14 @@ async function saveLimits(row) {
     ElMessage.warning('每会话轮次至少为 1')
     return
   }
+  if (!Number.isInteger(maxVoiceInputs) || maxVoiceInputs < 1) {
+    ElMessage.warning('每日语音输入至少为 1')
+    return
+  }
+  if (!Number.isInteger(maxTTS) || maxTTS < 1) {
+    ElMessage.warning('每日文字转语音至少为 1')
+    return
+  }
   saving.value = row.code
   try {
     await api.updateTenantLimits({
@@ -128,6 +152,8 @@ async function saveLimits(row) {
       max_file_size_mb: maxFileSizeMB,
       max_sessions: maxSessions,
       max_turns: maxTurns,
+      max_voice_inputs: maxVoiceInputs,
+      max_tts: maxTTS,
     })
     ElMessage.success('已保存')
   } catch {

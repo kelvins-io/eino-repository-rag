@@ -114,15 +114,17 @@ func (Message) TableName() string { return "messages" }
 
 // Tenant 租户（注册/登录时填写的租户 ID 对应 Code）
 type Tenant struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	Code          string    `gorm:"size:64;uniqueIndex;not null" json:"code"`
-	Name          string    `gorm:"size:128;not null" json:"name"`
-	MaxFiles      int       `gorm:"not null;default:5" json:"max_files"`
-	MaxFileSizeMB int       `gorm:"not null;default:5" json:"max_file_size_mb"`
-	MaxSessions   int       `gorm:"not null;default:5" json:"max_sessions"`
-	MaxTurns      int       `gorm:"not null;default:5" json:"max_turns"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	Code           string    `gorm:"size:64;uniqueIndex;not null" json:"code"`
+	Name           string    `gorm:"size:128;not null" json:"name"`
+	MaxFiles       int       `gorm:"not null;default:5" json:"max_files"`
+	MaxFileSizeMB  int       `gorm:"not null;default:5" json:"max_file_size_mb"`
+	MaxSessions    int       `gorm:"not null;default:5" json:"max_sessions"`
+	MaxTurns       int       `gorm:"not null;default:5" json:"max_turns"`
+	MaxVoiceInputs int       `gorm:"not null;default:5" json:"max_voice_inputs"`
+	MaxTTS         int       `gorm:"not null;default:5" json:"max_tts"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (Tenant) TableName() string { return "tenants" }
@@ -136,6 +138,10 @@ const (
 	DefaultTenantMaxSessions = 5
 	// DefaultTenantMaxTurns 租户默认单条会话的提问轮次上限
 	DefaultTenantMaxTurns = 5
+	// DefaultTenantMaxVoiceInputs 租户默认每天语音输入次数
+	DefaultTenantMaxVoiceInputs = 5
+	// DefaultTenantMaxTTS 租户默认每天文字转语音次数
+	DefaultTenantMaxTTS = 5
 )
 
 // UploadMaxFiles 有效的文件总数上限。未配置时用默认值。
@@ -175,6 +181,22 @@ func (t Tenant) TurnMax() int {
 	return t.MaxTurns
 }
 
+// VoiceInputMax 有效的每日语音输入次数。未配置时用默认值。
+func (t Tenant) VoiceInputMax() int {
+	if t.MaxVoiceInputs <= 0 {
+		return DefaultTenantMaxVoiceInputs
+	}
+	return t.MaxVoiceInputs
+}
+
+// TTSMax 有效的每日文字转语音次数。未配置时用默认值。
+func (t Tenant) TTSMax() int {
+	if t.MaxTTS <= 0 {
+		return DefaultTenantMaxTTS
+	}
+	return t.MaxTTS
+}
+
 // User 租户下的登录用户
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
@@ -192,4 +214,37 @@ func (User) TableName() string { return "users" }
 // AuthUserID 业务表 user_id 字段使用的稳定字符串标识
 func (u User) AuthUserID() string {
 	return strconv.FormatUint(uint64(u.ID), 10)
+}
+
+// TenantSpeechUsage 租户当天的语音输入与文字转语音次数。
+type TenantSpeechUsage struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	TenantID    uint      `gorm:"not null;uniqueIndex:idx_tenant_speech_day,priority:1" json:"tenant_id"`
+	Day         string    `gorm:"size:10;not null;uniqueIndex:idx_tenant_speech_day,priority:2" json:"day"`
+	VoiceInputs int       `gorm:"not null;default:0" json:"voice_inputs"`
+	TTSCount    int       `gorm:"not null;default:0" json:"tts_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (TenantSpeechUsage) TableName() string { return "tenant_speech_usages" }
+
+// ShanghaiLocation 北京时间。加载失败时用固定东八区。
+func ShanghaiLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("CST", 8*60*60)
+	}
+	return loc
+}
+
+// StartOfTodayShanghai 北京时间当天 0 点。
+func StartOfTodayShanghai() time.Time {
+	now := time.Now().In(ShanghaiLocation())
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
+// TodayShanghai 北京时间日期，格式 2006-01-02。
+func TodayShanghai() string {
+	return time.Now().In(ShanghaiLocation()).Format("2006-01-02")
 }

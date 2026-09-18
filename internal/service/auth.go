@@ -94,12 +94,14 @@ func (s *AuthService) CreateTenant(in CreateTenantInput) (*CreateTenantResult, e
 	var createdAdmin bool
 	err := s.tenants.Transaction(func(tenants *repository.TenantRepo, users *repository.UserRepo) error {
 		t := &model.Tenant{
-			Code:          code,
-			Name:          name,
-			MaxFiles:      model.DefaultTenantMaxFiles,
-			MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
-			MaxSessions:   model.DefaultTenantMaxSessions,
-			MaxTurns:      model.DefaultTenantMaxTurns,
+			Code:           code,
+			Name:           name,
+			MaxFiles:       model.DefaultTenantMaxFiles,
+			MaxFileSizeMB:  model.DefaultTenantMaxFileSizeMB,
+			MaxSessions:    model.DefaultTenantMaxSessions,
+			MaxTurns:       model.DefaultTenantMaxTurns,
+			MaxVoiceInputs: model.DefaultTenantMaxVoiceInputs,
+			MaxTTS:         model.DefaultTenantMaxTTS,
 		}
 		if err := tenants.Create(t); err != nil {
 			return err
@@ -244,14 +246,20 @@ func (s *AuthService) ListTenantUsers(tenantID uint, page, pageSize int) ([]Tena
 
 // TenantListItem 平台管理员看到的租户列表项。
 type TenantListItem struct {
-	Code          string    `json:"code"`
-	Name          string    `json:"name"`
-	CreatedAt     time.Time `json:"created_at"`
-	UserCount     int64     `json:"user_count"`
-	MaxFiles      int       `json:"max_files"`
-	MaxFileSizeMB int       `json:"max_file_size_mb"`
-	MaxSessions   int       `json:"max_sessions"`
-	MaxTurns      int       `json:"max_turns"`
+	Code              string    `json:"code"`
+	Name              string    `json:"name"`
+	CreatedAt         time.Time `json:"created_at"`
+	UserCount         int64     `json:"user_count"`
+	MaxFiles          int       `json:"max_files"`
+	MaxFileSizeMB     int       `json:"max_file_size_mb"`
+	MaxSessions       int       `json:"max_sessions"`
+	MaxTurns          int       `json:"max_turns"`
+	MaxVoiceInputs    int       `json:"max_voice_inputs"`
+	MaxTTS            int       `json:"max_tts"`
+	FileCount         int64     `json:"file_count"`
+	TodaySessionCount int64     `json:"today_session_count"`
+	TodayVoiceInputs  int       `json:"today_voice_inputs"`
+	TodayTTSCount     int       `json:"today_tts_count"`
 }
 
 // ListTenants 分页列出全部租户及用户数。仅 default 租户的 admin 可调用。
@@ -272,14 +280,20 @@ func (s *AuthService) ListTenants(actorTenantCode, actorUsername string, page, p
 	out := make([]TenantListItem, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, TenantListItem{
-			Code:          row.Code,
-			Name:          row.Name,
-			CreatedAt:     row.CreatedAt,
-			UserCount:     row.UserCount,
-			MaxFiles:      normalizeLimit(row.MaxFiles, model.DefaultTenantMaxFiles),
-			MaxFileSizeMB: normalizeLimit(row.MaxFileSizeMB, model.DefaultTenantMaxFileSizeMB),
-			MaxSessions:   normalizeLimit(row.MaxSessions, model.DefaultTenantMaxSessions),
-			MaxTurns:      normalizeLimit(row.MaxTurns, model.DefaultTenantMaxTurns),
+			Code:              row.Code,
+			Name:              row.Name,
+			CreatedAt:         row.CreatedAt,
+			UserCount:         row.UserCount,
+			MaxFiles:          normalizeLimit(row.MaxFiles, model.DefaultTenantMaxFiles),
+			MaxFileSizeMB:     normalizeLimit(row.MaxFileSizeMB, model.DefaultTenantMaxFileSizeMB),
+			MaxSessions:       normalizeLimit(row.MaxSessions, model.DefaultTenantMaxSessions),
+			MaxTurns:          normalizeLimit(row.MaxTurns, model.DefaultTenantMaxTurns),
+			MaxVoiceInputs:    normalizeLimit(row.MaxVoiceInputs, model.DefaultTenantMaxVoiceInputs),
+			MaxTTS:            normalizeLimit(row.MaxTTS, model.DefaultTenantMaxTTS),
+			FileCount:         row.FileCount,
+			TodaySessionCount: row.TodaySessionCount,
+			TodayVoiceInputs:  row.TodayVoiceInputs,
+			TodayTTSCount:     row.TodayTTSCount,
 		})
 	}
 	return out, total, nil
@@ -294,7 +308,7 @@ func (s *AuthService) SetUploadSizeCeiling(mb int) {
 }
 
 // UpdateTenantUploadLimits 由 default 租户 admin 配置租户上传配额。
-func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns int) error {
+func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns, maxVoiceInputs, maxTTS int) error {
 	if !IsPlatformAdmin(actorTenantCode, actorUsername) {
 		return ErrNotPlatformAdmin
 	}
@@ -314,6 +328,12 @@ func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, c
 	if maxTurns < 1 {
 		return fmt.Errorf("每会话轮次至少为 1")
 	}
+	if maxVoiceInputs < 1 {
+		return fmt.Errorf("每日语音输入至少为 1")
+	}
+	if maxTTS < 1 {
+		return fmt.Errorf("每日文字转语音至少为 1")
+	}
 	if s.maxFileSizeMBCeiling > 0 && maxFileSizeMB > s.maxFileSizeMBCeiling {
 		return fmt.Errorf("单文件上限不能超过系统限制 %dMB", s.maxFileSizeMBCeiling)
 	}
@@ -323,7 +343,7 @@ func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, c
 		}
 		return err
 	}
-	return s.tenants.UpdateUploadLimits(code, maxFiles, maxFileSizeMB, maxSessions, maxTurns)
+	return s.tenants.UpdateUploadLimits(code, maxFiles, maxFileSizeMB, maxSessions, maxTurns, maxVoiceInputs, maxTTS)
 }
 
 func normalizeLimit(v, fallback int) int {

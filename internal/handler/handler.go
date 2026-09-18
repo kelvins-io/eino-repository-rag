@@ -136,7 +136,7 @@ func classifyHandlerError(err error) (int, string) {
 func isClientErrorMsg(msg string) bool {
 	keys := []string{
 		"required", "无效", "不能", "缺少", "不属于", "仍有", "请先",
-		"过长", "至少", "请求参数",
+		"过长", "至少", "请求参数", "已达到",
 	}
 	for _, k := range keys {
 		if strings.Contains(msg, k) {
@@ -608,6 +608,10 @@ func (h *KnowledgeHandler) TranscribeSpeech(c *gin.Context) {
 		fail(c, http.StatusRequestEntityTooLarge, fmt.Sprintf("录音超过大小限制 %dMB", maxBytes/(1024*1024)))
 		return
 	}
+	if err := h.svc.EnsureVoiceInputAllowed(currentTenantID(c)); err != nil {
+		failErr(c, err)
+		return
+	}
 
 	text, err := h.transcriber.Transcribe(c.Request.Context(), asr.Request{
 		Filename:    fh.Filename,
@@ -632,6 +636,9 @@ func (h *KnowledgeHandler) TranscribeSpeech(c *gin.Context) {
 		}
 		writeFail(c, http.StatusBadGateway, "语音识别失败，请稍后重试", err)
 		return
+	}
+	if err := h.svc.RecordVoiceInput(currentTenantID(c)); err != nil {
+		logger.L().Error("record voice input usage failed", zap.Error(err), zap.Uint("tenant_id", currentTenantID(c)))
 	}
 	ok(c, gin.H{"text": text})
 }
@@ -661,6 +668,10 @@ func (h *KnowledgeHandler) SynthesizeSpeech(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
+	if err := h.svc.EnsureTTSAllowed(currentTenantID(c)); err != nil {
+		failErr(c, err)
+		return
+	}
 	result, err := h.speaker.Synthesize(c.Request.Context(), req.Text)
 	if err != nil {
 		if errors.Is(err, tts.ErrNotConfigured) {
@@ -678,6 +689,9 @@ func (h *KnowledgeHandler) SynthesizeSpeech(c *gin.Context) {
 		}
 		writeFail(c, http.StatusBadGateway, "语音合成失败，请稍后重试", err)
 		return
+	}
+	if err := h.svc.RecordTTS(currentTenantID(c)); err != nil {
+		logger.L().Error("record tts usage failed", zap.Error(err), zap.Uint("tenant_id", currentTenantID(c)))
 	}
 	ct := result.ContentType
 	if ct == "" {

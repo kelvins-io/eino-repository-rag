@@ -148,7 +148,7 @@ func (m *Manager) ensureNewSessionAllowed(tenantID uint, sessionID string) error
 	if err != nil {
 		return err
 	}
-	n, err := m.convRepo.CountCreatedSince(tenantID, startOfToday())
+	n, err := m.convRepo.CountCreatedSince(tenantID, model.StartOfTodayShanghai())
 	if err != nil {
 		return err
 	}
@@ -156,16 +156,6 @@ func (m *Manager) ensureNewSessionAllowed(tenantID uint, sessionID string) error
 		return fmt.Errorf("已达到租户今日新建会话上限 %d", tenant.SessionMax())
 	}
 	return nil
-}
-
-// startOfToday 按北京时间取当天 0 点，作为每日新建会话的统计起点。
-func startOfToday() time.Time {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		loc = time.FixedZone("CST", 8*60*60)
-	}
-	now := time.Now().In(loc)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 }
 
 // EnsureTurnAllowed 本会话用户提问次数未达上限时才允许继续提问。
