@@ -24,6 +24,9 @@ import (
 // ErrForbidden 资源存在但当前主体无权访问
 var ErrForbidden = errors.New("无权访问该资源")
 
+// ErrTenantAdminOnly 仅当前租户用户名为 admin 的账号可执行。
+var ErrTenantAdminOnly = errors.New("仅当前租户管理员可标注相关文档")
+
 // Actor 当前请求身份（来自 JWT）
 type Actor struct {
 	UserID   string
@@ -38,6 +41,9 @@ type KnowledgeService struct {
 	userRepo    *repository.UserRepo
 	tenantRepo  *repository.TenantRepo
 	speechUsage *repository.SpeechUsageRepo
+	retrieval   *repository.RetrievalRepo
+	feedback    *repository.FeedbackRepo
+	recallK     int
 	mem         *memory.Manager
 	rag         *rag.Pipeline
 }
@@ -710,6 +716,7 @@ func (s *KnowledgeService) ListDocuments(filter repository.DocumentListFilter, p
 		ptrs[i] = &list[i]
 	}
 	s.fillDocUsernames(ptrs)
+	s.attachStoredRecalls(list)
 	return list, total, nil
 }
 
@@ -1025,6 +1032,12 @@ func (s *KnowledgeService) GetHistory(sessionID, userID string, tenantID uint) (
 		if m.UserID == actor.UserID && (m.TenantID == 0 || m.TenantID == actor.TenantID) {
 			out = append(out, m)
 		}
+	}
+	if err := s.attachFeedback(actor.UserID, out); err != nil {
+		return nil, err
+	}
+	if err := s.attachRelevance(actor.TenantID, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

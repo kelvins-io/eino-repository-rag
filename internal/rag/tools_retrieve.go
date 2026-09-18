@@ -18,10 +18,12 @@ type ctxKeyFilter struct{}
 type ctxKeyCollector struct{}
 
 // agentDocCollector 跨多轮 tool 调用累积召回文档，并分配全局引用编号。
+// rounds 保留每一轮 knowledge_retrieve 的原始顺序，供文档召回率使用，不使用合并后的编号当排名。
 type agentDocCollector struct {
-	mu   sync.Mutex
-	docs []*schema.Document
-	byID map[string]int // doc.ID -> 1-based index
+	mu     sync.Mutex
+	docs   []*schema.Document
+	byID   map[string]int // doc.ID -> 1-based index
+	rounds [][]*schema.Document
 }
 
 func newAgentDocCollector() *agentDocCollector {
@@ -38,10 +40,7 @@ func (c *agentDocCollector) Merge(docs []*schema.Document) (ordered []*schema.Do
 		if d == nil {
 			continue
 		}
-		id := d.ID
-		if id == "" {
-			id = metaString(d.MetaData, "doc_id") + ":" + metaString(d.MetaData, "chunk_index")
-		}
+		id := chunkKey(d)
 		if id == "" {
 			continue
 		}
@@ -68,6 +67,56 @@ func (c *agentDocCollector) Docs() []*schema.Document {
 	out := make([]*schema.Document, len(c.docs))
 	copy(out, c.docs)
 	return out
+}
+
+// RecordRound 记下这一轮检索的原始顺序。必须在 Merge 之前调用。
+func (c *agentDocCollector) RecordRound(docs []*schema.Document) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cp := make([]*schema.Document, len(docs))
+	copy(cp, docs)
+	c.rounds = append(c.rounds, cp)
+}
+
+func (c *agentDocCollector) Rounds() [][]*schema.Document {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([][]*schema.Document, len(c.rounds))
+	for i, round := range c.rounds {
+		cp := make([]*schema.Document, len(round))
+		copy(cp, round)
+		out[i] = cp
+	}
+	return out
+}
+
+func (c *agentDocCollector) GlobalIndex(d *schema.Document) int {
+	if c == nil || d == nil {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.byID[chunkKey(d)]
+}
+
+func chunkKey(d *schema.Document) string {
+	if d == nil {
+		return ""
+	}
+	if d.ID != "" {
+		return d.ID
+	}
+	id := metaString(d.MetaData, "doc_id") + ":" + metaString(d.MetaData, "chunk_index")
+	if id == ":" {
+		return ""
+	}
+	return id
 }
 
 func withAgentRetrieveContext(ctx context.Context, filter *RetrieveFilter, collector *agentDocCollector) context.Context {
@@ -126,6 +175,7 @@ func (p *Pipeline) runKnowledgeRetrieve(ctx context.Context, query string, topK 
 	}
 	docs = truncateDocs(docs, topK)
 	collector := collectorFromAgentCtx(ctx)
+	collector.RecordRound(docs)
 	ordered, indices := collector.Merge(docs)
 	summary := formatRetrieveSummary(ordered, indices)
 	return knowledgeRetrieveOutput{

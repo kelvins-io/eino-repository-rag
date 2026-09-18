@@ -35,14 +35,20 @@ type KnowledgeHandler struct {
 	transcriber         asr.Transcriber
 	maxAudioBytes       int64
 	speaker             tts.Speaker
+	defaultRecallK      int
 }
 
 func NewKnowledgeHandler(svc *service.KnowledgeService, uploadCfg config.RAGConfig) *KnowledgeHandler {
+	k := uploadCfg.TopK
+	if k <= 0 {
+		k = 5
+	}
 	return &KnowledgeHandler{
 		svc:                 svc,
 		maxUploadFileSize:   uploadCfg.MaxUploadFileSizeBytes(),
 		maxUploadFiles:      uploadCfg.MaxUploadFiles,
 		maxUploadFileSizeMB: uploadCfg.MaxUploadFileSizeMB,
+		defaultRecallK:      k,
 	}
 }
 
@@ -120,7 +126,7 @@ func logHandlerError(c *gin.Context, httpCode int, msg string, err error) {
 func classifyHandlerError(err error) (int, string) {
 	msg := err.Error()
 	switch {
-	case errors.Is(err, service.ErrForbidden):
+	case errors.Is(err, service.ErrForbidden), errors.Is(err, service.ErrTenantAdminOnly):
 		return http.StatusForbidden, msg
 	case strings.Contains(msg, "不存在"):
 		return http.StatusNotFound, msg
@@ -808,6 +814,63 @@ func (h *KnowledgeHandler) History(c *gin.Context) {
 		return
 	}
 	ok(c, msgs)
+}
+
+// SetRetrievalRelevance PUT /api/v1/chat/relevance
+// 为一条用户问题标注相关文档，作为该文档召回率的分母。doc_ids 传空数组表示清除。
+func (h *KnowledgeHandler) SetRetrievalRelevance(c *gin.Context) {
+	var req service.RetrievalRelevance
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数无效")
+		return
+	}
+	out, err := h.svc.SetRetrievalRelevance(currentUserID(c), auth.UsernameFromContext(c), currentTenantID(c), req)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, out)
+}
+
+// SetChatFeedback PUT /api/v1/chat/feedback
+// 对一条助手回答点赞、点踩或评分。未提交的字段保持不变；vote 空字符串或 score=0 表示取消该项。
+func (h *KnowledgeHandler) SetChatFeedback(c *gin.Context) {
+	var req service.ChatFeedbackInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数无效")
+		return
+	}
+	out, err := h.svc.SetChatFeedback(currentUserID(c), currentTenantID(c), req)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, out)
+}
+
+// DocumentRecall GET /api/v1/documents/:id/recall?k=
+// 用已落库的检索记录和相关标注计算召回率，不读取日志。
+func (h *KnowledgeHandler) DocumentRecall(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		fail(c, http.StatusBadRequest, "无效的文档 id")
+		return
+	}
+	k := h.defaultRecallK
+	if raw := strings.TrimSpace(c.Query("k")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			fail(c, http.StatusBadRequest, "无效的 k")
+			return
+		}
+		k = n
+	}
+	out, err := h.svc.DocumentRecall(currentUserID(c), currentTenantID(c), uint(id), k)
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, out)
 }
 
 // ListSessions GET /api/v1/chat/sessions?knowledge_base_id=&directory_id=

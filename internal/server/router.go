@@ -70,6 +70,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 				docs.GET("", kh.ListDocuments)
 				docs.GET("/:id", kh.GetDocument)
 				docs.GET("/:id/index-builds", kh.ListIndexBuilds)
+				docs.GET("/:id/recall", kh.DocumentRecall)
 				docs.DELETE("/:id", kh.DeleteDocument)
 			}
 
@@ -85,6 +86,8 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 				chat.POST("/transcribe", kh.TranscribeSpeech)
 				chat.POST("/speech", kh.SynthesizeSpeech)
 				chat.GET("/history", kh.History)
+				chat.PUT("/relevance", kh.SetRetrievalRelevance)
+				chat.PUT("/feedback", kh.SetChatFeedback)
 				chat.GET("/sessions", kh.ListSessions)
 			}
 		}

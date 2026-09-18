@@ -50,3 +50,8 @@ export function isPlatformAdmin() {
   const tenant = getAuthTenant()
   return tenant?.code === 'default' && user?.username === 'admin'
 }
+
+/** 当前登录租户下用户名为 admin 的账号 */
+export function isTenantAdmin() {
+  return getAuthUser()?.username === 'admin'
+}

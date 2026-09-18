@@ -164,14 +164,12 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 	}
 
 	finalSources := sources
-	if p.cfg.RAG.CitationValidateEnabled {
-		check := validateCitations(answer, len(sources))
-		if check.Changed {
-			logger.S().Infof("[rag] agent citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
-			answer = check.Answer
-			if p.cfg.RAG.CitationFilterSources {
-				finalSources = filterSourcesByCited(sources, check.ValidCited)
-			}
+	check := validateCitations(answer, len(sources))
+	if p.cfg.RAG.CitationValidateEnabled && check.Changed {
+		logger.S().Infof("[rag] agent citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
+		answer = check.Answer
+		if p.cfg.RAG.CitationFilterSources {
+			finalSources = filterSourcesByCited(sources, check.ValidCited)
 		}
 	}
 
@@ -181,12 +179,15 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 		}
 	}
 
-	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
+	userMsg, err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID)
+	if err != nil {
 		logger.S().Errorf("[rag] agent append user memory failed: %v", err)
 	}
-	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID); err != nil {
+	assistantMsg, err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID)
+	if err != nil {
 		logger.S().Errorf("[rag] agent append assistant memory failed: %v", err)
 	}
+	p.persistRetrievalHits(req, userMsg, assistantMsg, AgentRetrievalHits(collector.Rounds(), collector.GlobalIndex, check.ValidCited))
 
 	return onEvent(StreamEvent{
 		Type:            StreamEventDone,
@@ -195,6 +196,8 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 		KnowledgeBaseID: req.KnowledgeBaseID,
 		DirectoryID:     req.DirectoryID,
 		Sources:         finalSources,
+		MessageID:       messageRowID(assistantMsg),
+		UserMessageID:   messageRowID(userMsg),
 	})
 }
 

@@ -68,8 +68,14 @@ type Document struct {
 	ChunkCount      int            `json:"chunk_count"`
 	ErrorMsg        string         `gorm:"type:text" json:"error_msg,omitempty"`
 	LastIndexedAt   *time.Time     `json:"last_indexed_at,omitempty"` // 上次索引构建完成时间（成功或失败）
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
+	// Recall 是按配置的 TopK 落库的文档召回率：rank≤K 命中的已标注问题数 / 把本文档标为相关的问题数。
+	// 没有相关标注时为 null，不是 0。不进入检索分数。
+	Recall         *float64  `json:"recall"`
+	RecallK        int       `gorm:"not null;default:0" json:"recall_k"`
+	LabeledQueries int       `gorm:"not null;default:0" json:"labeled_queries"`
+	HitQueries     int       `gorm:"not null;default:0" json:"hit_queries"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (Document) TableName() string { return "documents" }
@@ -123,9 +129,70 @@ type Message struct {
 	Role           MessageRole `gorm:"size:32;not null" json:"role"`
 	Content        string      `gorm:"type:text;not null" json:"content"`
 	CreatedAt      time.Time   `json:"created_at"`
+	// Vote / Score 来自 message_feedbacks，不入库、不进入模型上下文。
+	Vote  string `gorm:"-" json:"vote,omitempty"`
+	Score int    `gorm:"-" json:"score,omitempty"`
+	// RelevantDocIDs 来自 retrieval_labels，仅用户问题有值，不入库。
+	RelevantDocIDs []string `gorm:"-" json:"relevant_doc_ids,omitempty"`
 }
 
 func (Message) TableName() string { return "messages" }
+
+const (
+	FeedbackVoteUp   = "up"
+	FeedbackVoteDown = "down"
+)
+
+// MessageFeedback 用户对一条助手回答的点赞、点踩和 1–5 分评分。
+// Vote 为空表示未表态；Score 为 0 表示未评分。再次提交同一项可取消。
+type MessageFeedback struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	TenantID  uint      `gorm:"index;not null" json:"tenant_id"`
+	UserID    string    `gorm:"size:64;index;not null" json:"user_id"`
+	SessionID string    `gorm:"size:64;index;not null" json:"session_id"`
+	MessageID uint      `gorm:"uniqueIndex;not null" json:"message_id"`
+	Vote      string    `gorm:"size:8;not null;default:''" json:"vote"`
+	Score     int       `gorm:"not null;default:0" json:"score"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (MessageFeedback) TableName() string { return "message_feedbacks" }
+
+// RetrievalHit 一次问答里按检索原始顺序记下的召回片段。
+// Rank 是该轮 TopK 内的 1-based 名次，不使用融合后的相似度分数。
+// Cited 表示最终入库的回答用合法 [n] 引用了该片段；编号来自当次 sources，不解析日志。
+type RetrievalHit struct {
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	TenantID           uint      `gorm:"index:idx_hit_doc,priority:1;not null" json:"tenant_id"`
+	UserID             string    `gorm:"size:64;not null" json:"user_id"`
+	SessionID          string    `gorm:"size:64;index;not null" json:"session_id"`
+	UserMessageID      uint      `gorm:"index;not null" json:"user_message_id"`
+	AssistantMessageID uint      `gorm:"index;not null" json:"assistant_message_id"`
+	KnowledgeBaseID    uint      `gorm:"index:idx_hit_doc,priority:2;not null;default:0" json:"knowledge_base_id"`
+	Round              int       `gorm:"not null;default:1" json:"round"` // 1-based；线性 RAG 恒为 1，Agent 为第几轮 knowledge_retrieve
+	Rank               int       `gorm:"not null" json:"rank"`            // 该轮原始召回顺序，1-based
+	DocID              string    `gorm:"size:64;index:idx_hit_doc,priority:3;not null" json:"doc_id"`
+	ChunkIndex         int       `gorm:"not null;default:0" json:"chunk_index"`
+	Cited              bool      `gorm:"not null;default:false" json:"cited"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+func (RetrievalHit) TableName() string { return "retrieval_hits" }
+
+// RetrievalLabel 某条用户问题的相关文档标注，作为文档召回率的分母。
+type RetrievalLabel struct {
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	TenantID        uint      `gorm:"index:idx_label_doc,priority:1;not null" json:"tenant_id"`
+	UserID          string    `gorm:"size:64;not null" json:"user_id"`
+	SessionID       string    `gorm:"size:64;index;not null" json:"session_id"`
+	UserMessageID   uint      `gorm:"uniqueIndex:idx_label_msg_doc,priority:1;not null" json:"user_message_id"`
+	KnowledgeBaseID uint      `gorm:"index:idx_label_doc,priority:2;not null" json:"knowledge_base_id"`
+	DocID           string    `gorm:"size:64;uniqueIndex:idx_label_msg_doc,priority:2;index:idx_label_doc,priority:3;not null" json:"doc_id"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (RetrievalLabel) TableName() string { return "retrieval_labels" }
 
 // Tenant 租户（注册/登录时填写的租户 ID 对应 Code）
 type Tenant struct {

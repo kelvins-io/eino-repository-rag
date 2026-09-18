@@ -120,6 +120,11 @@
               </template>
             </el-table-column>
             <el-table-column prop="chunk_count" label="分块" width="70" />
+            <el-table-column label="召回率" width="90">
+              <template #default="{ row }">
+                <span :title="recallTitle(row)">{{ formatRecall(row.recall) }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="上次索引时间" width="170">
               <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
             </el-table-column>
@@ -341,6 +346,21 @@ const indexHistoryTitle = computed(() => {
 
 async function loadKb() {
   kb.value = await api.getKnowledgeBase(kbId.value)
+}
+
+function formatRecall(recall) {
+  if (recall === null || recall === undefined || recall === '') return '—'
+  const n = Number(recall)
+  if (!Number.isFinite(n)) return '—'
+  const pct = n * 100
+  const text = Number.isInteger(pct) ? String(pct) : pct.toFixed(1)
+  return `${text}%`
+}
+
+function recallTitle(row) {
+  if (row?.recall === null || row?.recall === undefined) return '还没有相关文档标注'
+  const k = row.recall_k ? `Top${row.recall_k} ` : ''
+  return `${k}命中 ${row.hit_queries ?? 0} / 标注 ${row.labeled_queries ?? 0}`
 }
 
 async function loadTree() {

@@ -69,7 +69,7 @@ func shortKey(sessionID string) string {
 	return fmt.Sprintf("memory:short:%s", sessionID)
 }
 
-// Append 同时写入短期与长期记忆
+// Append 同时写入短期与长期记忆。长期消息已落库时，即使短期记忆失败也返回该消息，便于关联检索记录。
 func (m *Manager) Append(
 	ctx context.Context,
 	tenantID uint,
@@ -78,22 +78,22 @@ func (m *Manager) Append(
 	content string,
 	knowledgeBaseID uint,
 	directoryID *uint,
-) error {
+) (*model.Message, error) {
 	title := content
 	if len([]rune(title)) > 40 {
 		title = string([]rune(title)[:40]) + "..."
 	}
 	if err := m.ensureNewSessionAllowed(tenantID, sessionID); err != nil {
-		return err
+		return nil, err
 	}
 	if role == model.RoleUser {
 		if err := m.ensureTurnAllowed(tenantID, sessionID); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	conv, err := m.convRepo.GetOrCreate(tenantID, userID, sessionID, title, knowledgeBaseID, directoryID)
 	if err != nil {
-		return fmt.Errorf("get or create conversation: %w", err)
+		return nil, fmt.Errorf("get or create conversation: %w", err)
 	}
 
 	msg := &model.Message{
@@ -105,7 +105,7 @@ func (m *Manager) Append(
 		Content:        content,
 	}
 	if err := m.msgRepo.Create(msg); err != nil {
-		return fmt.Errorf("save long-term memory: %w", err)
+		return nil, fmt.Errorf("save long-term memory: %w", err)
 	}
 
 	turn := ChatTurn{
@@ -115,7 +115,7 @@ func (m *Manager) Append(
 	}
 	raw, err := json.Marshal(turn)
 	if err != nil {
-		return err
+		return msg, err
 	}
 
 	key := shortKey(sessionID)
@@ -125,9 +125,9 @@ func (m *Manager) Append(
 	pipe.Expire(ctx, key, m.ttl)
 	pipe.Expire(ctx, summaryKey(sessionID), m.ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("save short-term memory: %w", err)
+		return msg, fmt.Errorf("save short-term memory: %w", err)
 	}
-	return nil
+	return msg, nil
 }
 
 // EnsureNewSessionAllowed 已有会话直接通过；当天新建不能超过租户每日上限。

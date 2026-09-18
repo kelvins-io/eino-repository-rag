@@ -249,6 +249,8 @@ export const api = {
   chatAgentStream,
   chatHistory: (sessionId) =>
     http.get('/api/v1/chat/history', { params: { session_id: sessionId } }),
+  setChatFeedback: (data) => http.put('/api/v1/chat/feedback', data),
+  setChatRelevance: (data) => http.put('/api/v1/chat/relevance', data),
   listChatSessions: (params) =>
     http.get('/api/v1/chat/sessions', { params }),
 }

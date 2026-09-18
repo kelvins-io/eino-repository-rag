@@ -25,6 +25,26 @@ func TestAgentDocCollectorMerge(t *testing.T) {
 	}
 }
 
+func TestAgentDocCollectorRecordRoundKeepsRetrieveOrder(t *testing.T) {
+	c := newAgentDocCollector()
+	first := &schema.Document{ID: "a"}
+	second := &schema.Document{ID: "b"}
+	again := &schema.Document{ID: "b"}
+	third := &schema.Document{ID: "c"}
+	c.RecordRound([]*schema.Document{first, second})
+	c.Merge([]*schema.Document{first, second})
+	c.RecordRound([]*schema.Document{again, third})
+	c.Merge([]*schema.Document{again, third})
+
+	rounds := c.Rounds()
+	if len(rounds) != 2 || len(rounds[1]) != 2 || rounds[1][0].ID != "b" || rounds[1][1].ID != "c" {
+		t.Fatalf("rounds lost original order: %+v", rounds)
+	}
+	if c.GlobalIndex(third) != 3 || c.GlobalIndex(again) != 2 {
+		t.Fatalf("global=%d %d", c.GlobalIndex(again), c.GlobalIndex(third))
+	}
+}
+
 func TestParseToolQueryFromArgs(t *testing.T) {
 	q := parseToolQueryFromArgs(`{"query":"合规红线"}`)
 	if q != "合规红线" {

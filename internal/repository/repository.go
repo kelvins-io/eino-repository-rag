@@ -42,6 +42,9 @@ func NewPostgres(cfg config.PostgresConfig) (*gorm.DB, error) {
 		&model.DocumentIndexBuild{},
 		&model.Conversation{},
 		&model.Message{},
+		&model.MessageFeedback{},
+		&model.RetrievalHit{},
+		&model.RetrievalLabel{},
 		&model.TenantSpeechUsage{},
 	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
@@ -468,6 +471,14 @@ func NewMessageRepo(db *gorm.DB) *MessageRepo {
 
 func (r *MessageRepo) Create(msg *model.Message) error {
 	return r.db.Create(msg).Error
+}
+
+func (r *MessageRepo) GetByID(id uint) (*model.Message, error) {
+	var msg model.Message
+	if err := r.db.First(&msg, id).Error; err != nil {
+		return nil, err
+	}
+	return &msg, nil
 }
 
 func (r *MessageRepo) CountUserBySession(sessionID string) (int64, error) {

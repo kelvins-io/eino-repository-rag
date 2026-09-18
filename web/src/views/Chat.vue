@@ -100,8 +100,9 @@
               <div class="chat-bubble" :class="m.role === 'user' ? 'user' : 'assistant'">
                 {{ m.content }}
               </div>
-              <div v-if="canSpeak(m, idx)" class="msg-actions">
+              <div v-if="showActions(m, idx)" class="msg-actions">
                 <el-button
+                  v-if="canSpeak(m, idx)"
                   class="tts-btn"
                   text
                   size="small"
@@ -117,6 +118,37 @@
                   </el-icon>
                   {{ speakingIdx === idx ? '停止朗读' : '朗读' }}
                 </el-button>
+                <div v-if="canFeedback(m, idx)" class="feedback">
+                  <el-button
+                    text
+                    size="small"
+                    :type="m.vote === 'up' ? 'primary' : ''"
+                    :disabled="feedbackId === m.id"
+                    aria-label="点赞"
+                    @click="setVote(m, 'up')"
+                  >
+                    {{ m.vote === 'up' ? '已赞' : '赞' }}
+                  </el-button>
+                  <el-button
+                    text
+                    size="small"
+                    :type="m.vote === 'down' ? 'danger' : ''"
+                    :disabled="feedbackId === m.id"
+                    aria-label="点踩"
+                    @click="setVote(m, 'down')"
+                  >
+                    {{ m.vote === 'down' ? '已踩' : '踩' }}
+                  </el-button>
+                  <span class="feedback-label">评分</span>
+                  <el-rate
+                    class="feedback-rate"
+                    :model-value="m.score || 0"
+                    :disabled="feedbackId === m.id"
+                    clearable
+                    aria-label="评分"
+                    @change="(val) => setScore(m, val)"
+                  />
+                </div>
               </div>
               <div v-if="m.steps?.length" class="agent-steps">
                 <div
@@ -152,6 +184,36 @@
                     </div>
                   </el-collapse-item>
                 </el-collapse>
+              </div>
+              <div v-if="canLabel(m, idx)" class="relevance">
+                <span class="feedback-label">相关文档</span>
+                <el-select
+                  :model-value="questionOf(idx).relevant_doc_ids"
+                  multiple
+                  filterable
+                  collapse-tags
+                  collapse-tags-tooltip
+                  placeholder="选择这条问题应召回的文档"
+                  class="relevance-select"
+                  :disabled="labelingId === questionOf(idx).id"
+                  @change="(val) => setQuestionDocs(idx, val)"
+                >
+                  <el-option
+                    v-for="d in kbDocs"
+                    :key="d.id"
+                    :label="docOptionLabel(d)"
+                    :value="String(d.id)"
+                  />
+                </el-select>
+                <el-button
+                  size="small"
+                  type="primary"
+                  plain
+                  :loading="labelingId === questionOf(idx).id"
+                  @click="saveRelevance(questionOf(idx))"
+                >
+                  保存标注
+                </el-button>
               </div>
             </div>
           </div>
@@ -213,6 +275,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Microphone, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { api } from '@/api'
+import { isTenantAdmin } from '@/utils/auth'
 import { useSpeechInput } from '@/composables/useSpeechInput'
 import { useSpeechOutput } from '@/composables/useSpeechOutput'
 import { getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
@@ -227,6 +290,10 @@ const directoryId = ref()
 const messages = ref([])
 const query = ref('')
 const asking = ref(false)
+const feedbackId = ref(0)
+const labelingId = ref(0)
+const kbDocs = ref([])
+const tenantAdmin = computed(() => isTenantAdmin())
 const sessionRemaining = ref(null)
 const voiceRemaining = ref(null)
 const ttsRemaining = ref(null)
@@ -327,7 +394,7 @@ async function onKbChange() {
   treeData.value = kbId.value
     ? (await api.listDirectories(kbId.value)) || []
     : []
-  await reloadSessionsAndHistory()
+  await Promise.all([reloadSessionsAndHistory(), loadKbDocs()])
 }
 
 async function onDirectoryChange() {
@@ -373,8 +440,12 @@ async function loadHistory() {
   try {
     const list = await api.chatHistory(sessionId.value)
     messages.value = (list || []).map((m) => ({
+      id: m.id,
       role: m.role,
       content: m.content,
+      vote: m.vote || '',
+      score: m.score || 0,
+      relevant_doc_ids: Array.isArray(m.relevant_doc_ids) ? m.relevant_doc_ids.map(String) : [],
     }))
     await scrollBottom()
   } catch {
@@ -413,6 +484,129 @@ function onKeydown(e) {
   }
 }
 
+function canFeedback(m, idx) {
+  if (m.role !== 'assistant' || !m.id) return false
+  if (asking.value && idx === messages.value.length - 1) return false
+  return true
+}
+
+function showActions(m, idx) {
+  return canSpeak(m, idx) || canFeedback(m, idx)
+}
+
+function questionOf(idx) {
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    if (messages.value[i]?.role === 'user') return messages.value[i]
+  }
+  return null
+}
+
+function canLabel(m, idx) {
+  if (!tenantAdmin.value || m.role !== 'assistant') return false
+  if (asking.value && idx === messages.value.length - 1) return false
+  return !!questionOf(idx)?.id
+}
+
+function docOptionLabel(d) {
+  const name = d.title || d.file_name || `文档 ${d.id}`
+  return `${name} (#${d.id})`
+}
+
+function setQuestionDocs(idx, ids) {
+  const q = questionOf(idx)
+  if (!q) return
+  q.relevant_doc_ids = (ids || []).map(String)
+}
+
+async function loadKbDocs() {
+  if (!tenantAdmin.value || !kbId.value) {
+    kbDocs.value = []
+    return
+  }
+  try {
+    const all = []
+    let page = 1
+    let total = 0
+    do {
+      const data = await api.listDocuments({
+        knowledge_base_id: kbId.value,
+        page,
+        page_size: 100,
+      })
+      const list = data?.list || []
+      total = Number(data?.total || 0)
+      all.push(...list)
+      if (!list.length) break
+      page += 1
+    } while (all.length < total && page <= 5)
+    kbDocs.value = all
+  } catch {
+    kbDocs.value = []
+  }
+}
+
+async function saveRelevance(question) {
+  if (!question?.id || labelingId.value) return
+  const prev = [...(question.relevant_doc_ids || [])]
+  labelingId.value = question.id
+  try {
+    const saved = await api.setChatRelevance({
+      session_id: sessionId.value,
+      message_id: question.id,
+      doc_ids: prev,
+    })
+    question.relevant_doc_ids = saved?.doc_ids || []
+    ElMessage.success('已保存相关文档标注')
+  } catch {
+    question.relevant_doc_ids = prev
+  } finally {
+    labelingId.value = 0
+  }
+}
+
+async function setVote(m, vote) {
+  if (!m?.id || feedbackId.value) return
+  const next = m.vote === vote ? '' : vote
+  const prev = m.vote || ''
+  feedbackId.value = m.id
+  m.vote = next
+  try {
+    const saved = await api.setChatFeedback({
+      session_id: sessionId.value,
+      message_id: m.id,
+      vote: next,
+    })
+    m.vote = saved?.vote || ''
+    if (saved && saved.score != null) m.score = saved.score
+  } catch {
+    m.vote = prev
+  } finally {
+    feedbackId.value = 0
+  }
+}
+
+async function setScore(m, score) {
+  if (!m?.id || feedbackId.value) return
+  const next = Number(score) || 0
+  if (next === (m.score || 0)) return
+  const prev = m.score || 0
+  feedbackId.value = m.id
+  m.score = next
+  try {
+    const saved = await api.setChatFeedback({
+      session_id: sessionId.value,
+      message_id: m.id,
+      score: next,
+    })
+    m.vote = saved?.vote || ''
+    m.score = saved?.score || 0
+  } catch {
+    m.score = prev
+  } finally {
+    feedbackId.value = 0
+  }
+}
+
 function canSpeak(m, idx) {
   if (m.role !== 'assistant') return false
   const text = (m.content || '').trim()
@@ -437,7 +631,7 @@ async function ask() {
   if (!q || !kbId.value || asking.value) return
   stopSpeak()
 
-  messages.value.push({ role: 'user', content: q })
+  messages.value.push({ role: 'user', content: q, relevant_doc_ids: [] })
   query.value = ''
   messages.value.push({ role: 'assistant', content: '', sources: [], steps: [] })
   const assistantIdx = messages.value.length - 1
@@ -491,6 +685,10 @@ async function ask() {
           setSessionId(evt.session_id)
         }
         if (evt.answer) messages.value[assistantIdx].content = evt.answer
+        if (evt.message_id) messages.value[assistantIdx].id = evt.message_id
+        if (evt.user_message_id && messages.value[assistantIdx - 1]?.role === 'user') {
+          messages.value[assistantIdx - 1].id = evt.user_message_id
+        }
         if (evt.sources?.length) {
           messages.value[assistantIdx].sources = evt.sources
         }
@@ -593,7 +791,47 @@ onMounted(async () => {
 .msg-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   max-width: 780px;
+}
+
+.feedback {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.feedback-label {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.feedback-rate {
+  height: 24px;
+}
+
+.feedback-rate :deep(.el-rate) {
+  height: 24px;
+}
+
+.feedback-rate :deep(.el-rate__icon) {
+  font-size: 16px;
+  margin-right: 2px;
+}
+
+.relevance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 780px;
+}
+
+.relevance-select {
+  width: 320px;
+  max-width: 100%;
 }
 
 .tts-btn {

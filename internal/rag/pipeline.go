@@ -42,6 +42,7 @@ type Pipeline struct {
 	expander   QueryExpander
 	docRepo    *repository.DocumentRepo
 	mem        *memory.Manager
+	retrieval  retrievalHitWriter
 	indexQueue *IndexQueue
 }
 
@@ -367,6 +368,8 @@ type StreamEvent struct {
 	KnowledgeBaseID uint             `json:"knowledge_base_id,omitempty"`
 	DirectoryID     *uint            `json:"directory_id,omitempty"`
 	Sources         []SourceDocument `json:"sources,omitempty"`
+	MessageID       uint             `json:"message_id,omitempty"`
+	UserMessageID   uint             `json:"user_message_id,omitempty"`
 	Message         string           `json:"message,omitempty"`
 	Step            int              `json:"step,omitempty"`
 	Tool            string           `json:"tool,omitempty"`
@@ -456,23 +459,24 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	}
 
 	finalSources := sources
-	if p.cfg.RAG.CitationValidateEnabled {
-		check := validateCitations(answer, len(sources))
-		if check.Changed {
-			logger.S().Infof("[rag] citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
-			answer = check.Answer
-			if p.cfg.RAG.CitationFilterSources {
-				finalSources = filterSourcesByCited(sources, check.ValidCited)
-			}
+	check := validateCitations(answer, len(sources))
+	if p.cfg.RAG.CitationValidateEnabled && check.Changed {
+		logger.S().Infof("[rag] citation validate removed=%v kept=%v", check.Removed, check.ValidCited)
+		answer = check.Answer
+		if p.cfg.RAG.CitationFilterSources {
+			finalSources = filterSourcesByCited(sources, check.ValidCited)
 		}
 	}
 
-	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID); err != nil {
+	userMsg, err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleUser, req.Query, req.KnowledgeBaseID, req.DirectoryID)
+	if err != nil {
 		logger.S().Errorf("[rag] append user memory failed: %v", err)
 	}
-	if err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID); err != nil {
+	assistantMsg, err := p.mem.Append(ctx, req.TenantID, req.UserID, req.SessionID, dbmodel.RoleAssistant, answer, req.KnowledgeBaseID, req.DirectoryID)
+	if err != nil {
 		logger.S().Errorf("[rag] append assistant memory failed: %v", err)
 	}
+	p.persistRetrievalHits(req, userMsg, assistantMsg, LinearRetrievalHits(sources, check.ValidCited))
 
 	return onEvent(StreamEvent{
 		Type:            StreamEventDone,
@@ -481,7 +485,16 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 		KnowledgeBaseID: req.KnowledgeBaseID,
 		DirectoryID:     req.DirectoryID,
 		Sources:         finalSources,
+		MessageID:       messageRowID(assistantMsg),
+		UserMessageID:   messageRowID(userMsg),
 	})
+}
+
+func messageRowID(msg *dbmodel.Message) uint {
+	if msg == nil {
+		return 0
+	}
+	return msg.ID
 }
 
 // Retrieve 仅检索不生成（供评测 / 调试）；走完整 expand → hybrid → rerank 路径。
