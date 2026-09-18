@@ -30,7 +30,17 @@ type VectorStore interface {
 	Retrieve(ctx context.Context, query string, filter *RetrieveFilter, topK int) ([]*schema.Document, error)
 	// DeleteByDocID 按文档 ID 删除其全部向量 chunk（doc 不存在时视为成功）
 	DeleteByDocID(ctx context.Context, docID string) error
+	// ListChunks 按文档 ID 读出已索引分块，按 chunk_index 升序。未索引时返回空切片。
+	ListChunks(ctx context.Context, docID string) ([]IndexedChunk, error)
 }
+
+// IndexedChunk 已写入向量索引的一个分块。ChunkIndex 从 0 起。
+type IndexedChunk struct {
+	ChunkIndex int    `json:"chunk_index"`
+	Content    string `json:"content"`
+}
+
+const maxListedChunks = 10000
 
 func newVectorStore(ctx context.Context, cfg *config.Config, rdb *redis.Client, emb embedding.Embedder) (VectorStore, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.VectorIndex.Provider)) {

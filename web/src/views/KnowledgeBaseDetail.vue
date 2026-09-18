@@ -119,7 +119,11 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="chunk_count" label="分块" width="70" />
+            <el-table-column label="分块" width="70">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openChunks(row)">{{ row.chunk_count }}</el-button>
+              </template>
+            </el-table-column>
             <el-table-column label="召回率" width="90">
               <template #default="{ row }">
                 <span :title="recallTitle(row)">{{ formatRecall(row.recall) }}</span>
@@ -282,6 +286,25 @@
       </template>
     </el-drawer>
 
+    <el-dialog v-model="chunkVisible" :title="chunkTitle" width="760px">
+      <el-table v-loading="chunkLoading" :data="chunkPage" max-height="480" empty-text="还没有分块">
+        <el-table-column prop="chunk_index" label="分块标号" width="100" />
+        <el-table-column label="分块内容" min-width="480">
+          <template #default="{ row }">
+            <div class="chunk-content">{{ row.content }}</div>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="chunkRows.length > chunkPageSize" class="pager">
+        <el-pagination
+          v-model:current-page="chunkPageNo"
+          :page-size="chunkPageSize"
+          layout="total, prev, pager, next"
+          :total="chunkRows.length"
+        />
+      </div>
+    </el-dialog>
+
     <!-- 索引记录 -->
     <el-drawer v-model="indexHistoryVisible" :title="indexHistoryTitle" size="720px">
       <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引记录">
@@ -357,6 +380,20 @@ const importQuotaFull = computed(
 
 const docDetailVisible = ref(false)
 const docDetail = ref(null)
+const chunkVisible = ref(false)
+const chunkLoading = ref(false)
+const chunkDoc = ref(null)
+const chunkRows = ref([])
+const chunkPageNo = ref(1)
+const chunkPageSize = 10
+const chunkTitle = computed(() => {
+  const name = chunkDoc.value?.file_name || chunkDoc.value?.title
+  return name ? `分块 · ${name}` : '分块'
+})
+const chunkPage = computed(() => {
+  const start = (chunkPageNo.value - 1) * chunkPageSize
+  return chunkRows.value.slice(start, start + chunkPageSize)
+})
 const indexHistoryVisible = ref(false)
 const indexHistoryLoading = ref(false)
 const indexHistory = ref([])
@@ -643,6 +680,22 @@ async function showDoc(row) {
   docDetailVisible.value = true
 }
 
+async function openChunks(row) {
+  chunkDoc.value = row
+  chunkRows.value = []
+  chunkPageNo.value = 1
+  chunkVisible.value = true
+  chunkLoading.value = true
+  try {
+    const list = await api.listDocumentChunks(row.id)
+    chunkRows.value = Array.isArray(list) ? list : []
+  } catch {
+    chunkRows.value = []
+  } finally {
+    chunkLoading.value = false
+  }
+}
+
 async function onDeleteOne(row) {
   await ElMessageBox.confirm(`确认删除文档「${row.title}」？将级联清理向量与文件。`, '删除确认', {
     type: 'warning',
@@ -738,5 +791,13 @@ onMounted(refreshAll)
 .error-msg {
   color: var(--el-color-danger);
   font-size: 12px;
+}
+
+.chunk-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  max-height: 160px;
+  overflow: auto;
 }
 </style>

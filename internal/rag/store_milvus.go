@@ -2,7 +2,9 @@ package rag
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	milvusindexer "github.com/cloudwego/eino-ext/components/indexer/milvus2"
@@ -109,6 +111,86 @@ func (s *milvusVectorStore) DeleteByDocID(ctx context.Context, docID string) err
 		return fmt.Errorf("milvus delete vectors doc_id=%s: %w", docID, err)
 	}
 	return nil
+}
+
+// ListChunks 用标量查询读出该文档全部分块，不走向量检索。
+func (s *milvusVectorStore) ListChunks(ctx context.Context, docID string) ([]IndexedChunk, error) {
+	docID = strings.TrimSpace(docID)
+	if docID == "" {
+		return nil, fmt.Errorf("doc_id is required")
+	}
+	expr := fmt.Sprintf(`metadata["doc_id"] == %q`, docID)
+	result, err := s.client.Query(ctx, milvusclient.NewQueryOption(s.cfg.Milvus.Collection).
+		WithFilter(expr).
+		WithOutputFields("content", "metadata").
+		WithLimit(maxListedChunks))
+	if err != nil {
+		return nil, fmt.Errorf("milvus list chunks doc_id=%s: %w", docID, err)
+	}
+	n := result.Len()
+	if n == 0 && len(result.Fields) > 0 {
+		n = result.Fields[0].Len()
+	}
+	contentCol := result.GetColumn("content")
+	metaCol := result.GetColumn("metadata")
+	out := make([]IndexedChunk, 0, n)
+	for i := 0; i < n; i++ {
+		content := columnString(contentCol, i)
+		meta := map[string]any{}
+		if raw := columnBytes(metaCol, i); len(raw) > 0 {
+			_ = json.Unmarshal(raw, &meta)
+		}
+		out = append(out, IndexedChunk{
+			ChunkIndex: metaInt(meta, "chunk_index"),
+			Content:    content,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].ChunkIndex < out[j].ChunkIndex
+	})
+	return out, nil
+}
+
+func columnString(col interface {
+	Get(int) (any, error)
+	GetAsString(int) (string, error)
+}, i int) string {
+	if col == nil {
+		return ""
+	}
+	if s, err := col.GetAsString(i); err == nil {
+		return s
+	}
+	v, err := col.Get(i)
+	if err != nil || v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case []byte:
+		return string(t)
+	default:
+		return fmt.Sprint(t)
+	}
+}
+
+func columnBytes(col interface{ Get(int) (any, error) }, i int) []byte {
+	if col == nil {
+		return nil
+	}
+	v, err := col.Get(i)
+	if err != nil || v == nil {
+		return nil
+	}
+	switch t := v.(type) {
+	case []byte:
+		return t
+	case string:
+		return []byte(t)
+	default:
+		return nil
+	}
 }
 
 func (s *milvusVectorStore) Retrieve(ctx context.Context, query string, filter *RetrieveFilter, topK int) ([]*schema.Document, error) {

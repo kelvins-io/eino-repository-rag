@@ -156,6 +156,21 @@ func NewPipeline(
 	return p, nil
 }
 
+// ListDocumentChunks 返回文档已索引的全部分块，按标号升序。
+func (p *Pipeline) ListDocumentChunks(ctx context.Context, docID uint) ([]IndexedChunk, error) {
+	if p == nil || p.store == nil || docID == 0 {
+		return []IndexedChunk{}, nil
+	}
+	list, err := p.store.ListChunks(ctx, strconv.FormatUint(uint64(docID), 10))
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return []IndexedChunk{}, nil
+	}
+	return list, nil
+}
+
 // IndexDocument 对已落库文档进行切分、向量化并写入向量索引
 func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	doc, err := p.docRepo.GetByID(docID)

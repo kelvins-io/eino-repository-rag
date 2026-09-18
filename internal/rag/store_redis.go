@@ -3,6 +3,7 @@ package rag
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -150,6 +151,70 @@ func (s *redisVectorStore) DeleteByDocID(ctx context.Context, docID string) erro
 			return fmt.Errorf("redis delete vectors doc_id=%s: %w", docID, err)
 		}
 	}
+}
+
+// ListChunks 按 doc_id 读出已索引分块。
+func (s *redisVectorStore) ListChunks(ctx context.Context, docID string) ([]IndexedChunk, error) {
+	docID = strings.TrimSpace(docID)
+	if docID == "" {
+		return nil, fmt.Errorf("doc_id is required")
+	}
+	filter := fmt.Sprintf("@doc_id:{%s}", escapeRedisTag(docID))
+	raw, err := s.rdb.Do(ctx,
+		"FT.SEARCH", s.cfg.Redis.IndexName,
+		filter,
+		"RETURN", 2, "content", "chunk_index",
+		"LIMIT", 0, maxListedChunks,
+	).Result()
+	if err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unknown index name") || strings.Contains(msg, "no such index") {
+			return []IndexedChunk{}, nil
+		}
+		return nil, fmt.Errorf("redis list chunks doc_id=%s: %w", docID, err)
+	}
+	rows, err := parseFTSearchFieldRows(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IndexedChunk, 0, len(rows))
+	for _, fields := range rows {
+		idx, _ := strconv.Atoi(strings.TrimSpace(fields["chunk_index"]))
+		out = append(out, IndexedChunk{ChunkIndex: idx, Content: fields["content"]})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].ChunkIndex < out[j].ChunkIndex
+	})
+	return out, nil
+}
+
+func parseFTSearchFieldRows(raw any) ([]map[string]string, error) {
+	arr, ok := raw.([]any)
+	if !ok || len(arr) == 0 {
+		return nil, fmt.Errorf("unexpected FT.SEARCH result type %T", raw)
+	}
+	rows := make([]map[string]string, 0)
+	for i := 1; i < len(arr); i++ {
+		if _, isFields := arr[i].([]any); isFields {
+			continue
+		}
+		if i+1 >= len(arr) {
+			break
+		}
+		fieldArr, ok := arr[i+1].([]any)
+		if !ok {
+			continue
+		}
+		fields := map[string]string{}
+		for j := 0; j+1 < len(fieldArr); j += 2 {
+			fk, _ := anyToString(fieldArr[j])
+			fv, _ := anyToString(fieldArr[j+1])
+			fields[fk] = fv
+		}
+		rows = append(rows, fields)
+		i++
+	}
+	return rows, nil
 }
 
 // parseFTSearchKeys 解析 FT.SEARCH NOCONTENT 返回值：[total, key1, key2, ...]

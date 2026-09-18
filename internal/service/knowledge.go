@@ -734,6 +734,21 @@ func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*
 	return doc, nil
 }
 
+// ListDocumentChunks 返回文档已索引的分块标号和内容。
+func (s *KnowledgeService) ListDocumentChunks(ctx context.Context, id uint, userID string, tenantID uint) ([]rag.IndexedChunk, error) {
+	actor, err := requireActor(userID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.requireDocAccess(id, actor); err != nil {
+		return nil, err
+	}
+	if s.rag == nil {
+		return []rag.IndexedChunk{}, nil
+	}
+	return s.rag.ListDocumentChunks(ctx, id)
+}
+
 // ListIndexBuilds 返回文档的索引构建历史（租户内可读）。
 func (s *KnowledgeService) ListIndexBuilds(docID uint, userID string, tenantID uint) ([]model.DocumentIndexBuild, error) {
 	actor, err := requireActor(userID, tenantID)
