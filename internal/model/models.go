@@ -55,6 +55,7 @@ type Document struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`
 	TenantID        uint           `gorm:"index;not null;default:0" json:"tenant_id"`
 	UserID          string         `gorm:"size:64;index;not null" json:"user_id"` // 上传者/属主
+	Username        string         `gorm:"-" json:"username,omitempty"`           // 上传者用户名（查询时填充）
 	KnowledgeBaseID uint           `gorm:"index;index:idx_kb_content_md5,priority:1;not null;default:0" json:"knowledge_base_id"`
 	DirectoryID     *uint          `gorm:"index" json:"directory_id"`
 	Title           string         `gorm:"size:256;not null" json:"title"`

@@ -99,6 +99,11 @@
             <el-table-column type="selection" width="48" />
             <el-table-column prop="id" label="ID" width="70" />
             <el-table-column prop="file_name" label="文件名" min-width="140" show-overflow-tooltip />
+            <el-table-column label="上传用户" width="120" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ row.username || row.user_id || '-' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
                 <el-tag :type="statusType(row.status)" size="small">
@@ -216,7 +221,7 @@
           <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
           <el-descriptions-item label="标题">{{ docDetail.title }}</el-descriptions-item>
           <el-descriptions-item label="文件名">{{ docDetail.file_name }}</el-descriptions-item>
-          <el-descriptions-item label="上传用户">{{ docDetail.user_id || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="上传用户">{{ docDetail.username || docDetail.user_id || '-' }}</el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="statusType(docDetail.status)" size="small">
               {{ statusLabel(docDetail.status) }}

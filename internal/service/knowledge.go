@@ -96,6 +96,31 @@ func (s *KnowledgeService) fillKBUsernames(kbs []*model.KnowledgeBase) {
 	}
 }
 
+func (s *KnowledgeService) fillDocUsernames(docs []*model.Document) {
+	if s.userRepo == nil || len(docs) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		if doc == nil || doc.UserID == "" {
+			continue
+		}
+		ids = append(ids, doc.UserID)
+	}
+	names, err := s.userRepo.MapUsernameByAuthIDs(ids)
+	if err != nil || len(names) == 0 {
+		return
+	}
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		if name, ok := names[doc.UserID]; ok {
+			doc.Username = name
+		}
+	}
+}
+
 // requireKBAccess 同租户可读
 func (s *KnowledgeService) requireKBAccess(kbID uint, actor Actor) (*model.KnowledgeBase, error) {
 	kb, err := s.kbRepo.GetByID(kbID)
@@ -631,7 +656,16 @@ func (s *KnowledgeService) ListDocuments(filter repository.DocumentListFilter, p
 	if pageSize <= 0 || pageSize > 100 {
 		pageSize = 20
 	}
-	return s.docRepo.List(filter, pageSize, (page-1)*pageSize)
+	list, total, err := s.docRepo.List(filter, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	ptrs := make([]*model.Document, len(list))
+	for i := range list {
+		ptrs[i] = &list[i]
+	}
+	s.fillDocUsernames(ptrs)
+	return list, total, nil
 }
 
 func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*model.Document, error) {
@@ -639,7 +673,12 @@ func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*
 	if err != nil {
 		return nil, err
 	}
-	return s.requireDocAccess(id, actor)
+	doc, err := s.requireDocAccess(id, actor)
+	if err != nil {
+		return nil, err
+	}
+	s.fillDocUsernames([]*model.Document{doc})
+	return doc, nil
 }
 
 // DeleteDocument 删除文档并级联清理向量索引与本地文件（属主）
