@@ -15,6 +15,10 @@ function redirectToLogin() {
   window.location.href = `/login?redirect=${redirect}`
 }
 
+function shouldForceLogout(status, msg) {
+  return status === 401 || (status === 403 && String(msg || '').includes('禁止登录'))
+}
+
 http.interceptors.request.use((config) => {
   const token = getToken()
   if (token) {
@@ -40,7 +44,7 @@ http.interceptors.response.use(
       err.response?.data?.message ||
       err.message ||
       '网络错误'
-    if (status === 401) {
+    if (shouldForceLogout(status, msg)) {
       redirectToLogin()
     }
     ElMessage.error(msg)
@@ -75,7 +79,7 @@ async function consumeChatStream(url, data, handlers = {}, signal) {
     } catch {
       /* ignore */
     }
-    if (res.status === 401) {
+    if (shouldForceLogout(res.status, msg)) {
       redirectToLogin()
     }
     throw new Error(msg)
@@ -172,6 +176,7 @@ export const api = {
   login: (data) => http.post('/api/v1/auth/login', data),
   me: () => http.get('/api/v1/auth/me'),
   listUsers: (params) => http.get('/api/v1/users', { params }),
+  setUserLoginEnabled: (data) => http.put('/api/v1/users/login-enabled', data),
 
   // 知识库
   listKnowledgeBases: (params) => http.get('/api/v1/knowledge-bases', { params }),
@@ -226,7 +231,7 @@ export const api = {
       } catch {
         /* ignore */
       }
-      if (res.status === 401) {
+      if (shouldForceLogout(res.status, msg)) {
         redirectToLogin()
       }
       ElMessage.error(msg)

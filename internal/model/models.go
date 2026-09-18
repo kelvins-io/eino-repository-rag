@@ -130,6 +130,7 @@ type User struct {
 	Username     string    `gorm:"size:64;not null;uniqueIndex:idx_tenant_username,priority:2" json:"username"`
 	PasswordHash string    `gorm:"size:255;not null" json:"-"`
 	DisplayName  string    `gorm:"size:128" json:"display_name"`
+	LoginEnabled bool      `gorm:"not null;default:true" json:"login_enabled"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

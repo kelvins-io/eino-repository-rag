@@ -22,6 +22,15 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column v-if="isTenantAdmin" label="允许登录" width="120">
+          <template #default="{ row }">
+            <el-switch
+              :model-value="row.login_enabled"
+              :disabled="row.is_admin || toggling === row.username"
+              @change="(enabled) => onToggleLogin(row, enabled)"
+            />
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pager">
@@ -40,14 +49,18 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { api } from '@/api'
+import { getAuthUser } from '@/utils/auth'
 
 const loading = ref(false)
 const list = ref([])
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const toggling = ref('')
+const isTenantAdmin = computed(() => getAuthUser()?.username === 'admin')
 
 function formatTime(v) {
   if (!v) return '-'
@@ -71,6 +84,22 @@ async function load() {
 function onSizeChange() {
   page.value = 1
   load()
+}
+
+async function onToggleLogin(row, enabled) {
+  toggling.value = row.username
+  try {
+    await api.setUserLoginEnabled({
+      username: row.username,
+      enabled,
+    })
+    row.login_enabled = enabled
+    ElMessage.success(enabled ? '已允许登录' : '已关闭登录')
+  } catch {
+    await load()
+  } finally {
+    toggling.value = ''
+  }
 }
 
 onMounted(load)

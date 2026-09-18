@@ -35,11 +35,12 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 		}
 
 		protected := api.Group("")
-		protected.Use(auth.Middleware(tm))
+		protected.Use(auth.Middleware(tm), ah.RequireLoginEnabled())
 		{
 			// 仅 default 租户的 admin 可创建租户
 			protected.POST("/tenants", ah.CreateTenant)
 			protected.GET("/users", ah.ListUsers)
+			protected.PUT("/users/login-enabled", ah.SetUserLoginEnabled)
 			protected.GET("/auth/me", ah.Me)
 
 			kbs := protected.Group("/knowledge-bases")

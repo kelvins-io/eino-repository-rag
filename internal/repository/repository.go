@@ -566,6 +566,20 @@ func (r *UserRepo) ListByTenant(tenantID uint, limit, offset int) ([]model.User,
 	return list, total, nil
 }
 
+// SetLoginEnabled 更新租户内指定用户的登录开关。
+func (r *UserRepo) SetLoginEnabled(tenantID uint, username string, enabled bool) error {
+	res := r.db.Model(&model.User{}).
+		Where("tenant_id = ? AND username = ?", tenantID, username).
+		Update("login_enabled", enabled)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // MapUsernameByAuthIDs 按业务 user_id（数字字符串）批量查用户名。
 func (r *UserRepo) MapUsernameByAuthIDs(authIDs []string) (map[string]string, error) {
 	out := make(map[string]string, len(authIDs))

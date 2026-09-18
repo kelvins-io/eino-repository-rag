@@ -26,6 +26,12 @@ var (
 	ErrTenantCodeTaken = errors.New("租户 ID 已存在")
 	// ErrNotPlatformAdmin 非平台管理员，无权创建租户
 	ErrNotPlatformAdmin = errors.New("仅 default 租户的 admin 可创建租户")
+	// ErrNotTenantAdmin 非本租户管理员
+	ErrNotTenantAdmin = errors.New("仅租户管理员可修改登录权限")
+	// ErrLoginDisabled 账号已被禁止登录
+	ErrLoginDisabled = errors.New("该账号已被禁止登录")
+	// ErrCannotDisableAdmin 不能关闭租户管理员登录
+	ErrCannotDisableAdmin = errors.New("不能关闭租户管理员的登录权限")
 )
 
 type AuthService struct {
@@ -180,6 +186,7 @@ func (s *AuthService) Register(in RegisterInput) (*AuthResult, error) {
 		Username:     username,
 		PasswordHash: string(hash),
 		DisplayName:  display,
+		LoginEnabled: true,
 	}
 	if err := s.users.Create(user); err != nil {
 		return nil, err
@@ -189,9 +196,10 @@ func (s *AuthService) Register(in RegisterInput) (*AuthResult, error) {
 
 // TenantUserView 租户用户列表项，不包含密码等敏感字段。
 type TenantUserView struct {
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
-	IsAdmin   bool      `json:"is_admin"`
+	Username     string    `json:"username"`
+	CreatedAt    time.Time `json:"created_at"`
+	IsAdmin      bool      `json:"is_admin"`
+	LoginEnabled bool      `json:"login_enabled"`
 }
 
 // ListTenantUsers 分页列出当前租户下的用户。用户名为 admin 的账号视为租户管理员。
@@ -212,12 +220,56 @@ func (s *AuthService) ListTenantUsers(tenantID uint, page, pageSize int) ([]Tena
 	out := make([]TenantUserView, 0, len(users))
 	for _, u := range users {
 		out = append(out, TenantUserView{
-			Username:  u.Username,
-			CreatedAt: u.CreatedAt,
-			IsAdmin:   u.Username == tenantAdminUsername,
+			Username:     u.Username,
+			CreatedAt:    u.CreatedAt,
+			IsAdmin:      u.Username == tenantAdminUsername,
+			LoginEnabled: u.LoginEnabled,
 		})
 	}
 	return out, total, nil
+}
+
+// SetUserLoginEnabled 由租户 admin 开关本租户用户的登录权限。不能关闭 admin 自己。
+func (s *AuthService) SetUserLoginEnabled(tenantID uint, actorUsername, targetUsername string, enabled bool) error {
+	if tenantID == 0 {
+		return fmt.Errorf("无效租户")
+	}
+	if strings.TrimSpace(actorUsername) != tenantAdminUsername {
+		return ErrNotTenantAdmin
+	}
+	targetUsername = strings.TrimSpace(targetUsername)
+	if targetUsername == "" {
+		return fmt.Errorf("用户名不能为空")
+	}
+	if targetUsername == tenantAdminUsername && !enabled {
+		return ErrCannotDisableAdmin
+	}
+	if _, err := s.users.GetByTenantUsername(tenantID, targetUsername); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("用户不存在")
+		}
+		return err
+	}
+	return s.users.SetLoginEnabled(tenantID, targetUsername, enabled)
+}
+
+// EnsureLoginAllowed 已登录请求校验账号仍允许登录。
+func (s *AuthService) EnsureLoginAllowed(userID string) error {
+	var id uint64
+	if _, err := fmt.Sscanf(userID, "%d", &id); err != nil || id == 0 {
+		return fmt.Errorf("无效用户")
+	}
+	user, err := s.users.GetByID(uint(id))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("用户不存在")
+		}
+		return err
+	}
+	if !user.LoginEnabled {
+		return ErrLoginDisabled
+	}
+	return nil
 }
 
 type LoginInput struct {
@@ -244,6 +296,9 @@ func (s *AuthService) Login(in LoginInput) (*AuthResult, error) {
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(in.Password)); err != nil {
 		return nil, ErrInvalidCredentials
+	}
+	if !user.LoginEnabled {
+		return nil, ErrLoginDisabled
 	}
 	return s.issueAuth(user, tenant)
 }

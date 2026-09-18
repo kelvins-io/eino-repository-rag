@@ -124,6 +124,58 @@ func (h *AuthHandler) ListUsers(c *gin.Context) {
 	})
 }
 
+type setLoginEnabledReq struct {
+	Username string `json:"username"`
+	Enabled  *bool  `json:"enabled"`
+}
+
+// SetUserLoginEnabled PUT /api/v1/users/login-enabled
+func (h *AuthHandler) SetUserLoginEnabled(c *gin.Context) {
+	var req setLoginEnabledReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+	if req.Enabled == nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: enabled 不能为空")
+		return
+	}
+	if err := h.svc.SetUserLoginEnabled(
+		auth.TenantIDFromContext(c),
+		auth.UsernameFromContext(c),
+		req.Username,
+		*req.Enabled,
+	); err != nil {
+		failAuth(c, err)
+		return
+	}
+	ok(c, gin.H{
+		"username":      strings.TrimSpace(req.Username),
+		"login_enabled": *req.Enabled,
+	})
+}
+
+// RequireLoginEnabled 拒绝已被关闭登录权限的已登录请求。
+func (h *AuthHandler) RequireLoginEnabled() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		err := h.svc.EnsureLoginAllowed(auth.UserIDFromContext(c))
+		if err == nil {
+			c.Next()
+			return
+		}
+		status := http.StatusUnauthorized
+		msg := "登录已失效，请重新登录"
+		if errors.Is(err, service.ErrLoginDisabled) {
+			status = http.StatusForbidden
+			msg = err.Error()
+		}
+		c.AbortWithStatusJSON(status, gin.H{
+			"code":    status,
+			"message": msg,
+		})
+	}
+}
+
 func failAuth(c *gin.Context, err error) {
 	if err == nil {
 		return
@@ -134,13 +186,18 @@ func failAuth(c *gin.Context, err error) {
 		code = http.StatusBadRequest
 	case errors.Is(err, service.ErrInvalidCredentials):
 		code = http.StatusUnauthorized
-	case errors.Is(err, service.ErrNotPlatformAdmin):
+	case errors.Is(err, service.ErrNotPlatformAdmin),
+		errors.Is(err, service.ErrNotTenantAdmin),
+		errors.Is(err, service.ErrLoginDisabled):
 		code = http.StatusForbidden
+	case errors.Is(err, service.ErrCannotDisableAdmin):
+		code = http.StatusBadRequest
 	case errors.Is(err, service.ErrUsernameTaken), errors.Is(err, service.ErrTenantCodeTaken):
 		code = http.StatusConflict
 	case strings.Contains(err.Error(), "不能为空"),
 		strings.Contains(err.Error(), "至少"),
-		strings.Contains(err.Error(), "过长"):
+		strings.Contains(err.Error(), "过长"),
+		strings.Contains(err.Error(), "用户不存在"):
 		code = http.StatusBadRequest
 	}
 	writeFail(c, code, err.Error(), err)

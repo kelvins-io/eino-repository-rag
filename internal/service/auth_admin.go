@@ -64,6 +64,7 @@ func ensureTenantAdmin(users *repository.UserRepo, tenant *model.Tenant) (create
 		Username:     tenantAdminUsername,
 		PasswordHash: string(hash),
 		DisplayName:  "管理员",
+		LoginEnabled: true,
 	}
 	if err = users.Create(user); err != nil {
 		if _, getErr := users.GetByTenantUsername(tenant.ID, tenantAdminUsername); getErr == nil {
