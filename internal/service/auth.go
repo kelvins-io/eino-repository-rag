@@ -32,6 +32,8 @@ var (
 	ErrLoginDisabled = errors.New("该账号已被禁止登录")
 	// ErrCannotDisableAdmin 不能关闭租户管理员登录
 	ErrCannotDisableAdmin = errors.New("不能关闭租户管理员的登录权限")
+	// ErrRegisterNotAllowed 该租户不允许自助注册
+	ErrRegisterNotAllowed = errors.New("当前租户不允许注册新用户")
 )
 
 type AuthService struct {
@@ -154,6 +156,9 @@ func (s *AuthService) requireTenantByCode(code string) (*model.Tenant, error) {
 }
 
 func (s *AuthService) Register(in RegisterInput) (*AuthResult, error) {
+	if strings.EqualFold(strings.TrimSpace(in.TenantCode), defaultTenantCode) {
+		return nil, ErrRegisterNotAllowed
+	}
 	tenant, err := s.requireTenantByCode(in.TenantCode)
 	if err != nil {
 		return nil, err

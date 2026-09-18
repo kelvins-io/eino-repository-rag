@@ -188,7 +188,8 @@ func failAuth(c *gin.Context, err error) {
 		code = http.StatusUnauthorized
 	case errors.Is(err, service.ErrNotPlatformAdmin),
 		errors.Is(err, service.ErrNotTenantAdmin),
-		errors.Is(err, service.ErrLoginDisabled):
+		errors.Is(err, service.ErrLoginDisabled),
+		errors.Is(err, service.ErrRegisterNotAllowed):
 		code = http.StatusForbidden
 	case errors.Is(err, service.ErrCannotDisableAdmin):
 		code = http.StatusBadRequest

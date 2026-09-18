@@ -5,7 +5,7 @@
       <p class="sub">填写已有租户 ID 创建账号（租户需先由管理员创建）</p>
       <el-form :model="form" @submit.prevent="onSubmit" label-position="top">
         <el-form-item label="租户 ID" required>
-          <el-input v-model="form.tenant_id" placeholder="例如 default" autocomplete="organization" />
+          <el-input v-model="form.tenant_id" placeholder="请输入已有租户 ID" autocomplete="organization" />
         </el-form-item>
         <el-form-item label="用户名" required>
           <el-input v-model="form.username" placeholder="用户名" autocomplete="username" />
@@ -54,7 +54,7 @@ import { setAuth } from '@/utils/auth'
 const router = useRouter()
 const loading = ref(false)
 const form = reactive({
-  tenant_id: 'default',
+  tenant_id: '',
   username: '',
   display_name: '',
   password: '',
@@ -64,6 +64,10 @@ const form = reactive({
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
     ElMessage.warning('请填写租户 ID')
+    return
+  }
+  if (form.tenant_id.trim().toLowerCase() === 'default') {
+    ElMessage.warning('当前租户不允许注册新用户')
     return
   }
   if (!form.username.trim()) {
