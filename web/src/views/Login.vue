@@ -28,6 +28,7 @@
         <router-link to="/register">去注册</router-link>
       </div>
     </div>
+    <a class="contact" href="mailto:1225807604@qq.com">联系我们：1225807604@qq.com</a>
   </div>
 </template>
 
@@ -80,6 +81,7 @@ async function onSubmit() {
   place-items: center;
   background: #0f172a;
   padding: 24px;
+  position: relative;
 }
 
 .auth-card {
@@ -116,5 +118,20 @@ h1 {
 .footer a {
   color: #2563eb;
   text-decoration: none;
+}
+
+.contact {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: #94a3b8;
+  text-decoration: none;
+}
+
+.contact:hover {
+  color: #fff;
 }
 </style>
