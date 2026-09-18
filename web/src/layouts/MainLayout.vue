@@ -27,6 +27,10 @@
           <el-icon><User /></el-icon>
           <span>用户管理</span>
         </el-menu-item>
+        <el-menu-item v-if="canCreateTenant" index="/tenant-manage">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span>租户管理</span>
+        </el-menu-item>
         <el-menu-item v-if="canCreateTenant" index="/tenants">
           <el-icon><OfficeBuilding /></el-icon>
           <span>创建租户</span>
@@ -73,6 +77,7 @@ const canCreateTenant = computed(() => isPlatformAdmin())
 const active = computed(() => {
   if (route.path.startsWith('/chat')) return '/chat'
   if (route.path.startsWith('/users')) return '/users'
+  if (route.path.startsWith('/tenant-manage')) return '/tenant-manage'
   if (route.path.startsWith('/tenants')) return '/tenants'
   return '/knowledge-bases'
 })

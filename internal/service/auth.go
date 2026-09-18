@@ -234,6 +234,41 @@ func (s *AuthService) ListTenantUsers(tenantID uint, page, pageSize int) ([]Tena
 	return out, total, nil
 }
 
+// TenantListItem 平台管理员看到的租户列表项。
+type TenantListItem struct {
+	Code      string    `json:"code"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	UserCount int64     `json:"user_count"`
+}
+
+// ListTenants 分页列出全部租户及用户数。仅 default 租户的 admin 可调用。
+func (s *AuthService) ListTenants(actorTenantCode, actorUsername string, page, pageSize int) ([]TenantListItem, int64, error) {
+	if !IsPlatformAdmin(actorTenantCode, actorUsername) {
+		return nil, 0, ErrNotPlatformAdmin
+	}
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 || pageSize > 100 {
+		pageSize = 10
+	}
+	rows, total, err := s.tenants.ListWithUserCount(pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]TenantListItem, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, TenantListItem{
+			Code:      row.Code,
+			Name:      row.Name,
+			CreatedAt: row.CreatedAt,
+			UserCount: row.UserCount,
+		})
+	}
+	return out, total, nil
+}
+
 // SetUserLoginEnabled 由租户 admin 开关本租户用户的登录权限。不能关闭 admin 自己。
 func (s *AuthService) SetUserLoginEnabled(tenantID uint, actorUsername, targetUsername string, enabled bool) error {
 	if tenantID == 0 {

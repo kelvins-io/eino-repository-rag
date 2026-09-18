@@ -46,6 +46,12 @@ const routes = [
         meta: { title: '用户管理', requiresAuth: true },
       },
       {
+        path: 'tenant-manage',
+        name: 'tenant-manage',
+        component: () => import('@/views/TenantManage.vue'),
+        meta: { title: '租户管理', requiresAuth: true, requiresPlatformAdmin: true },
+      },
+      {
         path: 'tenants',
         name: 'tenants',
         component: () => import('@/views/Tenants.vue'),

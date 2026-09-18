@@ -506,6 +506,35 @@ func (r *TenantRepo) Count() (int64, error) {
 	return n, nil
 }
 
+// TenantUserCount 租户及其用户数。
+type TenantUserCount struct {
+	Code      string
+	Name      string
+	CreatedAt time.Time
+	UserCount int64
+}
+
+// ListWithUserCount 分页列出全部租户，并统计每个租户下的用户数。
+func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, int64, error) {
+	var total int64
+	if err := r.db.Model(&model.Tenant{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []TenantUserCount
+	err := r.db.Table("tenants").
+		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, COUNT(users.id) AS user_count").
+		Joins("LEFT JOIN users ON users.tenant_id = tenants.id").
+		Group("tenants.id").
+		Order("tenants.created_at DESC, tenants.id DESC").
+		Limit(limit).
+		Offset(offset).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
 // EnsureDefault 确保存在 code=default 的默认租户
 func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 	t, err := r.GetByCode("default")

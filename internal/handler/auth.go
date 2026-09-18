@@ -45,6 +45,28 @@ func (h *AuthHandler) CreateTenant(c *gin.Context) {
 	ok(c, t)
 }
 
+// ListTenants GET /api/v1/tenants
+func (h *AuthHandler) ListTenants(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	list, total, err := h.svc.ListTenants(
+		auth.TenantCodeFromContext(c),
+		auth.UsernameFromContext(c),
+		page,
+		pageSize,
+	)
+	if err != nil {
+		failAuth(c, err)
+		return
+	}
+	ok(c, gin.H{
+		"list":      list,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
 type registerReq struct {
 	TenantID    string `json:"tenant_id"`
 	Username    string `json:"username"`
