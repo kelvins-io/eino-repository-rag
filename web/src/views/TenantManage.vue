@@ -26,7 +26,11 @@
             <el-input-number v-model="row.max_files" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column prop="file_count" label="已上传文件数" width="120" />
+        <el-table-column label="已上传文件数" width="120">
+          <template #default="{ row }">
+            <span :class="{ 'usage-over': overLimit(row.file_count, row.max_files) }">{{ row.file_count ?? 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="单文件上限(MB)" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_file_size_mb" :min="1" :max="2048" size="small" controls-position="right" />
@@ -37,7 +41,11 @@
             <el-input-number v-model="row.max_sessions" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column prop="today_session_count" label="今日已建会话数" width="130" />
+        <el-table-column label="今日已建会话数" width="130">
+          <template #default="{ row }">
+            <span :class="{ 'usage-over': overLimit(row.today_session_count, row.max_sessions) }">{{ row.today_session_count ?? 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="每会话轮次" width="150">
           <template #default="{ row }">
             <el-input-number v-model="row.max_turns" :min="1" :max="1000000" size="small" controls-position="right" />
@@ -48,13 +56,21 @@
             <el-input-number v-model="row.max_voice_inputs" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column prop="today_voice_inputs" label="今日已使用语音输入数" width="170" />
+        <el-table-column label="今日已使用语音输入数" width="170">
+          <template #default="{ row }">
+            <span :class="{ 'usage-over': overLimit(row.today_voice_inputs, row.max_voice_inputs) }">{{ row.today_voice_inputs ?? 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="每日文字转语音" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_tts" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column prop="today_tts_count" label="今日已使用文字转语音数" width="190" />
+        <el-table-column label="今日已使用文字转语音数" width="190">
+          <template #default="{ row }">
+            <span :class="{ 'usage-over': overLimit(row.today_tts_count, row.max_tts) }">{{ row.today_tts_count ?? 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">保存</el-button>
@@ -92,6 +108,13 @@ const saving = ref('')
 function formatTime(v) {
   if (!v) return '-'
   return new Date(v).toLocaleString()
+}
+
+function overLimit(used, limit) {
+  const current = Number(used)
+  const max = Number(limit)
+  if (!Number.isFinite(current) || !Number.isFinite(max)) return false
+  return current >= max
 }
 
 async function load() {
@@ -170,6 +193,11 @@ onMounted(load)
 .tenant-name {
   color: #64748b;
   font-size: 12px;
+}
+
+.usage-over {
+  color: var(--el-color-danger);
+  font-weight: 600;
 }
 
 .pager {
