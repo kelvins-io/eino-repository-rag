@@ -209,7 +209,19 @@ func (s *KnowledgeService) persistDocumentCitations(tenantID, knowledgeBaseID ui
 	return counts
 }
 
-// attachStoredRecalls 列表返回前重算当前页文档的召回率和引用次数并写回。
+// persistDocumentChunkRanks 重算并写回被引用片段排行。失败只记日志。
+func (s *KnowledgeService) persistDocumentChunkRanks(tenantID, knowledgeBaseID uint, docIDs []string) map[string][]model.CitedChunk {
+	if s == nil || s.retrieval == nil || tenantID == 0 || knowledgeBaseID == 0 || len(docIDs) == 0 {
+		return nil
+	}
+	ranks, err := s.retrieval.RefreshDocumentChunkRanks(tenantID, knowledgeBaseID, docIDs)
+	if err != nil {
+		logger.S().Errorf("[cite] save document chunk ranks tenant=%d kb=%d err=%v", tenantID, knowledgeBaseID, err)
+	}
+	return ranks
+}
+
+// attachStoredRecalls 列表返回前重算当前页文档的召回率、引用次数和片段排行并写回。
 func (s *KnowledgeService) attachStoredRecalls(list []model.Document) {
 	if len(list) == 0 {
 		return
@@ -229,6 +241,7 @@ func (s *KnowledgeService) attachStoredRecalls(list []model.Document) {
 	for key, ids := range groups {
 		snaps := s.persistDocumentRecalls(key.tenant, key.kb, ids)
 		cited := s.persistDocumentCitations(key.tenant, key.kb, ids)
+		chunkRanks := s.persistDocumentChunkRanks(key.tenant, key.kb, ids)
 		for i := range list {
 			if list[i].TenantID != key.tenant || list[i].KnowledgeBaseID != key.kb {
 				continue
@@ -243,8 +256,21 @@ func (s *KnowledgeService) attachStoredRecalls(list []model.Document) {
 			if n, ok := cited[id]; ok {
 				list[i].CitedCount = n
 			}
+			if ranks, ok := chunkRanks[id]; ok {
+				list[i].CitedChunks = ranks
+			}
 		}
 	}
+}
+
+// attachStoredDoc 打开单篇文档前重算并写回召回率、引用次数和片段排行。
+func (s *KnowledgeService) attachStoredDoc(doc *model.Document) {
+	if doc == nil || doc.ID == 0 {
+		return
+	}
+	list := []model.Document{*doc}
+	s.attachStoredRecalls(list)
+	*doc = list[0]
 }
 
 func requireTenantAdmin(username string) error {

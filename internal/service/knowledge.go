@@ -730,6 +730,7 @@ func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*
 		return nil, err
 	}
 	s.fillDocUsernames([]*model.Document{doc})
+	s.attachStoredDoc(doc)
 	return doc, nil
 }
 

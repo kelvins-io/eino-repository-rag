@@ -130,6 +130,11 @@
                 <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ row.cited_count ?? 0 }}</span>
               </template>
             </el-table-column>
+            <el-table-column label="引用片段" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ formatChunkRanks(row.cited_chunks) }}
+              </template>
+            </el-table-column>
             <el-table-column label="上次索引时间" width="170">
               <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
             </el-table-column>
@@ -242,7 +247,7 @@
     </el-dialog>
 
     <!-- 文档详情 -->
-    <el-drawer v-model="docDetailVisible" title="文档详情" size="420px">
+    <el-drawer v-model="docDetailVisible" title="文档详情" size="520px">
       <template v-if="docDetail">
         <el-descriptions :column="1" border>
           <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
@@ -256,6 +261,17 @@
           </el-descriptions-item>
           <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
           <el-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</el-descriptions-item>
+          <el-descriptions-item label="引用片段">
+            <el-table
+              :data="topCitedChunks(docDetail.cited_chunks)"
+              size="small"
+              empty-text="还没有被引用的片段"
+            >
+              <el-table-column prop="rank" label="排名" width="70" />
+              <el-table-column prop="chunk_index" label="片段标号" width="90" />
+              <el-table-column prop="count" label="引用次数" />
+            </el-table>
+          </el-descriptions-item>
           <el-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
           <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
           <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
@@ -367,6 +383,21 @@ function recallTitle(row) {
   if (row?.recall === null || row?.recall === undefined) return '还没有相关文档标注'
   const k = row.recall_k ? `Top${row.recall_k} ` : ''
   return `${k}命中 ${row.hit_queries ?? 0} / 标注 ${row.labeled_queries ?? 0}`
+}
+
+function topCitedChunks(chunks) {
+  if (!Array.isArray(chunks)) return []
+  return [...chunks]
+    .filter((c) => c && Number(c.count) > 0)
+    .sort((a, b) => Number(b.count) - Number(a.count) || Number(a.chunk_index) - Number(b.chunk_index))
+    .slice(0, 3)
+    .map((c, i) => ({ ...c, rank: i + 1 }))
+}
+
+function formatChunkRanks(chunks) {
+  const top = topCitedChunks(chunks)
+  if (!top.length) return '—'
+  return top.map((c) => `#${c.rank} 片段${c.chunk_index} ${c.count}次`).join('；')
 }
 
 async function loadTree() {

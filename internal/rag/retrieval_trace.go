@@ -103,6 +103,7 @@ func (p *Pipeline) persistRetrievalHits(req QueryRequest, userMsg, assistantMsg 
 type documentStatRefresher interface {
 	RefreshDocumentRecalls(tenantID, knowledgeBaseID uint, docIDs []string, k int) (map[string]repository.StoredRecall, error)
 	RefreshDocumentCitations(tenantID, knowledgeBaseID uint, docIDs []string) (map[string]int, error)
+	RefreshDocumentChunkRanks(tenantID, knowledgeBaseID uint, docIDs []string) (map[string][]dbmodel.CitedChunk, error)
 }
 
 func (p *Pipeline) refreshStoredDocStats(req QueryRequest, hits []dbmodel.RetrievalHit) {
@@ -132,6 +133,9 @@ func (p *Pipeline) refreshStoredDocStats(req QueryRequest, hits []dbmodel.Retrie
 	}
 	if _, err := refresher.RefreshDocumentCitations(req.TenantID, req.KnowledgeBaseID, ids); err != nil {
 		logger.S().Errorf("[rag] save document cited count failed session=%s err=%v", req.SessionID, err)
+	}
+	if _, err := refresher.RefreshDocumentChunkRanks(req.TenantID, req.KnowledgeBaseID, ids); err != nil {
+		logger.S().Errorf("[rag] save document chunk ranks failed session=%s err=%v", req.SessionID, err)
 	}
 }
 

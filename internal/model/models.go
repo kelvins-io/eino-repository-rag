@@ -75,12 +75,22 @@ type Document struct {
 	LabeledQueries int      `gorm:"not null;default:0" json:"labeled_queries"`
 	HitQueries     int      `gorm:"not null;default:0" json:"hit_queries"`
 	// CitedCount 是历史回答里用合法 [n] 引用过该文档的次数。同一条回答的多个分块只计 1 次。
-	CitedCount int       `gorm:"not null;default:0" json:"cited_count"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	CitedCount int `gorm:"not null;default:0" json:"cited_count"`
+	// CitedChunks 是被引用片段的前三名，按引用次数从高到低。片段标号是切分时的 chunk_index，从 0 起。
+	CitedChunks []CitedChunk `gorm:"type:jsonb;serializer:json" json:"cited_chunks"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
 func (Document) TableName() string { return "documents" }
+
+// CitedChunk 文档某个片段在历史回答中被引用的名次。
+// Rank 从 1 起；次数相同则片段标号更小的排在前面。
+type CitedChunk struct {
+	Rank       int `json:"rank"`
+	ChunkIndex int `json:"chunk_index"`
+	Count      int `json:"count"`
+}
 
 // DocumentIndexBuild 文档一次索引构建的历史。入队时创建，成功或放弃重试时写入结束时间；重试不另开记录。
 type DocumentIndexBuild struct {

@@ -2,6 +2,8 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -227,6 +229,101 @@ WHERE id = ? AND tenant_id = ? AND knowledge_base_id = ?
 		out[id] = count
 	}
 	return out, nil
+}
+
+type docChunkCitedStat struct {
+	DocID      string `gorm:"column:doc_id"`
+	ChunkIndex int    `gorm:"column:chunk_index"`
+	N          int64  `gorm:"column:n"`
+}
+
+// RefreshDocumentChunkRanks 按合法引用重算每个片段的引用次数，只保留前 3 名并写回 documents.cited_chunks。
+// 不改 updated_at。没有被引用的片段不进入排行。
+func (r *RetrievalRepo) RefreshDocumentChunkRanks(tenantID, knowledgeBaseID uint, docIDs []string) (map[string][]model.CitedChunk, error) {
+	out := map[string][]model.CitedChunk{}
+	if r == nil || r.db == nil || tenantID == 0 || knowledgeBaseID == 0 {
+		return out, nil
+	}
+	ids := uniqueNumericDocIDs(docIDs)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []docChunkCitedStat
+	err := r.db.Raw(`
+SELECT doc_id AS doc_id, chunk_index AS chunk_index, COUNT(DISTINCT assistant_message_id) AS n
+FROM retrieval_hits
+WHERE tenant_id = ?
+  AND knowledge_base_id = ?
+  AND doc_id IN ?
+  AND cited = true
+  AND assistant_message_id > 0
+GROUP BY doc_id, chunk_index
+`, tenantID, knowledgeBaseID, ids).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	byDoc := make(map[string]map[int]int, len(ids))
+	for _, id := range ids {
+		byDoc[id] = map[int]int{}
+	}
+	for _, row := range rows {
+		if _, ok := byDoc[row.DocID]; !ok || row.N <= 0 {
+			continue
+		}
+		byDoc[row.DocID][row.ChunkIndex] += int(row.N)
+	}
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 64)
+		if err != nil || n == 0 {
+			continue
+		}
+		ranks := RankCitedChunks(byDoc[id])
+		payload, err := json.Marshal(ranks)
+		if err != nil {
+			return out, err
+		}
+		err = r.db.Exec(`
+UPDATE documents
+SET cited_chunks = ?::jsonb
+WHERE id = ? AND tenant_id = ? AND knowledge_base_id = ?
+`, string(payload), uint(n), tenantID, knowledgeBaseID).Error
+		if err != nil {
+			return out, err
+		}
+		out[id] = ranks
+	}
+	return out, nil
+}
+
+// RankCitedChunks 把片段引用次数排成名次，只保留前 3 名。
+// 次数高的在前；相同次数按片段标号升序。标号从 0 起，0 是有效片段。
+func RankCitedChunks(counts map[int]int) []model.CitedChunk {
+	const topN = 3
+	type pair struct {
+		idx int
+		n   int
+	}
+	pairs := make([]pair, 0, len(counts))
+	for idx, n := range counts {
+		if idx < 0 || n <= 0 {
+			continue
+		}
+		pairs = append(pairs, pair{idx: idx, n: n})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].n != pairs[j].n {
+			return pairs[i].n > pairs[j].n
+		}
+		return pairs[i].idx < pairs[j].idx
+	})
+	if len(pairs) > topN {
+		pairs = pairs[:topN]
+	}
+	out := make([]model.CitedChunk, len(pairs))
+	for i, p := range pairs {
+		out[i] = model.CitedChunk{Rank: i + 1, ChunkIndex: p.idx, Count: p.n}
+	}
+	return out
 }
 
 func uniqueNumericDocIDs(ids []string) []string {

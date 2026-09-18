@@ -22,3 +22,23 @@ func TestRecallRatio(t *testing.T) {
 		t.Fatalf("clamped recall=%v ok=%v", got, ok)
 	}
 }
+
+func TestRankCitedChunks(t *testing.T) {
+	got := RankCitedChunks(nil)
+	if len(got) != 0 {
+		t.Fatalf("empty=%v", got)
+	}
+	got = RankCitedChunks(map[int]int{3: 2, 0: 1, 1: 2, 5: 9, 8: 1, -1: 4, 4: 0})
+	if len(got) != 3 {
+		t.Fatalf("len=%d %#v", len(got), got)
+	}
+	if got[0].Rank != 1 || got[0].ChunkIndex != 5 || got[0].Count != 9 {
+		t.Fatalf("first=%#v", got[0])
+	}
+	if got[1].Rank != 2 || got[1].ChunkIndex != 1 || got[1].Count != 2 {
+		t.Fatalf("second=%#v", got[1])
+	}
+	if got[2].Rank != 3 || got[2].ChunkIndex != 3 || got[2].Count != 2 {
+		t.Fatalf("third=%#v", got[2])
+	}
+}
