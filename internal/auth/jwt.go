@@ -72,5 +72,8 @@ func (m *TokenManager) Parse(tokenStr string) (*Claims, error) {
 	if claims.UserID == "" {
 		return nil, fmt.Errorf("token missing user_id")
 	}
+	if claims.TenantCode == "" {
+		return nil, fmt.Errorf("token missing tenant_code")
+	}
 	return claims, nil
 }
