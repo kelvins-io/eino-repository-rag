@@ -86,6 +86,11 @@ func (m *Manager) Append(
 	if err := m.ensureNewSessionAllowed(tenantID, sessionID); err != nil {
 		return err
 	}
+	if role == model.RoleUser {
+		if err := m.ensureTurnAllowed(tenantID, sessionID); err != nil {
+			return err
+		}
+	}
 	conv, err := m.convRepo.GetOrCreate(tenantID, userID, sessionID, title, knowledgeBaseID, directoryID)
 	if err != nil {
 		return fmt.Errorf("get or create conversation: %w", err)
@@ -149,6 +154,29 @@ func (m *Manager) ensureNewSessionAllowed(tenantID uint, sessionID string) error
 	}
 	if n >= int64(tenant.SessionMax()) {
 		return fmt.Errorf("已达到租户会话总数上限 %d", tenant.SessionMax())
+	}
+	return nil
+}
+
+// EnsureTurnAllowed 本会话用户提问次数未达上限时才允许继续提问。
+func (m *Manager) EnsureTurnAllowed(tenantID uint, sessionID string) error {
+	return m.ensureTurnAllowed(tenantID, sessionID)
+}
+
+func (m *Manager) ensureTurnAllowed(tenantID uint, sessionID string) error {
+	if m == nil || m.tenants == nil || m.msgRepo == nil || tenantID == 0 || sessionID == "" {
+		return nil
+	}
+	tenant, err := m.tenants.GetByID(tenantID)
+	if err != nil {
+		return err
+	}
+	n, err := m.msgRepo.CountUserBySession(sessionID)
+	if err != nil {
+		return err
+	}
+	if n >= int64(tenant.TurnMax()) {
+		return fmt.Errorf("已达到该会话对话轮次上限 %d", tenant.TurnMax())
 	}
 	return nil
 }

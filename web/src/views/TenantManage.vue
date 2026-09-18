@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>租户管理</h2>
-        <p class="sub">全部租户及其上传、会话配额，仅 default 租户的 admin 可查看和配置</p>
+        <p class="sub">全部租户及其上传、会话与轮次配额，仅 default 租户的 admin 可查看和配置</p>
       </div>
     </div>
 
@@ -34,6 +34,11 @@
         <el-table-column label="会话总数" width="150">
           <template #default="{ row }">
             <el-input-number v-model="row.max_sessions" :min="1" :max="1000000" size="small" controls-position="right" />
+          </template>
+        </el-table-column>
+        <el-table-column label="每会话轮次" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.max_turns" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right">
@@ -98,6 +103,7 @@ async function saveLimits(row) {
   const maxFiles = Number(row.max_files)
   const maxFileSizeMB = Number(row.max_file_size_mb)
   const maxSessions = Number(row.max_sessions)
+  const maxTurns = Number(row.max_turns)
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
     ElMessage.warning('文件总数至少为 1')
     return
@@ -110,6 +116,10 @@ async function saveLimits(row) {
     ElMessage.warning('会话总数至少为 1')
     return
   }
+  if (!Number.isInteger(maxTurns) || maxTurns < 1) {
+    ElMessage.warning('每会话轮次至少为 1')
+    return
+  }
   saving.value = row.code
   try {
     await api.updateTenantLimits({
@@ -117,6 +127,7 @@ async function saveLimits(row) {
       max_files: maxFiles,
       max_file_size_mb: maxFileSizeMB,
       max_sessions: maxSessions,
+      max_turns: maxTurns,
     })
     ElMessage.success('已保存')
   } catch {

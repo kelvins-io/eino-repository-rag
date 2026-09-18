@@ -926,6 +926,9 @@ func (s *KnowledgeService) prepareQueryRequest(req *rag.QueryRequest) error {
 		if err := s.mem.EnsureNewSessionAllowed(actor.TenantID, req.SessionID); err != nil {
 			return err
 		}
+		if err := s.mem.EnsureTurnAllowed(actor.TenantID, req.SessionID); err != nil {
+			return err
+		}
 	}
 
 	// 共享知识库：按租户过滤，不按上传者 user_id 收窄

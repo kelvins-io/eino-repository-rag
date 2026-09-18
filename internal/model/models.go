@@ -120,6 +120,7 @@ type Tenant struct {
 	MaxFiles      int       `gorm:"not null;default:5" json:"max_files"`
 	MaxFileSizeMB int       `gorm:"not null;default:5" json:"max_file_size_mb"`
 	MaxSessions   int       `gorm:"not null;default:5" json:"max_sessions"`
+	MaxTurns      int       `gorm:"not null;default:5" json:"max_turns"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -133,6 +134,8 @@ const (
 	DefaultTenantMaxFileSizeMB = 5
 	// DefaultTenantMaxSessions 租户默认知识库问答会话总数上限
 	DefaultTenantMaxSessions = 5
+	// DefaultTenantMaxTurns 租户默认单条会话的提问轮次上限
+	DefaultTenantMaxTurns = 5
 )
 
 // UploadMaxFiles 有效的文件总数上限。未配置时用默认值。
@@ -162,6 +165,14 @@ func (t Tenant) SessionMax() int {
 		return DefaultTenantMaxSessions
 	}
 	return t.MaxSessions
+}
+
+// TurnMax 有效的单条会话提问轮次上限。未配置时用默认值。
+func (t Tenant) TurnMax() int {
+	if t.MaxTurns <= 0 {
+		return DefaultTenantMaxTurns
+	}
+	return t.MaxTurns
 }
 
 // User 租户下的登录用户

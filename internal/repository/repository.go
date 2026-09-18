@@ -460,6 +460,14 @@ func (r *MessageRepo) Create(msg *model.Message) error {
 	return r.db.Create(msg).Error
 }
 
+func (r *MessageRepo) CountUserBySession(sessionID string) (int64, error) {
+	var n int64
+	err := r.db.Model(&model.Message{}).
+		Where("session_id = ? AND role = ?", sessionID, model.RoleUser).
+		Count(&n).Error
+	return n, err
+}
+
 func (r *MessageRepo) ListBySession(sessionID string, limit int) ([]model.Message, error) {
 	var msgs []model.Message
 	q := r.db.Where("session_id = ?", sessionID).Order("id desc")
@@ -527,6 +535,7 @@ type TenantUserCount struct {
 	MaxFiles      int
 	MaxFileSizeMB int
 	MaxSessions   int
+	MaxTurns      int
 }
 
 // ListWithUserCount 分页列出全部租户，并统计每个租户下的用户数。
@@ -537,7 +546,7 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	}
 	var rows []TenantUserCount
 	err := r.db.Table("tenants").
-		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, tenants.max_sessions AS max_sessions, COUNT(users.id) AS user_count").
+		Select("tenants.code AS code, tenants.name AS name, tenants.created_at AS created_at, tenants.max_files AS max_files, tenants.max_file_size_mb AS max_file_size_mb, tenants.max_sessions AS max_sessions, tenants.max_turns AS max_turns, COUNT(users.id) AS user_count").
 		Joins("LEFT JOIN users ON users.tenant_id = tenants.id").
 		Group("tenants.id").
 		Order("tenants.created_at DESC, tenants.id DESC").
@@ -550,12 +559,13 @@ func (r *TenantRepo) ListWithUserCount(limit, offset int) ([]TenantUserCount, in
 	return rows, total, nil
 }
 
-// UpdateUploadLimits 更新租户的文件总数、单文件大小上限和会话总数上限。
-func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions int) error {
+// UpdateUploadLimits 更新租户的文件、会话总数和单会话轮次上限。
+func (r *TenantRepo) UpdateUploadLimits(code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns int) error {
 	res := r.db.Model(&model.Tenant{}).Where("code = ?", code).Updates(map[string]any{
 		"max_files":        maxFiles,
 		"max_file_size_mb": maxFileSizeMB,
 		"max_sessions":     maxSessions,
+		"max_turns":        maxTurns,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -581,6 +591,7 @@ func (r *TenantRepo) EnsureDefault() (*model.Tenant, error) {
 		MaxFiles:      model.DefaultTenantMaxFiles,
 		MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
 		MaxSessions:   model.DefaultTenantMaxSessions,
+		MaxTurns:      model.DefaultTenantMaxTurns,
 	}
 	if err := r.Create(t); err != nil {
 		return nil, err

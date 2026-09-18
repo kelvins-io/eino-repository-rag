@@ -99,6 +99,7 @@ func (s *AuthService) CreateTenant(in CreateTenantInput) (*CreateTenantResult, e
 			MaxFiles:      model.DefaultTenantMaxFiles,
 			MaxFileSizeMB: model.DefaultTenantMaxFileSizeMB,
 			MaxSessions:   model.DefaultTenantMaxSessions,
+			MaxTurns:      model.DefaultTenantMaxTurns,
 		}
 		if err := tenants.Create(t); err != nil {
 			return err
@@ -250,6 +251,7 @@ type TenantListItem struct {
 	MaxFiles      int       `json:"max_files"`
 	MaxFileSizeMB int       `json:"max_file_size_mb"`
 	MaxSessions   int       `json:"max_sessions"`
+	MaxTurns      int       `json:"max_turns"`
 }
 
 // ListTenants 分页列出全部租户及用户数。仅 default 租户的 admin 可调用。
@@ -277,6 +279,7 @@ func (s *AuthService) ListTenants(actorTenantCode, actorUsername string, page, p
 			MaxFiles:      normalizeLimit(row.MaxFiles, model.DefaultTenantMaxFiles),
 			MaxFileSizeMB: normalizeLimit(row.MaxFileSizeMB, model.DefaultTenantMaxFileSizeMB),
 			MaxSessions:   normalizeLimit(row.MaxSessions, model.DefaultTenantMaxSessions),
+			MaxTurns:      normalizeLimit(row.MaxTurns, model.DefaultTenantMaxTurns),
 		})
 	}
 	return out, total, nil
@@ -291,7 +294,7 @@ func (s *AuthService) SetUploadSizeCeiling(mb int) {
 }
 
 // UpdateTenantUploadLimits 由 default 租户 admin 配置租户上传配额。
-func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, code string, maxFiles, maxFileSizeMB, maxSessions int) error {
+func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, code string, maxFiles, maxFileSizeMB, maxSessions, maxTurns int) error {
 	if !IsPlatformAdmin(actorTenantCode, actorUsername) {
 		return ErrNotPlatformAdmin
 	}
@@ -308,6 +311,9 @@ func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, c
 	if maxSessions < 1 {
 		return fmt.Errorf("会话总数至少为 1")
 	}
+	if maxTurns < 1 {
+		return fmt.Errorf("每会话轮次至少为 1")
+	}
 	if s.maxFileSizeMBCeiling > 0 && maxFileSizeMB > s.maxFileSizeMBCeiling {
 		return fmt.Errorf("单文件上限不能超过系统限制 %dMB", s.maxFileSizeMBCeiling)
 	}
@@ -317,7 +323,7 @@ func (s *AuthService) UpdateTenantUploadLimits(actorTenantCode, actorUsername, c
 		}
 		return err
 	}
-	return s.tenants.UpdateUploadLimits(code, maxFiles, maxFileSizeMB, maxSessions)
+	return s.tenants.UpdateUploadLimits(code, maxFiles, maxFileSizeMB, maxSessions, maxTurns)
 }
 
 func normalizeLimit(v, fallback int) int {
