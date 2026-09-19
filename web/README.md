@@ -1,6 +1,10 @@
 # Eino RAG Web
 
+[English](README.en.md) | [中文](README.md)
+
 Vue 3 + Element Plus 管理台，对接后端 `/api/v1`。登录后以 JWT 调用知识库、文档、问答与租户管理接口。
+
+仓库总览见 [../README.md](../README.md)。
 
 ## 开发
 

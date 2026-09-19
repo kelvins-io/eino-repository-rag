@@ -1,6 +1,10 @@
 # eino-repository-rag
 
+[English](README.en.md) | [中文](README.md)
+
 基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的企业知识库 RAG 服务：多租户 JWT 鉴权、文档导入与异步索引、Hybrid 检索、流式问答，以及 Vue 3 管理台。
+
+前端说明见 [web/README.md](web/README.md)。
 
 ## 能力
 
