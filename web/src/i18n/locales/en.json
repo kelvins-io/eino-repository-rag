@@ -99,6 +99,8 @@
     "dirTag": "Folder: {name}",
     "allStatus": "All statuses",
     "reindex": "Reindex",
+    "reindexIndexing": "Document is currently indexing",
+    "reindexNoSource": "Source file was removed after indexing and cannot be reindexed",
     "batchDelete": "Delete selected",
     "fileName": "File name",
     "uploader": "Uploaded by",

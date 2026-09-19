@@ -99,6 +99,8 @@
     "dirTag": "目录: {name}",
     "allStatus": "全部状态",
     "reindex": "重新索引",
+    "reindexIndexing": "文档正在索引中",
+    "reindexNoSource": "源文件已在索引完成后清理，无法重新索引",
     "batchDelete": "批量删除",
     "fileName": "文件名",
     "uploader": "上传用户",

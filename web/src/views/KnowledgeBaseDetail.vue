@@ -118,7 +118,11 @@
             <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
             <template #ops="{ record }">
               <a-button type="text" size="mini" @click="showDoc(record)">{{ t('kbDetail.detail') }}</a-button>
-              <a-button type="text" size="mini" :disabled="record.status === 'indexing'" @click="onReindexOne(record)">{{ t('kbDetail.reindex') }}</a-button>
+              <a-tooltip :content="reindexDisabledReason(record)" :disabled="canReindex(record)">
+                <span class="inline-action">
+                  <a-button type="text" size="mini" :disabled="!canReindex(record)" @click="onReindexOne(record)">{{ t('kbDetail.reindex') }}</a-button>
+                </span>
+              </a-tooltip>
               <a-button type="text" size="mini" @click="openIndexHistory(record)">{{ t('kbDetail.indexHistory') }}</a-button>
               <a-button type="text" status="danger" size="mini" @click="onDeleteOne(record)">{{ t('common.delete') }}</a-button>
             </template>
@@ -664,6 +668,20 @@ function onSelectionChange(keys) {
   selectedIds.value = keys
 }
 
+function canReindex(row) {
+  return row?.status !== 'indexing' && row?.source_available !== false
+}
+
+function reindexDisabledReason(row) {
+  if (row?.status === 'indexing') {
+    return t('kbDetail.reindexIndexing')
+  }
+  if (row?.source_available === false) {
+    return t('kbDetail.reindexNoSource')
+  }
+  return ''
+}
+
 async function openIndexHistory(row) {
   indexHistoryDoc.value = row
   indexHistoryVisible.value = true
@@ -750,6 +768,11 @@ onMounted(refreshAll)
 </script>
 
 <style scoped>
+.inline-action {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
 .page-spin {
   display: block;
   width: 100%;

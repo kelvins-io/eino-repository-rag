@@ -156,6 +156,14 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 	return r.db.Model(&model.Document{}).Where("id = ?", id).UpdateColumns(updates).Error
 }
 
+// ClearFilePath 索引成功并删除本地上传文件后清空路径。
+func (r *DocumentRepo) ClearFilePath(id uint) error {
+	if r == nil || id == 0 {
+		return nil
+	}
+	return r.db.Model(&model.Document{}).Where("id = ?", id).UpdateColumn("file_path", "").Error
+}
+
 // ListIDsByStatuses 按状态列出文档 ID（启动时回收 pending/indexing）
 func (r *DocumentRepo) ListIDsByStatuses(statuses ...model.DocumentStatus) ([]uint, error) {
 	if len(statuses) == 0 {
