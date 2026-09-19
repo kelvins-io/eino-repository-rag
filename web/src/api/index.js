@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { Message } from '@arco-design/web-vue'
+import { t } from '@/i18n'
 import { clearAuth, getToken } from '@/utils/auth'
 
 const http = axios.create({
@@ -16,6 +17,7 @@ function redirectToLogin() {
 }
 
 function shouldForceLogout(status, msg) {
+  // 后端文案固定为中文，不随界面语言变化。
   return status === 401 || (status === 403 && String(msg || '').includes('禁止登录'))
 }
 
@@ -32,7 +34,7 @@ http.interceptors.response.use(
   (res) => {
     const body = res.data
     if (body && typeof body.code === 'number' && body.code !== 0) {
-      const msg = body.message || '请求失败'
+      const msg = body.message || t('api.requestFailed')
       Message.error(msg)
       return Promise.reject(new Error(msg))
     }
@@ -43,7 +45,7 @@ http.interceptors.response.use(
     const msg =
       err.response?.data?.message ||
       err.message ||
-      '网络错误'
+      t('api.networkError')
     if (shouldForceLogout(status, msg)) {
       redirectToLogin()
     }
@@ -72,7 +74,7 @@ async function consumeChatStream(url, data, handlers = {}, signal) {
   })
 
   if (!res.ok) {
-    let msg = `请求失败 (${res.status})`
+    let msg = t('api.requestFailedStatus', { status: res.status })
     try {
       const body = await res.json()
       if (body?.message) msg = body.message
@@ -86,7 +88,7 @@ async function consumeChatStream(url, data, handlers = {}, signal) {
   }
 
   if (!res.body) {
-    throw new Error('浏览器不支持流式响应')
+    throw new Error(t('api.streamUnsupported'))
   }
 
   const reader = res.body.getReader()
@@ -108,8 +110,8 @@ async function consumeChatStream(url, data, handlers = {}, signal) {
         handlers.onDone?.(evt)
         break
       case 'error':
-        handlers.onError?.(evt.message || '流式回答失败')
-        throw new Error(evt.message || '流式回答失败')
+        handlers.onError?.(evt.message || t('api.streamFailed'))
+        throw new Error(evt.message || t('api.streamFailed'))
       case 'step':
         handlers.onStep?.(evt)
         break
@@ -229,7 +231,7 @@ export const api = {
       body: JSON.stringify({ text }),
     })
     if (!res.ok) {
-      let msg = `朗读失败 (${res.status})`
+      let msg = t('api.ttsFailed', { status: res.status })
       try {
         const body = await res.json()
         if (body?.message) msg = body.message

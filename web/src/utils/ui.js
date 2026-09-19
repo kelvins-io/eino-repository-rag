@@ -1,6 +1,7 @@
 import { Modal } from '@arco-design/web-vue'
+import { t } from '@/i18n'
 
-export function confirmAction(content, title = '确认') {
+export function confirmAction(content, title) {
   return new Promise((resolve, reject) => {
     let settled = false
     const finish = (ok) => {
@@ -10,10 +11,10 @@ export function confirmAction(content, title = '确认') {
       else reject(new Error('cancel'))
     }
     Modal.confirm({
-      title,
+      title: title || t('common.confirm'),
       content,
-      okText: '确定',
-      cancelText: '取消',
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       onOk: () => finish(true),
       onCancel: () => finish(false),
     })

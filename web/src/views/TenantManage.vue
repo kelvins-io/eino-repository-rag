@@ -2,8 +2,8 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>租户管理</h2>
-        <p class="sub">全部租户及其上传、会话、轮次与语音配额，仅 default 租户的 admin 可查看和配置</p>
+        <h2>{{ t('tenantManage.title') }}</h2>
+        <p class="sub">{{ t('tenantManage.sub') }}</p>
       </div>
     </div>
 
@@ -54,7 +54,7 @@
           <span :class="{ 'usage-over': overLimit(record.today_tts_count, record.max_tts) }">{{ record.today_tts_count ?? 0 }}</span>
         </template>
         <template #ops="{ record }">
-          <a-button type="text" size="small" :loading="saving === record.code" @click="saveLimits(record)">保存</a-button>
+          <a-button type="text" size="small" :loading="saving === record.code" @click="saveLimits(record)">{{ t('common.save') }}</a-button>
         </template>
       </a-table>
 
@@ -75,9 +75,13 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const list = ref([])
@@ -86,27 +90,22 @@ const pageSize = ref(10)
 const total = ref(0)
 const saving = ref('')
 
-const columns = [
-  { title: '租户', slotName: 'tenant', width: 200 },
-  { title: '创建时间', slotName: 'created_at', width: 180 },
-  { title: '用户数', dataIndex: 'user_count', width: 90 },
-  { title: '文件总数', slotName: 'max_files', width: 150 },
-  { title: '已上传文件数', slotName: 'file_count', width: 120 },
-  { title: '单文件上限(MB)', slotName: 'max_file_size_mb', width: 160 },
-  { title: '每日新建会话', slotName: 'max_sessions', width: 160 },
-  { title: '今日已建会话数', slotName: 'today_session_count', width: 130 },
-  { title: '每会话轮次', slotName: 'max_turns', width: 150 },
-  { title: '每日语音输入', slotName: 'max_voice_inputs', width: 150 },
-  { title: '今日已使用语音输入数', slotName: 'today_voice_inputs', width: 170 },
-  { title: '每日文字转语音', slotName: 'max_tts', width: 160 },
-  { title: '今日已使用文字转语音数', slotName: 'today_tts_count', width: 190 },
-  { title: '操作', slotName: 'ops', width: 90, fixed: 'right' },
-]
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
+const columns = computed(() => [
+  { title: t('tenantManage.tenant'), slotName: 'tenant', width: 200 },
+  { title: t('common.createdAt'), slotName: 'created_at', width: 180 },
+  { title: t('tenantManage.userCount'), dataIndex: 'user_count', width: 90 },
+  { title: t('tenantManage.maxFiles'), slotName: 'max_files', width: 150 },
+  { title: t('tenantManage.fileCount'), slotName: 'file_count', width: 120 },
+  { title: t('tenantManage.maxFileSize'), slotName: 'max_file_size_mb', width: 160 },
+  { title: t('tenantManage.maxSessions'), slotName: 'max_sessions', width: 160 },
+  { title: t('tenantManage.todaySessions'), slotName: 'today_session_count', width: 140 },
+  { title: t('tenantManage.maxTurns'), slotName: 'max_turns', width: 150 },
+  { title: t('tenantManage.maxVoice'), slotName: 'max_voice_inputs', width: 160 },
+  { title: t('tenantManage.todayVoice'), slotName: 'today_voice_inputs', width: 170 },
+  { title: t('tenantManage.maxTts'), slotName: 'max_tts', width: 160 },
+  { title: t('tenantManage.todayTts'), slotName: 'today_tts_count', width: 170 },
+  { title: t('common.actions'), slotName: 'ops', width: 90, fixed: 'right' },
+])
 
 function overLimit(used, limit) {
   const current = Number(used)
@@ -148,27 +147,27 @@ async function saveLimits(row) {
   const maxVoiceInputs = Number(row.max_voice_inputs)
   const maxTTS = Number(row.max_tts)
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
-    Message.warning('文件总数至少为 1')
+    Message.warning(t('tenantManage.minFiles'))
     return
   }
   if (!Number.isInteger(maxFileSizeMB) || maxFileSizeMB < 1) {
-    Message.warning('单文件上限至少为 1MB')
+    Message.warning(t('tenantManage.minFileSize'))
     return
   }
   if (!Number.isInteger(maxSessions) || maxSessions < 1) {
-    Message.warning('每日新建会话至少为 1')
+    Message.warning(t('tenantManage.minSessions'))
     return
   }
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
-    Message.warning('每会话轮次至少为 1')
+    Message.warning(t('tenantManage.minTurns'))
     return
   }
   if (!Number.isInteger(maxVoiceInputs) || maxVoiceInputs < 1) {
-    Message.warning('每日语音输入至少为 1')
+    Message.warning(t('tenantManage.minVoice'))
     return
   }
   if (!Number.isInteger(maxTTS) || maxTTS < 1) {
-    Message.warning('每日文字转语音至少为 1')
+    Message.warning(t('tenantManage.minTts'))
     return
   }
   saving.value = row.code
@@ -182,7 +181,7 @@ async function saveLimits(row) {
       max_voice_inputs: maxVoiceInputs,
       max_tts: maxTTS,
     })
-    Message.success('已保存')
+    Message.success(t('common.saved'))
   } catch {
     await load()
   } finally {

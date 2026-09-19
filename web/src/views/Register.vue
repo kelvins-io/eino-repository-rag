@@ -1,59 +1,64 @@
 <template>
   <div class="auth-page">
+    <LanguageSwitch class="auth-lang" />
     <div class="auth-card">
-      <h1>注册</h1>
-      <p class="sub">填写已有租户 ID 创建账号（租户需先由管理员创建）</p>
+      <h1>{{ t('auth.registerTitle') }}</h1>
+      <p class="sub">{{ t('auth.registerSub') }}</p>
       <a-form :model="form" layout="vertical" @submit="onSubmit">
-        <a-form-item field="tenant_id" label="租户 ID" required>
+        <a-form-item field="tenant_id" :label="t('auth.tenantId')" required>
           <a-input
             v-model="form.tenant_id"
-            placeholder="请输入已有租户 ID"
+            :placeholder="t('auth.existingTenantPh')"
             :input-attrs="{ autocomplete: 'organization' }"
           />
         </a-form-item>
-        <a-form-item field="username" label="用户名" required>
+        <a-form-item field="username" :label="t('auth.username')" required>
           <a-input
             v-model="form.username"
-            placeholder="用户名"
+            :placeholder="t('auth.username')"
             :input-attrs="{ autocomplete: 'username' }"
           />
         </a-form-item>
-        <a-form-item field="display_name" label="显示名">
-          <a-input v-model="form.display_name" placeholder="可选" />
+        <a-form-item field="display_name" :label="t('auth.displayName')">
+          <a-input v-model="form.display_name" :placeholder="t('auth.optional')" />
         </a-form-item>
-        <a-form-item field="password" label="密码" required>
+        <a-form-item field="password" :label="t('auth.password')" required>
           <a-input-password
             v-model="form.password"
-            placeholder="至少 6 位"
+            :placeholder="t('auth.passwordMinPh')"
             :input-attrs="{ autocomplete: 'new-password' }"
           />
         </a-form-item>
-        <a-form-item field="password2" label="确认密码" required>
+        <a-form-item field="password2" :label="t('auth.confirmPassword')" required>
           <a-input-password
             v-model="form.password2"
-            placeholder="再次输入密码"
+            :placeholder="t('auth.confirmPasswordPh')"
             :input-attrs="{ autocomplete: 'new-password' }"
           />
         </a-form-item>
         <a-button type="primary" class="submit" :loading="loading" html-type="submit">
-          注册并登录
+          {{ t('auth.registerAndLogin') }}
         </a-button>
       </a-form>
       <div class="footer">
-        已有账号？
-        <router-link to="/login">去登录</router-link>
+        {{ t('auth.hasAccount') }}
+        <router-link to="/login">{{ t('auth.goLogin') }}</router-link>
       </div>
     </div>
-    <a class="contact" href="mailto:1225807604@qq.com">联系我们：1225807604@qq.com</a>
+    <a class="contact" href="mailto:1225807604@qq.com">{{ t('auth.contact') }}1225807604@qq.com</a>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Message } from '@arco-design/web-vue'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 import { api } from '@/api'
 import { setAuth } from '@/utils/auth'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const loading = ref(false)
@@ -67,23 +72,23 @@ const form = reactive({
 
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
-    Message.warning('请填写租户 ID')
+    Message.warning(t('auth.needTenantId'))
     return
   }
   if (form.tenant_id.trim().toLowerCase() === 'default') {
-    Message.warning('当前租户不允许注册新用户')
+    Message.warning(t('auth.tenantNoRegister'))
     return
   }
   if (!form.username.trim()) {
-    Message.warning('请填写用户名')
+    Message.warning(t('auth.needUsername'))
     return
   }
   if (form.password.length < 6) {
-    Message.warning('密码至少 6 位')
+    Message.warning(t('auth.passwordMin'))
     return
   }
   if (form.password !== form.password2) {
-    Message.warning('两次密码不一致')
+    Message.warning(t('auth.passwordMismatch'))
     return
   }
   loading.value = true
@@ -95,7 +100,7 @@ async function onSubmit() {
       display_name: form.display_name.trim(),
     })
     setAuth(data)
-    Message.success('注册成功')
+    Message.success(t('auth.registerOk'))
     router.replace('/knowledge-bases')
   } finally {
     loading.value = false
@@ -162,5 +167,11 @@ h1 {
 
 .contact:hover {
   color: #fff;
+}
+
+.auth-lang {
+  position: absolute;
+  top: 20px;
+  right: 20px;
 }
 </style>

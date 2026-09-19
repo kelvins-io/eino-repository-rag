@@ -2,12 +2,12 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>知识库</h2>
-        <p class="sub">管理当前登录用户下的知识库容器</p>
+        <h2>{{ t('kb.title') }}</h2>
+        <p class="sub">{{ t('kb.sub') }}</p>
       </div>
       <a-button type="primary" @click="openCreate">
         <template #icon><icon-plus /></template>
-        新建知识库
+        {{ t('kb.create') }}
       </a-button>
     </div>
 
@@ -30,9 +30,9 @@
           {{ formatTime(record.created_at) }}
         </template>
         <template #ops="{ record }">
-          <a-button type="text" size="small" @click="goDetail(record)">进入</a-button>
-          <a-button type="text" size="small" @click="openEdit(record)">编辑</a-button>
-          <a-button type="text" status="danger" size="small" @click="onDelete(record)">删除</a-button>
+          <a-button type="text" size="small" @click="goDetail(record)">{{ t('kb.enter') }}</a-button>
+          <a-button type="text" size="small" @click="openEdit(record)">{{ t('common.edit') }}</a-button>
+          <a-button type="text" status="danger" size="small" @click="onDelete(record)">{{ t('common.delete') }}</a-button>
         </template>
       </a-table>
 
@@ -50,29 +50,33 @@
       </div>
     </div>
 
-    <a-modal v-model:visible="dialogVisible" :title="editing ? '编辑知识库' : '新建知识库'" :width="480" :footer="false" unmount-on-close>
+    <a-modal v-model:visible="dialogVisible" :title="editing ? t('kb.editTitle') : t('kb.createTitle')" :width="480" :footer="false" unmount-on-close>
       <a-form :model="form" auto-label-width>
-        <a-form-item field="name" label="名称" required>
-          <a-input v-model="form.name" placeholder="例如：证券合规库" />
+        <a-form-item field="name" :label="t('common.name')" required>
+          <a-input v-model="form.name" :placeholder="t('kb.namePh')" />
         </a-form-item>
-        <a-form-item field="description" label="描述">
+        <a-form-item field="description" :label="t('common.description')">
           <a-textarea v-model="form.description" :auto-size="{ minRows: 3, maxRows: 6 }" />
         </a-form-item>
       </a-form>
       <div class="modal-footer">
-        <a-button @click="dialogVisible = false">取消</a-button>
-        <a-button type="primary" :loading="saving" @click="onSave">保存</a-button>
+        <a-button @click="dialogVisible = false">{{ t('common.cancel') }}</a-button>
+        <a-button type="primary" :loading="saving" @click="onSave">{{ t('common.save') }}</a-button>
       </div>
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { confirmAction } from '@/utils/ui'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const loading = ref(false)
@@ -85,7 +89,7 @@ const dialogVisible = ref(false)
 const editing = ref(null)
 const form = reactive({ name: '', description: '' })
 
-const columns = [
+const columns = computed(() => [
   {
     title: 'ID',
     dataIndex: 'id',
@@ -95,11 +99,11 @@ const columns = [
       defaultSortOrder: 'descend',
     },
   },
-  { title: '名称', dataIndex: 'name', slotName: 'name', width: 180 },
-  { title: '描述', dataIndex: 'description', ellipsis: true, tooltip: true },
-  { title: '创建用户', slotName: 'owner', width: 140 },
+  { title: t('common.name'), dataIndex: 'name', slotName: 'name', width: 180 },
+  { title: t('common.description'), dataIndex: 'description', ellipsis: true, tooltip: true },
+  { title: t('kb.creator'), slotName: 'owner', width: 140 },
   {
-    title: '创建时间',
+    title: t('common.createdAt'),
     dataIndex: 'created_at',
     slotName: 'created_at',
     width: 180,
@@ -108,13 +112,8 @@ const columns = [
       sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     },
   },
-  { title: '操作', slotName: 'ops', width: 220, fixed: 'right' },
-]
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
+  { title: t('common.actions'), slotName: 'ops', width: 220, fixed: 'right' },
+])
 
 async function load() {
   loading.value = true
@@ -157,7 +156,7 @@ function openEdit(row) {
 
 async function onSave() {
   if (!form.name.trim()) {
-    Message.warning('请填写名称')
+    Message.warning(t('kb.needName'))
     return
   }
   saving.value = true
@@ -167,13 +166,13 @@ async function onSave() {
         name: form.name,
         description: form.description,
       })
-      Message.success('已更新')
+      Message.success(t('common.updated'))
     } else {
       await api.createKnowledgeBase({
         name: form.name,
         description: form.description,
       })
-      Message.success('已创建')
+      Message.success(t('common.created'))
       page.value = 1
     }
     dialogVisible.value = false
@@ -185,12 +184,12 @@ async function onSave() {
 
 async function onDelete(row) {
   try {
-    await confirmAction(`确认删除知识库「${row.name}」？需先清空文档与目录。`, '删除确认')
+    await confirmAction(t('kb.deleteConfirm', { name: row.name }), t('common.confirmDelete'))
   } catch {
     return
   }
   await api.deleteKnowledgeBase(row.id)
-  Message.success('已删除')
+  Message.success(t('common.deleted'))
   if (list.value.length <= 1 && page.value > 1) {
     page.value -= 1
   }

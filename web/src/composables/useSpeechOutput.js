@@ -1,6 +1,8 @@
 import { onUnmounted, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
+import { t } from '@/i18n'
+import { EMPTY_ANSWER } from '@/utils/helpers'
 
 export function useSpeechOutput() {
   const speakingIdx = ref(null)
@@ -37,8 +39,8 @@ export function useSpeechOutput() {
       return
     }
     const value = (text || '').trim()
-    if (!value || value === '(空回答)') {
-      Message.info('没有可朗读的内容')
+    if (!value || value === EMPTY_ANSWER || value === '(空回答)') {
+      Message.info(t('speech.nothingToRead'))
       return
     }
 
@@ -55,7 +57,7 @@ export function useSpeechOutput() {
       }
       audio.onerror = () => {
         if (seq === requestSeq) {
-          Message.error('音频播放失败')
+          Message.error(t('speech.playFailed'))
           stop()
         }
       }

@@ -1,4 +1,8 @@
+import { i18n } from '@/i18n'
+
 const SESSION_KEY = 'eino_rag_session_id'
+
+export const EMPTY_ANSWER = '__EMPTY_ANSWER__'
 
 export function getSessionId() {
   let id = localStorage.getItem(SESSION_KEY)
@@ -28,7 +32,8 @@ export function formatSize(bytes) {
 
 export function formatTime(v) {
   if (!v) return '-'
-  return new Date(v).toLocaleString()
+  const locale = i18n.global.locale.value === 'en' ? 'en-US' : 'zh-CN'
+  return new Date(v).toLocaleString(locale)
 }
 
 export function statusType(status) {
@@ -42,11 +47,6 @@ export function statusType(status) {
 }
 
 export function statusLabel(status) {
-  const map = {
-    pending: '待索引',
-    indexing: '索引中',
-    ready: '就绪',
-    failed: '失败',
-  }
-  return map[status] || status
+  const key = `status.${status}`
+  return i18n.global.te(key) ? i18n.global.t(key) : status
 }

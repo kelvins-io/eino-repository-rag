@@ -5,29 +5,29 @@
         <div class="brand-mark">E</div>
         <div>
           <div class="brand-name">Eino RAG</div>
-          <div class="brand-sub">知识库管理台</div>
+          <div class="brand-sub">{{ t('layout.brandSub') }}</div>
         </div>
       </div>
       <a-menu :selected-keys="[active]" @menu-item-click="onMenu">
         <a-menu-item key="/knowledge-bases">
           <template #icon><icon-bookmark /></template>
-          知识库
+          {{ t('nav.knowledgeBases') }}
         </a-menu-item>
         <a-menu-item key="/chat">
           <template #icon><icon-message /></template>
-          知识问答
+          {{ t('nav.chat') }}
         </a-menu-item>
         <a-menu-item key="/users">
           <template #icon><icon-user /></template>
-          用户管理
+          {{ t('nav.users') }}
         </a-menu-item>
         <a-menu-item v-if="canCreateTenant" key="/tenant-manage">
           <template #icon><icon-home /></template>
-          租户管理
+          {{ t('nav.tenantManage') }}
         </a-menu-item>
         <a-menu-item v-if="canCreateTenant" key="/tenants">
           <template #icon><icon-apps /></template>
-          创建租户
+          {{ t('nav.createTenant') }}
         </a-menu-item>
       </a-menu>
     </a-layout-sider>
@@ -36,12 +36,13 @@
       <a-layout-header class="header">
         <div class="header-left">{{ pageTitle }}</div>
         <div class="header-right">
-          <a-tag size="small">租户 {{ tenantCode }}</a-tag>
+          <LanguageSwitch />
+          <a-tag size="small">{{ t('layout.tenant', { code: tenantCode }) }}</a-tag>
           <span class="user">{{ displayName }}</span>
           <a-tag :color="healthOk ? 'green' : 'red'" size="small">
-            {{ healthOk ? 'API 正常' : 'API 异常' }}
+            {{ healthOk ? t('layout.apiOk') : t('layout.apiDown') }}
           </a-tag>
-          <a-button size="small" @click="logout">退出</a-button>
+          <a-button size="small" @click="logout">{{ t('layout.logout') }}</a-button>
         </div>
       </a-layout-header>
       <a-layout-content class="main">
@@ -54,8 +55,12 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 import { api } from '@/api'
 import { clearAuth, getAuthTenant, getAuthUser, isPlatformAdmin } from '@/utils/auth'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -64,7 +69,7 @@ let healthTimer
 
 const user = getAuthUser()
 const tenant = getAuthTenant()
-const displayName = computed(() => user?.display_name || user?.username || '用户')
+const displayName = computed(() => user?.display_name || user?.username || t('layout.guest'))
 const tenantCode = computed(() => tenant?.code || '-')
 const canCreateTenant = computed(() => isPlatformAdmin())
 
@@ -76,7 +81,7 @@ const active = computed(() => {
   return '/knowledge-bases'
 })
 
-const pageTitle = computed(() => route.meta.title || 'Eino RAG')
+const pageTitle = computed(() => (route.meta.titleKey ? t(route.meta.titleKey) : 'Eino RAG'))
 
 function onMenu(key) {
   if (!key || key === route.path) return

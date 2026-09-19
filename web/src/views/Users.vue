@@ -2,8 +2,8 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>用户管理</h2>
-        <p class="sub">当前租户下的全部用户</p>
+        <h2>{{ t('users.title') }}</h2>
+        <p class="sub">{{ t('users.sub') }}</p>
       </div>
     </div>
 
@@ -20,7 +20,7 @@
         </template>
         <template #admin="{ record }">
           <a-tag :color="record.is_admin ? 'green' : 'gray'" size="small">
-            {{ record.is_admin ? '是' : '否' }}
+            {{ record.is_admin ? t('common.yes') : t('common.no') }}
           </a-tag>
         </template>
         <template #login="{ record }">
@@ -50,9 +50,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { getAuthUser } from '@/utils/auth'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const list = ref([])
@@ -64,20 +68,15 @@ const isTenantAdmin = computed(() => getAuthUser()?.username === 'admin')
 
 const columns = computed(() => {
   const cols = [
-    { title: '用户名', dataIndex: 'username', ellipsis: true, tooltip: true },
-    { title: '创建时间', slotName: 'created_at', width: 180 },
-    { title: '租户管理员', slotName: 'admin', width: 140 },
+    { title: t('auth.username'), dataIndex: 'username', ellipsis: true, tooltip: true },
+    { title: t('common.createdAt'), slotName: 'created_at', width: 180 },
+    { title: t('users.tenantAdmin'), slotName: 'admin', width: 140 },
   ]
   if (isTenantAdmin.value) {
-    cols.push({ title: '允许登录', slotName: 'login', width: 120 })
+    cols.push({ title: t('users.loginEnabled'), slotName: 'login', width: 120 })
   }
   return cols
 })
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
 
 async function load() {
   loading.value = true
@@ -112,7 +111,7 @@ async function onToggleLogin(row, enabled) {
       enabled,
     })
     row.login_enabled = enabled
-    Message.success(enabled ? '已允许登录' : '已关闭登录')
+    Message.success(enabled ? t('users.loginOn') : t('users.loginOff'))
   } catch {
     await load()
   } finally {

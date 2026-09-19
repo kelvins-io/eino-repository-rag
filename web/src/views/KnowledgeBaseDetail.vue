@@ -2,27 +2,27 @@
   <a-spin :loading="pageLoading" class="page-spin">
     <div class="page-header">
       <div>
-        <a-button type="text" @click="$router.push('/knowledge-bases')">← 返回列表</a-button>
-        <h2>{{ kb?.name || '知识库详情' }}</h2>
+        <a-button type="text" @click="$router.push('/knowledge-bases')">← {{ t('kbDetail.back') }}</a-button>
+        <h2>{{ kb?.name || t('kbDetail.fallbackTitle') }}</h2>
         <p class="sub">
-          {{ kb?.description || '管理目录树与文档导入' }}
+          {{ kb?.description || t('kbDetail.fallbackDesc') }}
           <template v-if="kb?.username || kb?.user_id">
-            · 创建用户 {{ kb.username || kb.user_id }}
+            · {{ t('kbDetail.creator', { name: kb.username || kb.user_id }) }}
           </template>
         </p>
       </div>
       <div class="actions">
-        <a-tooltip :disabled="!importQuotaFull" content="已达到该租户导入文档数上限" position="top">
+        <a-tooltip :disabled="!importQuotaFull" :content="t('kbDetail.quotaFull')" position="top">
           <span>
             <a-button type="primary" :disabled="importQuotaFull" @click="openImport">
               <template #icon><icon-upload /></template>
-              导入文档
+              {{ t('kbDetail.import') }}
             </a-button>
           </span>
         </a-tooltip>
         <a-button @click="refreshAll">
           <template #icon><icon-refresh /></template>
-          刷新
+          {{ t('kbDetail.refresh') }}
         </a-button>
       </div>
     </div>
@@ -31,10 +31,10 @@
       <a-col :span="5">
         <div class="panel tree-panel">
           <div class="panel-title">
-            <span>目录树</span>
+            <span>{{ t('kbDetail.tree') }}</span>
             <a-button size="small" @click="openDirCreate(null)">
               <template #icon><icon-plus /></template>
-              新建根目录
+              {{ t('kbDetail.newRoot') }}
             </a-button>
           </div>
           <a-tree
@@ -47,13 +47,13 @@
           >
             <template #extra="node">
               <span class="tree-ops" @click.stop>
-                <a-button type="text" size="mini" @click="openDirCreate(node)">子目录</a-button>
-                <a-button type="text" size="mini" @click="openDirEdit(node)">编辑</a-button>
-                <a-button type="text" status="danger" size="mini" @click="onDirDelete(node)">删</a-button>
+                <a-button type="text" size="mini" @click="openDirCreate(node)">{{ t('kbDetail.child') }}</a-button>
+                <a-button type="text" size="mini" @click="openDirEdit(node)">{{ t('common.edit') }}</a-button>
+                <a-button type="text" status="danger" size="mini" @click="onDirDelete(node)">{{ t('kbDetail.deleteShort') }}</a-button>
               </span>
             </template>
           </a-tree>
-          <a-button class="all-docs" type="text" @click="clearDirFilter">查看全部文档</a-button>
+          <a-button class="all-docs" type="text" @click="clearDirFilter">{{ t('kbDetail.allDocs') }}</a-button>
         </div>
       </a-col>
 
@@ -61,25 +61,25 @@
         <div class="panel">
           <div class="panel-title">
             <span>
-              文档列表
-              <a-tag v-if="currentDir" size="small" class="ml8">目录: {{ currentDir.name }}</a-tag>
+              {{ t('kbDetail.docList') }}
+              <a-tag v-if="currentDir" size="small" class="ml8">{{ t('kbDetail.dirTag', { name: currentDir.name }) }}</a-tag>
             </span>
             <div class="doc-toolbar">
               <a-select
                 v-model="statusFilter"
                 allow-clear
-                placeholder="全部状态"
+                :placeholder="t('kbDetail.allStatus')"
                 style="width: 140px"
                 @change="onStatusFilterChange"
               >
-                <a-option label="待索引" value="pending" />
-                <a-option label="索引中" value="indexing" />
-                <a-option label="就绪" value="ready" />
-                <a-option label="失败" value="failed" />
+                <a-option :label="t('status.pending')" value="pending" />
+                <a-option :label="t('status.indexing')" value="indexing" />
+                <a-option :label="t('status.ready')" value="ready" />
+                <a-option :label="t('status.failed')" value="failed" />
               </a-select>
-              <a-button size="small" :disabled="!selectedIds.length" @click="onBatchReindex">重新索引</a-button>
+              <a-button size="small" :disabled="!selectedIds.length" @click="onBatchReindex">{{ t('kbDetail.reindex') }}</a-button>
               <a-button size="small" type="primary" status="danger" :disabled="!selectedIds.length" @click="onBatchDelete">
-                批量删除
+                {{ t('kbDetail.batchDelete') }}
               </a-button>
             </div>
           </div>
@@ -107,7 +107,7 @@
               <span :title="recallTitle(record)">{{ formatRecall(record.recall) }}</span>
             </template>
             <template #cited_count="{ record }">
-              <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ record.cited_count ?? 0 }}</span>
+              <span :title="t('kbDetail.citedHint')">{{ record.cited_count ?? 0 }}</span>
             </template>
             <template #cited_chunks="{ record }">
               <span class="cell-ellipsis" :title="formatChunkRanks(record.cited_chunks)">{{ formatChunkRanks(record.cited_chunks) }}</span>
@@ -117,10 +117,10 @@
             <template #updated_at="{ record }">{{ formatTime(record.updated_at) }}</template>
             <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
             <template #ops="{ record }">
-              <a-button type="text" size="mini" @click="showDoc(record)">详情</a-button>
-              <a-button type="text" size="mini" :disabled="record.status === 'indexing'" @click="onReindexOne(record)">重新索引</a-button>
-              <a-button type="text" size="mini" @click="openIndexHistory(record)">索引记录</a-button>
-              <a-button type="text" status="danger" size="mini" @click="onDeleteOne(record)">删除</a-button>
+              <a-button type="text" size="mini" @click="showDoc(record)">{{ t('kbDetail.detail') }}</a-button>
+              <a-button type="text" size="mini" :disabled="record.status === 'indexing'" @click="onReindexOne(record)">{{ t('kbDetail.reindex') }}</a-button>
+              <a-button type="text" size="mini" @click="openIndexHistory(record)">{{ t('kbDetail.indexHistory') }}</a-button>
+              <a-button type="text" status="danger" size="mini" @click="onDeleteOne(record)">{{ t('common.delete') }}</a-button>
             </template>
           </a-table>
 
@@ -140,40 +140,40 @@
       </a-col>
     </a-row>
 
-    <a-modal v-model:visible="dirVisible" :title="dirEditing ? '编辑目录' : '新建目录'" :width="440" :footer="false" unmount-on-close>
+    <a-modal v-model:visible="dirVisible" :title="dirEditing ? t('kbDetail.editDir') : t('kbDetail.newDir')" :width="440" :footer="false" unmount-on-close>
       <a-form :model="dirForm" auto-label-width>
-        <a-form-item field="name" label="名称" required>
+        <a-form-item field="name" :label="t('common.name')" required>
           <a-input v-model="dirForm.name" />
         </a-form-item>
-        <a-form-item field="description" label="描述">
+        <a-form-item field="description" :label="t('common.description')">
           <a-textarea v-model="dirForm.description" :auto-size="{ minRows: 2, maxRows: 4 }" />
         </a-form-item>
-        <a-form-item field="sort_order" label="排序">
+        <a-form-item field="sort_order" :label="t('kbDetail.sort')">
           <a-input-number v-model="dirForm.sort_order" :min="0" :step="1" :precision="0" />
         </a-form-item>
       </a-form>
       <div class="modal-footer">
-        <a-button @click="dirVisible = false">取消</a-button>
-        <a-button type="primary" :loading="dirSaving" @click="saveDir">保存</a-button>
+        <a-button @click="dirVisible = false">{{ t('common.cancel') }}</a-button>
+        <a-button type="primary" :loading="dirSaving" @click="saveDir">{{ t('common.save') }}</a-button>
       </div>
     </a-modal>
 
-    <a-modal v-model:visible="importVisible" title="导入文档" :width="520" :footer="false" unmount-on-close>
+    <a-modal v-model:visible="importVisible" :title="t('kbDetail.importTitle')" :width="560" :footer="false" unmount-on-close>
       <a-form :model="importForm" auto-label-width>
-        <a-form-item label="目标目录">
+        <a-form-item :label="t('kbDetail.targetDir')">
           <a-tree-select
             v-model="importForm.directory_id"
             :data="treeData"
             allow-clear
             :field-names="{ key: 'id', title: 'name', children: 'children' }"
-            placeholder="可选，不选则挂到知识库根"
+            :placeholder="t('kbDetail.targetDirPh')"
             :tree-props="{ defaultExpandAll: true }"
           />
         </a-form-item>
-        <a-form-item label="标题(单文件)">
-          <a-input v-model="importForm.title" placeholder="多文件时忽略，默认用文件名" />
+        <a-form-item :label="t('kbDetail.titleSingle')">
+          <a-input v-model="importForm.title" :placeholder="t('kbDetail.titlePh')" />
         </a-form-item>
-        <a-form-item label="文件" required>
+        <a-form-item :label="t('kbDetail.file')" required>
           <a-upload
             v-model:file-list="fileList"
             draggable
@@ -185,30 +185,30 @@
             @exceed-limit="onFileExceed"
           />
           <div class="upload-tip">
-            支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
+            {{ t('kbDetail.formats') }}
             <br />
-            单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个，本租户文件总数上限 {{ maxTenantFiles }}（已用 {{ tenantFileCount }}）
+            {{ t('kbDetail.limits', { size: maxUploadFileSizeMB, files: maxUploadFiles, max: maxTenantFiles, used: tenantFileCount }) }}
           </div>
         </a-form-item>
       </a-form>
       <div class="modal-footer">
-        <a-button @click="importVisible = false">取消</a-button>
-        <a-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">开始导入</a-button>
+        <a-button @click="importVisible = false">{{ t('common.cancel') }}</a-button>
+        <a-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">{{ t('kbDetail.startImport') }}</a-button>
       </div>
     </a-modal>
 
-    <a-drawer v-model:visible="docDetailVisible" title="文档详情" :width="520" :footer="false" unmount-on-close>
+    <a-drawer v-model:visible="docDetailVisible" :title="t('kbDetail.docDetail')" :width="520" :footer="false" unmount-on-close>
       <a-descriptions v-if="docDetail" :column="1" bordered>
         <a-descriptions-item label="ID">{{ docDetail.id }}</a-descriptions-item>
-        <a-descriptions-item label="标题">{{ docDetail.title }}</a-descriptions-item>
-        <a-descriptions-item label="文件名">{{ docDetail.file_name }}</a-descriptions-item>
-        <a-descriptions-item label="上传用户">{{ docDetail.username || docDetail.user_id || '-' }}</a-descriptions-item>
-        <a-descriptions-item label="状态">
+        <a-descriptions-item :label="t('kbDetail.docTitle')">{{ docDetail.title }}</a-descriptions-item>
+        <a-descriptions-item :label="t('kbDetail.fileName')">{{ docDetail.file_name }}</a-descriptions-item>
+        <a-descriptions-item :label="t('kbDetail.uploader')">{{ docDetail.username || docDetail.user_id || '-' }}</a-descriptions-item>
+        <a-descriptions-item :label="t('common.status')">
           <a-tag :color="statusType(docDetail.status)" size="small">{{ statusLabel(docDetail.status) }}</a-tag>
         </a-descriptions-item>
-        <a-descriptions-item label="分块数">{{ docDetail.chunk_count }}</a-descriptions-item>
-        <a-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</a-descriptions-item>
-        <a-descriptions-item label="引用片段">
+        <a-descriptions-item :label="t('kbDetail.chunkCount')">{{ docDetail.chunk_count }}</a-descriptions-item>
+        <a-descriptions-item :label="t('kbDetail.citedCount')">{{ docDetail.cited_count ?? 0 }}</a-descriptions-item>
+        <a-descriptions-item :label="t('kbDetail.citedChunks')">
           <a-table
             row-key="chunk_index"
             :columns="citedColumns"
@@ -216,13 +216,13 @@
             :pagination="false"
             size="small"
           >
-            <template #empty>还没有被引用的片段</template>
+            <template #empty>{{ t('kbDetail.citedEmpty') }}</template>
           </a-table>
         </a-descriptions-item>
-        <a-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</a-descriptions-item>
+        <a-descriptions-item :label="t('kbDetail.lastIndexed')">{{ formatTime(docDetail.last_indexed_at) }}</a-descriptions-item>
         <a-descriptions-item label="MD5">{{ docDetail.content_md5 }}</a-descriptions-item>
-        <a-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</a-descriptions-item>
-        <a-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">
+        <a-descriptions-item :label="t('kbDetail.size')">{{ formatSize(docDetail.file_size) }}</a-descriptions-item>
+        <a-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" :label="t('kbDetail.errorReason')">
           <span class="error-msg">{{ docDetail.error_msg }}</span>
         </a-descriptions-item>
       </a-descriptions>
@@ -240,7 +240,7 @@
         <template #content="{ record }">
           <div class="chunk-content">{{ record.content }}</div>
         </template>
-        <template #empty>还没有分块</template>
+        <template #empty>{{ t('kbDetail.noChunks') }}</template>
       </a-table>
       <div v-if="chunkRows.length > chunkPageSize" class="pager">
         <a-pagination
@@ -268,7 +268,7 @@
         <template #error_msg="{ record }">
           <span class="cell-ellipsis" :title="record.error_msg || '-'">{{ record.error_msg || '-' }}</span>
         </template>
-        <template #empty>暂无索引记录</template>
+        <template #empty>{{ t('kbDetail.noIndexHistory') }}</template>
       </a-table>
     </a-drawer>
   </a-spin>
@@ -277,6 +277,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { confirmAction } from '@/utils/ui'
@@ -287,6 +288,7 @@ import {
   statusType,
 } from '@/utils/helpers'
 
+const { t } = useI18n()
 const route = useRoute()
 const kbId = computed(() => Number(route.params.id))
 
@@ -333,7 +335,7 @@ const chunkPageNo = ref(1)
 const chunkPageSize = 10
 const chunkTitle = computed(() => {
   const name = chunkDoc.value?.file_name || chunkDoc.value?.title
-  return name ? `分块 · ${name}` : '分块'
+  return name ? t('kbDetail.chunksOf', { name }) : t('kbDetail.chunks')
 })
 const chunkPage = computed(() => {
   const start = (chunkPageNo.value - 1) * chunkPageSize
@@ -345,39 +347,39 @@ const indexHistory = ref([])
 const indexHistoryDoc = ref(null)
 const indexHistoryTitle = computed(() => {
   const name = indexHistoryDoc.value?.file_name || indexHistoryDoc.value?.title
-  return name ? `索引记录 · ${name}` : '索引记录'
+  return name ? t('kbDetail.indexHistoryOf', { name }) : t('kbDetail.indexHistory')
 })
 
-const docColumns = [
+const docColumns = computed(() => [
   { title: 'ID', dataIndex: 'id', width: 70 },
-  { title: '文件名', dataIndex: 'file_name', width: 160, ellipsis: true, tooltip: true },
-  { title: '上传用户', slotName: 'owner', width: 120 },
-  { title: '状态', slotName: 'status', width: 100 },
-  { title: '分块', slotName: 'chunks', width: 70 },
-  { title: '召回率', slotName: 'recall', width: 90 },
-  { title: '引用次数', slotName: 'cited_count', width: 90 },
-  { title: '引用片段', slotName: 'cited_chunks', width: 180 },
-  { title: '上次索引时间', slotName: 'last_indexed_at', width: 170 },
-  { title: '大小', slotName: 'file_size', width: 90 },
-  { title: '更新时间', slotName: 'updated_at', width: 170 },
-  { title: '创建时间', slotName: 'created_at', width: 170 },
-  { title: '操作', slotName: 'ops', width: 280, fixed: 'right' },
-]
-const citedColumns = [
-  { title: '排名', dataIndex: 'rank', width: 70 },
-  { title: '片段标号', dataIndex: 'chunk_index', width: 90 },
-  { title: '引用次数', dataIndex: 'count' },
-]
-const chunkColumns = [
-  { title: '分块标号', dataIndex: 'chunk_index', width: 100 },
-  { title: '分块内容', slotName: 'content' },
-]
-const historyColumns = [
-  { title: '索引触发时间', slotName: 'triggered_at', width: 180 },
-  { title: '索引结束时间', slotName: 'finished_at', width: 180 },
-  { title: '本次索引状态', slotName: 'status', width: 120 },
-  { title: '错误原因', slotName: 'error_msg' },
-]
+  { title: t('kbDetail.fileName'), dataIndex: 'file_name', width: 160, ellipsis: true, tooltip: true },
+  { title: t('kbDetail.uploader'), slotName: 'owner', width: 120 },
+  { title: t('common.status'), slotName: 'status', width: 110 },
+  { title: t('kbDetail.chunks'), slotName: 'chunks', width: 90 },
+  { title: t('kbDetail.recall'), slotName: 'recall', width: 90 },
+  { title: t('kbDetail.citedCount'), slotName: 'cited_count', width: 100 },
+  { title: t('kbDetail.citedChunks'), slotName: 'cited_chunks', width: 180 },
+  { title: t('kbDetail.lastIndexed'), slotName: 'last_indexed_at', width: 170 },
+  { title: t('kbDetail.size'), slotName: 'file_size', width: 90 },
+  { title: t('kbDetail.updatedAt'), slotName: 'updated_at', width: 170 },
+  { title: t('common.createdAt'), slotName: 'created_at', width: 170 },
+  { title: t('common.actions'), slotName: 'ops', width: 320, fixed: 'right' },
+])
+const citedColumns = computed(() => [
+  { title: t('kbDetail.rank'), dataIndex: 'rank', width: 70 },
+  { title: t('kbDetail.chunkNo'), dataIndex: 'chunk_index', width: 90 },
+  { title: t('kbDetail.citeCount'), dataIndex: 'count' },
+])
+const chunkColumns = computed(() => [
+  { title: t('kbDetail.chunkIndex'), dataIndex: 'chunk_index', width: 100 },
+  { title: t('kbDetail.chunkContent'), slotName: 'content' },
+])
+const historyColumns = computed(() => [
+  { title: t('kbDetail.triggeredAt'), slotName: 'triggered_at', width: 180 },
+  { title: t('kbDetail.finishedAt'), slotName: 'finished_at', width: 180 },
+  { title: t('kbDetail.buildStatus'), slotName: 'status', width: 120 },
+  { title: t('kbDetail.errorReason'), slotName: 'error_msg' },
+])
 const rowSelection = computed(() => ({
   type: 'checkbox',
   showCheckedAll: true,
@@ -407,9 +409,9 @@ function formatRecall(recall) {
 }
 
 function recallTitle(row) {
-  if (row?.recall === null || row?.recall === undefined) return '还没有相关文档标注'
+  if (row?.recall === null || row?.recall === undefined) return t('kbDetail.recallNone')
   const k = row.recall_k ? `Top${row.recall_k} ` : ''
-  return `${k}命中 ${row.hit_queries ?? 0} / 标注 ${row.labeled_queries ?? 0}`
+  return t('kbDetail.recallHit', { k, hit: row.hit_queries ?? 0, labeled: row.labeled_queries ?? 0 })
 }
 
 function topCitedChunks(chunks) {
@@ -424,7 +426,7 @@ function topCitedChunks(chunks) {
 function formatChunkRanks(chunks) {
   const top = topCitedChunks(chunks)
   if (!top.length) return '—'
-  return top.map((c) => `#${c.rank} 片段${c.chunk_index} ${c.count}次`).join('；')
+  return top.map((c) => t('kbDetail.chunkRank', { rank: c.rank, index: c.chunk_index, count: c.count })).join(t('kbDetail.chunkRankSep'))
 }
 
 async function loadTree() {
@@ -519,7 +521,7 @@ function openDirEdit(data) {
 
 async function saveDir() {
   if (!dirForm.name.trim()) {
-    Message.warning('请填写目录名称')
+    Message.warning(t('kbDetail.needDirName'))
     return
   }
   dirSaving.value = true
@@ -530,7 +532,7 @@ async function saveDir() {
         description: dirForm.description,
         sort_order: dirForm.sort_order,
       })
-      Message.success('目录已更新')
+      Message.success(t('kbDetail.dirUpdated'))
     } else {
       const payload = {
         name: dirForm.name,
@@ -539,7 +541,7 @@ async function saveDir() {
       }
       if (dirParent.value?.id) payload.parent_id = dirParent.value.id
       await api.createDirectory(kbId.value, payload)
-      Message.success('目录已创建')
+      Message.success(t('kbDetail.dirCreated'))
     }
     dirVisible.value = false
     await loadTree()
@@ -550,12 +552,12 @@ async function saveDir() {
 
 async function onDirDelete(data) {
   try {
-    await confirmAction(`确认删除目录「${data.name}」？`, '删除确认')
+    await confirmAction(t('kbDetail.deleteDir', { name: data.name }), t('common.confirmDelete'))
   } catch {
     return
   }
   await api.deleteDirectory(data.id)
-  Message.success('目录已删除')
+  Message.success(t('kbDetail.dirDeleted'))
   if (currentDir.value?.id === data.id) clearDirFilter()
   await loadTree()
 }
@@ -564,7 +566,11 @@ function onUploadChange(list, fileItem) {
   const raw = fileItem?.file
   if (raw && raw.size > maxUploadFileSize.value) {
     Message.warning(
-      `文件「${fileItem.name}」大小 ${(raw.size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+      t('kbDetail.fileTooLarge', {
+        name: fileItem.name,
+        size: (raw.size / (1024 * 1024)).toFixed(1),
+        limit: maxUploadFileSizeMB.value,
+      }),
     )
     fileList.value = list.filter((f) => f.uid !== fileItem.uid)
     return
@@ -573,7 +579,7 @@ function onUploadChange(list, fileItem) {
 }
 
 function onFileExceed() {
-  Message.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+  Message.warning(t('kbDetail.tooManyFiles', { count: maxUploadFiles.value }))
 }
 
 async function loadUploadLimits() {
@@ -605,22 +611,26 @@ async function openImport() {
 
 async function doImport() {
   if (!fileList.value.length) {
-    Message.warning('请选择文件')
+    Message.warning(t('kbDetail.needFile'))
     return
   }
   if (fileList.value.length > maxUploadFiles.value) {
-    Message.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+    Message.warning(t('kbDetail.tooManyFiles', { count: maxUploadFiles.value }))
     return
   }
   for (const f of fileList.value) {
     const size = f.file?.size || 0
     if (!f.file) {
-      Message.warning(`文件「${f.name || ''}」读取失败，请重新选择`)
+      Message.warning(t('kbDetail.fileReadFailed', { name: f.name || '' }))
       return
     }
     if (size > maxUploadFileSize.value) {
       Message.warning(
-        `文件「${f.name}」大小 ${(size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+        t('kbDetail.fileTooLarge', {
+          name: f.name,
+          size: (size / (1024 * 1024)).toFixed(1),
+          limit: maxUploadFileSizeMB.value,
+        }),
       )
       return
     }
@@ -639,7 +649,7 @@ async function doImport() {
   importing.value = true
   try {
     const result = await api.importDocuments(fd)
-    Message.success(result?.message || `导入完成：新增 ${result?.imported || 0}，重复 ${result?.duplicated || 0}`)
+    Message.success(result?.message || t('kbDetail.importDone', { imported: result?.imported || 0, duplicated: result?.duplicated || 0 }))
     importVisible.value = false
     importForm.title = ''
     importForm.directory_id = undefined
@@ -674,9 +684,9 @@ async function onReindexOne(row) {
   const result = await api.reindexDocuments([row.id])
   const item = result?.items?.[0]
   if (item?.skipped) {
-    Message.warning(item.message || '未触发重新索引')
+    Message.warning(item.message || t('kbDetail.reindexSkipped'))
   } else {
-    Message.success(item?.message || '已触发重新索引')
+    Message.success(item?.message || t('kbDetail.reindexStarted'))
   }
   await loadDocs()
   if (indexHistoryVisible.value && indexHistoryDoc.value?.id === row.id) {
@@ -707,32 +717,32 @@ async function openChunks(row) {
 
 async function onDeleteOne(row) {
   try {
-    await confirmAction(`确认删除文档「${row.title}」？将级联清理向量与文件。`, '删除确认')
+    await confirmAction(t('kbDetail.deleteDoc', { title: row.title }), t('common.confirmDelete'))
   } catch {
     return
   }
   await api.deleteDocument(row.id)
-  Message.success('已删除')
+  Message.success(t('common.deleted'))
   if (indexHistoryDoc.value?.id === row.id) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchDelete() {
   try {
-    await confirmAction(`确认删除选中的 ${selectedIds.value.length} 个文档？`, '批量删除')
+    await confirmAction(t('kbDetail.batchDeleteConfirm', { count: selectedIds.value.length }), t('kbDetail.batchDelete'))
   } catch {
     return
   }
   const deletedIds = selectedIds.value.slice()
   const result = await api.deleteDocuments(deletedIds)
-  Message.success(result?.message || '批量删除完成')
+  Message.success(result?.message || t('kbDetail.batchDeleteDone'))
   if (deletedIds.includes(indexHistoryDoc.value?.id)) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchReindex() {
   const result = await api.reindexDocuments(selectedIds.value)
-  Message.success(result?.message || `已触发 ${result?.triggered || 0} 个文档重新索引`)
+  Message.success(result?.message || t('kbDetail.batchReindexDone', { count: result?.triggered || 0 }))
   await loadDocs()
 }
 
