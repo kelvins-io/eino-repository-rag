@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.md)
 
-Vue 3 + Element Plus admin UI for backend `/api/v1`. After login it calls knowledge-base, document, Q&A, and tenant APIs with JWT.
+Vue 3 + Element Plus admin UI for backend `/api/v1`. After login it calls knowledge-base, document, Q&A, and tenant APIs with JWT. The UI can switch between Chinese and English.
 
 Repo-level docs: [../README.en.md](../README.en.md).
 
@@ -58,7 +58,11 @@ Unauthenticated visits to protected routes redirect to `/login`. Accounts other 
 | `/tenant-manage` | Platform admin: tenant quotas and today's usage |
 | `/tenants` | Platform admin: create a tenant |
 
-Q&A uses SSE (`/chat/query`, `/chat/agent`). Import count, sessions, voice, and TTS follow tenant quotas; buttons disable when a cap is reached.
+Q&A uses SSE (`/chat/query`, `/chat/agent`). Import count, sessions, voice, and TTS follow tenant quotas; buttons disable when a cap is reached. After a successful index the source file is removed, so rows with `source_available=false` cannot be reindexed.
+
+## Language
+
+Login, register, and the top bar can switch **中文 / English**. The choice is stored in `localStorage` (`eino_rag_locale`) and kept across reloads. First visit guesses from the browser language and defaults to Chinese. Copy lives in `vue-i18n` (`src/i18n/locales/`). Element Plus locale and the document title follow the current language.
 
 ## Auth
 
@@ -70,7 +74,9 @@ Token and current user/tenant are stored in `localStorage` (`eino_rag_token`, et
 web/
   src/
     api/           # Axios + SSE
+    components/    # Shared widgets (language switch)
     composables/   # Voice input / playback
+    i18n/          # vue-i18n and zh-CN / en messages
     layouts/       # Sidebar layout
     views/         # Pages
     router/        # Routes and auth guards
@@ -82,4 +88,4 @@ web/
 
 ## Stack
 
-Vue 3, Vite, Element Plus, Vue Router, Axios.
+Vue 3, Vite, Element Plus, Vue Router, Vue I18n, Axios.

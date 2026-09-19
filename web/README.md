@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.md)
 
-Vue 3 + Element Plus 管理台，对接后端 `/api/v1`。登录后以 JWT 调用知识库、文档、问答与租户管理接口。
+Vue 3 + Element Plus 管理台，对接后端 `/api/v1`。登录后以 JWT 调用知识库、文档、问答与租户管理接口。界面支持中英文切换。
 
 仓库总览见 [../README.md](../README.md)。
 
@@ -58,7 +58,11 @@ Docker 前端：http://localhost:5173 。
 | `/tenant-manage` | 平台管理员：租户配额与当日用量 |
 | `/tenants` | 平台管理员：创建租户 |
 
-问答走 SSE（`/chat/query`、`/chat/agent`）。导入文件数、会话数、语音与 TTS 受租户配额限制，达上限时对应按钮会禁用。
+问答走 SSE（`/chat/query`、`/chat/agent`）。导入文件数、会话数、语音与 TTS 受租户配额限制，达上限时对应按钮会禁用。索引成功后源文件会被清理，文档列表里 `source_available=false` 的条目会禁用重新索引。
+
+## 语言
+
+登录页、注册页和顶栏均可切换 **中文 / English**。选择写入 `localStorage`（`eino_rag_locale`），刷新后保持；首次访问按浏览器语言猜测，默认中文。文案走 `vue-i18n`（`src/i18n/locales/`），Element Plus 组件语言随当前 locale 一起切换，页面标题也会更新。
 
 ## 鉴权
 
@@ -70,7 +74,9 @@ Token 与当前用户/租户写入 `localStorage`（`eino_rag_token` 等）。�
 web/
   src/
     api/           # Axios + SSE 封装
+    components/    # 语言切换等公共组件
     composables/   # 语音输入 / 朗读
+    i18n/          # vue-i18n 与 zh-CN / en 文案
     layouts/       # 侧栏布局
     views/         # 页面
     router/        # 路由与登录守卫
@@ -82,4 +88,4 @@ web/
 
 ## 技术栈
 
-Vue 3、Vite、Element Plus、Vue Router、Axios。
+Vue 3、Vite、Element Plus、Vue Router、Vue I18n、Axios。

@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.md)
 
-基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的企业知识库 RAG 服务：多租户 JWT 鉴权、文档导入与异步索引、Hybrid 检索、流式问答，以及 Vue 3 管理台。
+基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的企业知识库 RAG 服务：多租户 JWT 鉴权、文档导入与异步索引、Hybrid 检索、流式问答，以及 Vue 3 中英文管理台。
 
 前端说明见 [web/README.md](web/README.md)。
 
@@ -14,7 +14,7 @@
   - 平台管理员（`default` / `admin`）可创建租户、查看配额、调整限额
   - 各租户 `admin` 可开关本租户用户登录
 - **租户配额**：文件总数 / 单文件大小 / 每日新建会话 / 单会话轮次 / 每日语音输入 / 每日 TTS（默认均为 5）
-- **文档导入**：`POST /api/v1/documents/import`，一次多个文件；知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）
+- **文档导入**：`POST /api/v1/documents/import`，一次多个文件；知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地上传文件**，此后不可重新索引（失败会保留源文件以便重试）
 - **文档解析 / OCR**：PDF、Office（DOCX/XLSX/PPTX）、Markdown/HTML/文本/CSV/JSON、图片；扫描 PDF / 图片 / 无文字 PPTX·DOCX 回退 Tesseract（compose `ocr` 服务，本机无需 brew）
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤（含子目录）；租户内知识库共享可读
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
@@ -50,7 +50,8 @@ HTTP API (Gin) + JWT
   │                                      ├─ Recursive / 结构切分
   │                                      ├─ Embedding
   │                                      ├─ Vector Store（redis / milvus_lite）
-  │                                      └─ BM25 sidecar（hybrid + milvus 时）
+  │                                      ├─ BM25 sidecar（hybrid + milvus 时）
+  │                                      └─ 成功后删除本地上传文件
   └─ 问答检索 →（可选）Query 改写多路召回
                → 短期/长期记忆
                → Dense Retriever + BM25（可选 Hybrid/RRF）
@@ -300,7 +301,7 @@ npm run dev
 
 Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。
 
-前端能力：登录/注册、知识库 CRUD、目录树、文档导入/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。
+前端能力：登录/注册、中英文界面切换、知识库 CRUD、目录树、文档导入/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理的文档会禁用重新索引。
 
 ## API
 
@@ -408,6 +409,8 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
 
 未传 `knowledge_base_id` 时，会自动归入该用户的「默认知识库」。新文件导入后状态：`pending` → `indexing` → `ready` / `failed`。`title` 仅在单文件导入时生效；多文件时默认使用各自文件名。
 
+索引成功后会删除本地上传文件并清空 `file_path`；列表/详情返回 `source_available=false`。索引失败会保留源文件，便于重试。
+
 ### 查询文档
 
 ```bash
@@ -421,7 +424,7 @@ curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/
 
 ### 删除文档
 
-删除文档会**级联清理**：向量索引中的全部 chunk → 本地上传文件 → PostgreSQL 记录。索引中（`indexing`）的文档会拒绝删除。重新索引前也会先删旧向量，避免残留污染检索。
+删除文档会**级联清理**：向量索引中的全部 chunk → 仍存在的本地上传文件 → PostgreSQL 记录。索引中（`indexing`）的文档会拒绝删除。重新索引前也会先删旧向量，避免残留污染检索。已经索引成功的文档通常已无本地源文件。
 
 ```bash
 # 单文档
@@ -437,7 +440,7 @@ curl -X POST http://localhost:8080/api/v1/documents/delete \
 
 ### 重新索引
 
-对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、或请求内重复的 ID 会跳过。
+对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后、源文件仍在时重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、源文件已清理（`source_available=false`）、或请求内重复的 ID 会跳过。
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/reindex \
@@ -579,4 +582,4 @@ docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
 - Redis Stack（短期记忆、索引队列；可选向量检索 + BM25）
 - Milvus Standalone（可选，对应 `milvus_lite` 配置）
 - Tesseract + poppler（OCR sidecar）
-- Vue 3 + Vite + Element Plus + Vue Router + Axios
+- Vue 3 + Vite + Element Plus + Vue Router + Vue I18n + Axios

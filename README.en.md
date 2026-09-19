@@ -2,7 +2,7 @@
 
 [English](README.en.md) | [中文](README.md)
 
-Enterprise knowledge-base RAG service built on [CloudWeGo Eino](https://github.com/cloudwego/eino): multi-tenant JWT auth, document ingest with async indexing, hybrid retrieval, streaming Q&A, and a Vue 3 admin UI.
+Enterprise knowledge-base RAG service built on [CloudWeGo Eino](https://github.com/cloudwego/eino): multi-tenant JWT auth, document ingest with async indexing, hybrid retrieval, streaming Q&A, and a Vue 3 admin UI with Chinese/English locales.
 
 Frontend details: [web/README.en.md](web/README.en.md).
 
@@ -14,7 +14,7 @@ Frontend details: [web/README.en.md](web/README.en.md).
   - Platform admin (`default` / `admin`) can create tenants, view quotas, and update limits
   - Each tenant `admin` can enable/disable login for users in that tenant
 - **Tenant quotas**: total files / max file size / new sessions per day / turns per session / voice inputs per day / TTS per day (defaults are all 5)
-- **Document import**: `POST /api/v1/documents/import`, multiple files per request; MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery)
+- **Document import**: `POST /api/v1/documents/import`, multiple files per request; MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery); **the local upload is deleted after a successful index**, so the document cannot be reindexed afterward (failed jobs keep the source file for retry)
 - **Parsing / OCR**: PDF, Office (DOCX/XLSX/PPTX), Markdown/HTML/text/CSV/JSON, images; scanned PDFs / images / text-less PPTX·DOCX fall back to Tesseract (compose `ocr` service; no local brew required)
 - **Knowledge bases and directories**: multiple KBs + directory tree; import targeting, list filters, retrieval filters (including children); KBs are readable across the tenant
 - **Vector search**: `redis` or `milvus_lite` (Eino Indexer/Retriever + OpenAI-compatible embedding)
@@ -50,7 +50,8 @@ HTTP API (Gin) + JWT
   │                                      ├─ Recursive / structure split
   │                                      ├─ Embedding
   │                                      ├─ Vector Store (redis / milvus_lite)
-  │                                      └─ BM25 sidecar (hybrid + milvus)
+  │                                      ├─ BM25 sidecar (hybrid + milvus)
+  │                                      └─ delete local upload on success
   └─ Q&A retrieval → (optional) query rewrite, multi-query recall
                → short/long-term memory
                → Dense Retriever + BM25 (optional Hybrid/RRF)
@@ -300,7 +301,7 @@ Open http://localhost:5173 . In development Vite proxies `/api` and `/health` to
 
 The Docker frontend image (`web/Dockerfile`) builds with `VITE_API_BASE=` (same origin); nginx reverse-proxies the API, so you do not need to change `.env.production`.
 
-UI: login/register, knowledge-base CRUD, directory tree, document import/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas.
+UI: login/register, Chinese/English locale switch, knowledge-base CRUD, directory tree, document import/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. Documents whose source file was removed after a successful index cannot be reindexed.
 
 See [web/README.en.md](web/README.en.md) for frontend-only docs.
 
@@ -410,6 +411,8 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
 
 If `knowledge_base_id` is omitted, files go to the user's default knowledge base. New files: `pending` → `indexing` → `ready` / `failed`. `title` applies only to single-file imports; multi-file uses each filename.
 
+After a successful index the local upload is deleted and `file_path` is cleared; list/detail responses set `source_available=false`. Failed jobs keep the source file so you can retry.
+
 ### Query documents
 
 ```bash
@@ -423,7 +426,7 @@ curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/
 
 ### Delete documents
 
-Delete **cascades**: all vector chunks → uploaded file → PostgreSQL row. Documents in `indexing` cannot be deleted. Reindex also drops old vectors first to avoid stale hits.
+Delete **cascades**: all vector chunks → remaining local upload (if any) → PostgreSQL row. Documents in `indexing` cannot be deleted. Reindex also drops old vectors first to avoid stale hits. Successfully indexed documents usually no longer have a local source file.
 
 ```bash
 # One
@@ -439,7 +442,7 @@ curl -X POST http://localhost:8080/api/v1/documents/delete \
 
 ### Reindex
 
-Re-enqueue async index builds (retry failures or rebuild after config changes). IDs in the body; missing, currently `indexing`, or duplicate IDs in the request are skipped.
+Re-enqueue async index builds (retry failures, or rebuild after config changes while the source file still exists). IDs in the body; missing, currently `indexing`, source already cleaned (`source_available=false`), or duplicate IDs in the request are skipped.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/documents/reindex \
@@ -581,4 +584,4 @@ docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
 - Redis Stack (short-term memory, index queue; optional vector search + BM25)
 - Milvus Standalone (optional, `milvus_lite` config)
 - Tesseract + poppler (OCR sidecar)
-- Vue 3 + Vite + Element Plus + Vue Router + Axios
+- Vue 3 + Vite + Element Plus + Vue Router + Vue I18n + Axios
