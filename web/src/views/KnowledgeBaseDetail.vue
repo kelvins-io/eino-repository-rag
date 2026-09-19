@@ -154,14 +154,22 @@
             <el-table-column :label="t('common.actions')" width="340" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="showDoc(row)">{{ t('kbDetail.detail') }}</el-button>
-                <el-button
-                  link
-                  type="primary"
-                  :disabled="row.status === 'indexing'"
-                  @click="onReindexOne(row)"
+                <el-tooltip
+                  :disabled="canReindex(row)"
+                  :content="reindexDisabledReason(row)"
+                  placement="top"
                 >
-                  {{ t('kbDetail.reindex') }}
-                </el-button>
+                  <span class="inline-action">
+                    <el-button
+                      link
+                      type="primary"
+                      :disabled="!canReindex(row)"
+                      @click="onReindexOne(row)"
+                    >
+                      {{ t('kbDetail.reindex') }}
+                    </el-button>
+                  </span>
+                </el-tooltip>
                 <el-button link type="primary" @click="openIndexHistory(row)">{{ t('kbDetail.indexHistory') }}</el-button>
                 <el-button link type="danger" @click="onDeleteOne(row)">{{ t('common.delete') }}</el-button>
               </template>
@@ -662,6 +670,20 @@ function onSelectionChange(rows) {
   selectedIds.value = rows.map((r) => r.id)
 }
 
+function canReindex(row) {
+  return row?.status !== 'indexing' && row?.source_available !== false
+}
+
+function reindexDisabledReason(row) {
+  if (row?.status === 'indexing') {
+    return t('kbDetail.reindexIndexing')
+  }
+  if (row?.source_available === false) {
+    return t('kbDetail.reindexNoSource')
+  }
+  return ''
+}
+
 async function openIndexHistory(row) {
   indexHistoryDoc.value = row
   indexHistoryVisible.value = true
@@ -749,6 +771,11 @@ onMounted(refreshAll)
 </script>
 
 <style scoped>
+.inline-action {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
 .actions {
   display: flex;
   gap: 8px;

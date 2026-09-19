@@ -52,15 +52,17 @@ type DirectoryNode struct {
 
 // Document 用户导入的知识库文档记录
 type Document struct {
-	ID              uint           `gorm:"primaryKey" json:"id"`
-	TenantID        uint           `gorm:"index;not null;default:0" json:"tenant_id"`
-	UserID          string         `gorm:"size:64;index;not null" json:"user_id"` // 上传者/属主
-	Username        string         `gorm:"-" json:"username,omitempty"`           // 上传者用户名（查询时填充）
-	KnowledgeBaseID uint           `gorm:"index;index:idx_kb_content_md5,priority:1;not null;default:0" json:"knowledge_base_id"`
-	DirectoryID     *uint          `gorm:"index" json:"directory_id"`
-	Title           string         `gorm:"size:256;not null" json:"title"`
-	FileName        string         `gorm:"size:256;not null" json:"file_name"`
-	FilePath        string         `gorm:"size:512;not null" json:"file_path"`
+	ID              uint   `gorm:"primaryKey" json:"id"`
+	TenantID        uint   `gorm:"index;not null;default:0" json:"tenant_id"`
+	UserID          string `gorm:"size:64;index;not null" json:"user_id"` // 上传者/属主
+	Username        string `gorm:"-" json:"username,omitempty"`           // 上传者用户名（查询时填充）
+	KnowledgeBaseID uint   `gorm:"index;index:idx_kb_content_md5,priority:1;not null;default:0" json:"knowledge_base_id"`
+	DirectoryID     *uint  `gorm:"index" json:"directory_id"`
+	Title           string `gorm:"size:256;not null" json:"title"`
+	FileName        string `gorm:"size:256;not null" json:"file_name"`
+	FilePath        string `gorm:"size:512;not null" json:"file_path"`
+	// SourceAvailable 本地上传文件是否仍在；索引成功后会删除源文件。不入库。
+	SourceAvailable bool           `gorm:"-" json:"source_available"`
 	ContentMD5      string         `gorm:"size:32;index:idx_kb_content_md5,priority:2;not null;default:''" json:"content_md5"`
 	ContentType     string         `gorm:"size:128" json:"content_type"`
 	FileSize        int64          `json:"file_size"`

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -716,6 +717,7 @@ func (s *KnowledgeService) ListDocuments(filter repository.DocumentListFilter, p
 		ptrs[i] = &list[i]
 	}
 	s.fillDocUsernames(ptrs)
+	attachSourceAvailable(ptrs)
 	s.attachStoredRecalls(list)
 	return list, total, nil
 }
@@ -730,6 +732,7 @@ func (s *KnowledgeService) GetDocument(id uint, userID string, tenantID uint) (*
 		return nil, err
 	}
 	s.fillDocUsernames([]*model.Document{doc})
+	attachSourceAvailable([]*model.Document{doc})
 	s.attachStoredDoc(doc)
 	return doc, nil
 }
@@ -930,6 +933,16 @@ func (s *KnowledgeService) ReindexDocuments(ids []uint, userID string, tenantID 
 			result.Skipped++
 			continue
 		}
+		if !sourceUploadExists(doc.FilePath) {
+			result.Items = append(result.Items, ReindexItemResult{
+				ID:       id,
+				Document: doc,
+				Skipped:  true,
+				Message:  "源文件已在索引完成后清理，无法重新索引",
+			})
+			result.Skipped++
+			continue
+		}
 
 		s.rag.IndexDocumentAsync(doc.ID)
 		result.Items = append(result.Items, ReindexItemResult{
@@ -1076,6 +1089,24 @@ func (s *KnowledgeService) ListSessions(userID string, tenantID, knowledgeBaseID
 		}
 	}
 	return s.mem.ListSessions(actor.TenantID, actor.UserID, knowledgeBaseID, directoryID)
+}
+
+func attachSourceAvailable(docs []*model.Document) {
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		doc.SourceAvailable = sourceUploadExists(doc.FilePath)
+	}
+}
+
+func sourceUploadExists(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir()
 }
 
 func guessContentType(name string) string {

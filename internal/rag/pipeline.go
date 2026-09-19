@@ -171,7 +171,7 @@ func (p *Pipeline) ListDocumentChunks(ctx context.Context, docID uint) ([]Indexe
 	return list, nil
 }
 
-// IndexDocument 对已落库文档进行切分、向量化并写入向量索引
+// IndexDocument 对已落库文档进行切分、向量化并写入向量索引；成功后删除本地上传文件。
 func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	doc, err := p.docRepo.GetByID(docID)
 	if err != nil {
@@ -255,6 +255,11 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 
 	if err := p.docRepo.UpdateStatus(docID, dbmodel.DocumentStatusReady, len(chunks), ""); err != nil {
 		return err
+	}
+	if err := p.removeIndexedUpload(doc.FilePath); err != nil {
+		logger.S().Warnf("[rag] indexed document id=%d but failed to remove upload %s: %v", docID, doc.FilePath, err)
+	} else if err := p.docRepo.ClearFilePath(docID); err != nil {
+		logger.S().Warnf("[rag] indexed document id=%d but failed to clear file_path: %v", docID, err)
 	}
 	logger.S().Infof("[rag] indexed document id=%d format=%s chunks=%d provider=%s",
 		docID, parsed.Format, len(chunks), p.cfg.VectorIndex.Provider)
@@ -727,6 +732,69 @@ func (p *Pipeline) SaveUpload(tenantID, knowledgeBaseID uint, fileName string, d
 		return "", err
 	}
 	return path, nil
+}
+
+// removeIndexedUpload 索引构建成功后删除本地上传文件，并尽量清掉空的租户/知识库目录。
+func (p *Pipeline) removeIndexedUpload(filePath string) error {
+	if p == nil || p.cfg == nil {
+		return nil
+	}
+	return removeIndexedUpload(p.cfg.RAG.UploadDir, filePath)
+}
+
+func removeIndexedUpload(uploadDir, filePath string) error {
+	uploadDir = strings.TrimSpace(uploadDir)
+	filePath = strings.TrimSpace(filePath)
+	if uploadDir == "" || filePath == "" {
+		return nil
+	}
+	absFile, absDir, ok := pathWithinDir(filePath, uploadDir)
+	if !ok {
+		return fmt.Errorf("refusing to delete %s: outside upload_dir", filePath)
+	}
+	if err := os.Remove(absFile); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	pruneEmptyParents(absFile, absDir)
+	return nil
+}
+
+func pathWithinDir(file, dir string) (absFile, absDir string, ok bool) {
+	var err error
+	absFile, err = filepath.Abs(file)
+	if err != nil {
+		return "", "", false
+	}
+	absDir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", "", false
+	}
+	rel, err := filepath.Rel(absDir, absFile)
+	if err != nil {
+		return "", "", false
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", "", false
+	}
+	return absFile, absDir, true
+}
+
+func pruneEmptyParents(filePath, uploadDirAbs string) {
+	dir := filepath.Dir(filePath)
+	prefix := strings.TrimRight(uploadDirAbs, string(os.PathSeparator)) + string(os.PathSeparator)
+	for {
+		abs, err := filepath.Abs(dir)
+		if err != nil || abs == uploadDirAbs {
+			return
+		}
+		if !strings.HasPrefix(abs, prefix) {
+			return
+		}
+		if err := os.Remove(abs); err != nil {
+			return
+		}
+		dir = filepath.Dir(abs)
+	}
 }
 
 func metaString(m map[string]any, key string) string {
