@@ -5,7 +5,7 @@
         <div class="brand-mark">E</div>
         <div>
           <div class="brand-name">Eino RAG</div>
-          <div class="brand-sub">知识库管理台</div>
+          <div class="brand-sub">{{ t('layout.brandSub') }}</div>
         </div>
       </div>
       <el-menu
@@ -17,23 +17,23 @@
       >
         <el-menu-item index="/knowledge-bases">
           <el-icon><Collection /></el-icon>
-          <span>知识库</span>
+          <span>{{ t('nav.knowledgeBases') }}</span>
         </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon>
-          <span>知识问答</span>
+          <span>{{ t('nav.chat') }}</span>
         </el-menu-item>
         <el-menu-item index="/users">
           <el-icon><User /></el-icon>
-          <span>用户管理</span>
+          <span>{{ t('nav.users') }}</span>
         </el-menu-item>
         <el-menu-item v-if="canCreateTenant" index="/tenant-manage">
           <el-icon><OfficeBuilding /></el-icon>
-          <span>租户管理</span>
+          <span>{{ t('nav.tenantManage') }}</span>
         </el-menu-item>
         <el-menu-item v-if="canCreateTenant" index="/tenants">
           <el-icon><OfficeBuilding /></el-icon>
-          <span>创建租户</span>
+          <span>{{ t('nav.createTenant') }}</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -42,12 +42,13 @@
       <el-header class="header" height="56px">
         <div class="header-left">{{ pageTitle }}</div>
         <div class="header-right">
-          <el-tag effect="plain" size="small">租户 {{ tenantCode }}</el-tag>
+          <LanguageSwitch />
+          <el-tag effect="plain" size="small">{{ t('layout.tenant', { code: tenantCode }) }}</el-tag>
           <span class="user">{{ displayName }}</span>
           <el-tag :type="healthOk ? 'success' : 'danger'" effect="plain" size="small">
-            {{ healthOk ? 'API 正常' : 'API 异常' }}
+            {{ healthOk ? t('layout.apiOk') : t('layout.apiDown') }}
           </el-tag>
-          <el-button size="small" @click="logout">退出</el-button>
+          <el-button size="small" @click="logout">{{ t('layout.logout') }}</el-button>
         </div>
       </el-header>
       <el-main class="main">
@@ -60,8 +61,12 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 import { api } from '@/api'
 import { clearAuth, getAuthTenant, getAuthUser, isPlatformAdmin } from '@/utils/auth'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -70,7 +75,7 @@ let healthTimer
 
 const user = getAuthUser()
 const tenant = getAuthTenant()
-const displayName = computed(() => user?.display_name || user?.username || '用户')
+const displayName = computed(() => user?.display_name || user?.username || t('layout.guest'))
 const tenantCode = computed(() => tenant?.code || '-')
 const canCreateTenant = computed(() => isPlatformAdmin())
 
@@ -82,7 +87,7 @@ const active = computed(() => {
   return '/knowledge-bases'
 })
 
-const pageTitle = computed(() => route.meta.title || 'Eino RAG')
+const pageTitle = computed(() => (route.meta.titleKey ? t(route.meta.titleKey) : 'Eino RAG'))
 
 function logout() {
   clearAuth()

@@ -3,27 +3,27 @@
     <div class="page-header">
       <div>
         <el-button link type="primary" @click="$router.push('/knowledge-bases')">
-          ← 返回列表
+          ← {{ t('kbDetail.back') }}
         </el-button>
-        <h2>{{ kb?.name || '知识库详情' }}</h2>
+        <h2>{{ kb?.name || t('kbDetail.fallbackTitle') }}</h2>
         <p class="sub">
-          {{ kb?.description || '管理目录树与文档导入' }}
+          {{ kb?.description || t('kbDetail.fallbackDesc') }}
           <template v-if="kb?.username || kb?.user_id">
-            · 创建用户 {{ kb.username || kb.user_id }}
+            · {{ t('kbDetail.creator', { name: kb.username || kb.user_id }) }}
           </template>
         </p>
       </div>
       <div class="actions">
         <el-tooltip
           :disabled="!importQuotaFull"
-          content="已达到该租户导入文档数上限"
+          :content="t('kbDetail.quotaFull')"
           placement="top"
         >
           <span>
-            <el-button :icon="Upload" type="primary" :disabled="importQuotaFull" @click="openImport">导入文档</el-button>
+            <el-button :icon="Upload" type="primary" :disabled="importQuotaFull" @click="openImport">{{ t('kbDetail.import') }}</el-button>
           </span>
         </el-tooltip>
-        <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
+        <el-button :icon="Refresh" @click="refreshAll">{{ t('kbDetail.refresh') }}</el-button>
       </div>
     </div>
 
@@ -31,8 +31,8 @@
       <el-col :span="5">
         <div class="panel tree-panel">
           <div class="panel-title">
-            <span>目录树</span>
-            <el-button size="small" :icon="Plus" @click="openDirCreate(null)">新建根目录</el-button>
+            <span>{{ t('kbDetail.tree') }}</span>
+            <el-button size="small" :icon="Plus" @click="openDirCreate(null)">{{ t('kbDetail.newRoot') }}</el-button>
           </div>
           <el-tree
             :data="treeData"
@@ -47,15 +47,15 @@
               <div class="tree-node">
                 <span class="tree-label">{{ data.name }}</span>
                 <span class="tree-ops" @click.stop>
-                  <el-button link size="small" @click="openDirCreate(data)">子目录</el-button>
-                  <el-button link size="small" @click="openDirEdit(data)">编辑</el-button>
-                  <el-button link size="small" type="danger" @click="onDirDelete(data)">删</el-button>
+                  <el-button link size="small" @click="openDirCreate(data)">{{ t('kbDetail.child') }}</el-button>
+                  <el-button link size="small" @click="openDirEdit(data)">{{ t('common.edit') }}</el-button>
+                  <el-button link size="small" type="danger" @click="onDirDelete(data)">{{ t('kbDetail.deleteShort') }}</el-button>
                 </span>
               </div>
             </template>
           </el-tree>
           <el-button class="all-docs" text type="primary" @click="clearDirFilter">
-            查看全部文档
+            {{ t('kbDetail.allDocs') }}
           </el-button>
         </div>
       </el-col>
@@ -64,28 +64,28 @@
         <div class="panel">
           <div class="panel-title">
             <span>
-              文档列表
-              <el-tag v-if="currentDir" size="small" class="ml8">目录: {{ currentDir.name }}</el-tag>
+              {{ t('kbDetail.docList') }}
+              <el-tag v-if="currentDir" size="small" class="ml8">{{ t('kbDetail.dirTag', { name: currentDir.name }) }}</el-tag>
             </span>
             <div class="doc-toolbar">
               <el-select
                 v-model="statusFilter"
                 clearable
-                placeholder="全部状态"
+                :placeholder="t('kbDetail.allStatus')"
                 style="width: 140px"
                 @change="onStatusFilterChange"
               >
-                <el-option label="待索引" value="pending" />
-                <el-option label="索引中" value="indexing" />
-                <el-option label="就绪" value="ready" />
-                <el-option label="失败" value="failed" />
+                <el-option :label="t('status.pending')" value="pending" />
+                <el-option :label="t('status.indexing')" value="indexing" />
+                <el-option :label="t('status.ready')" value="ready" />
+                <el-option :label="t('status.failed')" value="failed" />
               </el-select>
               <el-button
                 size="small"
                 :disabled="!selectedIds.length"
                 @click="onBatchReindex"
               >
-                重新索引
+                {{ t('kbDetail.reindex') }}
               </el-button>
               <el-button
                 size="small"
@@ -93,7 +93,7 @@
                 :disabled="!selectedIds.length"
                 @click="onBatchDelete"
               >
-                批量删除
+                {{ t('kbDetail.batchDelete') }}
               </el-button>
             </div>
           </div>
@@ -106,64 +106,64 @@
           >
             <el-table-column type="selection" width="48" />
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="file_name" label="文件名" min-width="140" show-overflow-tooltip />
-            <el-table-column label="上传用户" width="120" show-overflow-tooltip>
+            <el-table-column prop="file_name" :label="t('kbDetail.fileName')" min-width="140" show-overflow-tooltip />
+            <el-table-column :label="t('kbDetail.uploader')" width="120" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ row.username || row.user_id || '-' }}
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="状态" width="100">
+            <el-table-column prop="status" :label="t('common.status')" width="110">
               <template #default="{ row }">
                 <el-tag :type="statusType(row.status)" size="small">
                   {{ statusLabel(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="分块" width="70">
+            <el-table-column :label="t('kbDetail.chunks')" width="90">
               <template #default="{ row }">
                 <el-button link type="primary" @click="openChunks(row)">{{ row.chunk_count }}</el-button>
               </template>
             </el-table-column>
-            <el-table-column label="召回率" width="90">
+            <el-table-column :label="t('kbDetail.recall')" width="90">
               <template #default="{ row }">
                 <span :title="recallTitle(row)">{{ formatRecall(row.recall) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="引用次数" width="90">
+            <el-table-column :label="t('kbDetail.citedCount')" width="100">
               <template #default="{ row }">
-                <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ row.cited_count ?? 0 }}</span>
+                <span :title="t('kbDetail.citedHint')">{{ row.cited_count ?? 0 }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="引用片段" min-width="180" show-overflow-tooltip>
+            <el-table-column :label="t('kbDetail.citedChunks')" min-width="180" show-overflow-tooltip>
               <template #default="{ row }">
                 {{ formatChunkRanks(row.cited_chunks) }}
               </template>
             </el-table-column>
-            <el-table-column label="上次索引时间" width="170">
+            <el-table-column :label="t('kbDetail.lastIndexed')" width="170">
               <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
             </el-table-column>
-            <el-table-column prop="file_size" label="大小" width="90">
+            <el-table-column prop="file_size" :label="t('kbDetail.size')" width="90">
               <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
             </el-table-column>
-            <el-table-column label="更新时间" width="170">
+            <el-table-column :label="t('kbDetail.updatedAt')" width="170">
               <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
             </el-table-column>
-            <el-table-column label="创建时间" width="170">
+            <el-table-column :label="t('common.createdAt')" width="170">
               <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="300" fixed="right">
+            <el-table-column :label="t('common.actions')" width="340" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="showDoc(row)">详情</el-button>
+                <el-button link type="primary" @click="showDoc(row)">{{ t('kbDetail.detail') }}</el-button>
                 <el-button
                   link
                   type="primary"
                   :disabled="row.status === 'indexing'"
                   @click="onReindexOne(row)"
                 >
-                  重新索引
+                  {{ t('kbDetail.reindex') }}
                 </el-button>
-                <el-button link type="primary" @click="openIndexHistory(row)">索引记录</el-button>
-                <el-button link type="danger" @click="onDeleteOne(row)">删除</el-button>
+                <el-button link type="primary" @click="openIndexHistory(row)">{{ t('kbDetail.indexHistory') }}</el-button>
+                <el-button link type="danger" @click="onDeleteOne(row)">{{ t('common.delete') }}</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -184,28 +184,28 @@
     </el-row>
 
     <!-- 目录弹窗 -->
-    <el-dialog v-model="dirVisible" :title="dirEditing ? '编辑目录' : '新建目录'" width="440px">
-      <el-form :model="dirForm" label-width="80px">
-        <el-form-item label="名称" required>
+    <el-dialog v-model="dirVisible" :title="dirEditing ? t('kbDetail.editDir') : t('kbDetail.newDir')" width="440px">
+      <el-form :model="dirForm" label-width="110px">
+        <el-form-item :label="t('common.name')" required>
           <el-input v-model="dirForm.name" />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="t('common.description')">
           <el-input v-model="dirForm.description" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="排序">
+        <el-form-item :label="t('kbDetail.sort')">
           <el-input-number v-model="dirForm.sort_order" :min="0" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dirVisible = false">取消</el-button>
-        <el-button type="primary" :loading="dirSaving" @click="saveDir">保存</el-button>
+        <el-button @click="dirVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="dirSaving" @click="saveDir">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 导入弹窗 -->
-    <el-dialog v-model="importVisible" title="导入文档" width="520px">
-      <el-form label-width="100px">
-        <el-form-item label="目标目录">
+    <el-dialog v-model="importVisible" :title="t('kbDetail.importTitle')" width="520px">
+      <el-form label-width="140px">
+        <el-form-item :label="t('kbDetail.targetDir')">
           <el-tree-select
             v-model="importForm.directory_id"
             :data="treeData"
@@ -213,14 +213,14 @@
             check-strictly
             node-key="id"
             :props="{ label: 'name', children: 'children', value: 'id' }"
-            placeholder="可选，不选则挂到知识库根"
+            :placeholder="t('kbDetail.targetDirPh')"
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="标题(单文件)">
-          <el-input v-model="importForm.title" placeholder="多文件时忽略，默认用文件名" />
+        <el-form-item :label="t('kbDetail.titleSingle')">
+          <el-input v-model="importForm.title" :placeholder="t('kbDetail.titlePh')" />
         </el-form-item>
-        <el-form-item label="文件" required>
+        <el-form-item :label="t('kbDetail.file')" required>
           <el-upload
             ref="uploadRef"
             drag
@@ -233,53 +233,53 @@
             :on-exceed="onFileExceed"
           >
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">拖拽或 <em>点击选择</em> 文件</div>
+            <div class="el-upload__text">{{ t('kbDetail.dropPrefix') }}<em>{{ t('kbDetail.dropAction') }}</em>{{ t('kbDetail.dropSuffix') }}</div>
             <template #tip>
               <div class="el-upload__tip">
-                支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
+                {{ t('kbDetail.formats') }}
                 <br />
-                单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个，本租户文件总数上限 {{ maxTenantFiles }}（已用 {{ tenantFileCount }}）
+                {{ t('kbDetail.limits', { size: maxUploadFileSizeMB, files: maxUploadFiles, max: maxTenantFiles, used: tenantFileCount }) }}
               </div>
             </template>
           </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">开始导入</el-button>
+        <el-button @click="importVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">{{ t('kbDetail.startImport') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 文档详情 -->
-    <el-drawer v-model="docDetailVisible" title="文档详情" size="520px">
+    <el-drawer v-model="docDetailVisible" :title="t('kbDetail.docDetail')" size="520px">
       <template v-if="docDetail">
         <el-descriptions :column="1" border>
           <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
-          <el-descriptions-item label="标题">{{ docDetail.title }}</el-descriptions-item>
-          <el-descriptions-item label="文件名">{{ docDetail.file_name }}</el-descriptions-item>
-          <el-descriptions-item label="上传用户">{{ docDetail.username || docDetail.user_id || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
+          <el-descriptions-item :label="t('kbDetail.docTitle')">{{ docDetail.title }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.fileName')">{{ docDetail.file_name }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.uploader')">{{ docDetail.username || docDetail.user_id || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('common.status')">
             <el-tag :type="statusType(docDetail.status)" size="small">
               {{ statusLabel(docDetail.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
-          <el-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</el-descriptions-item>
-          <el-descriptions-item label="引用片段">
+          <el-descriptions-item :label="t('kbDetail.chunkCount')">{{ docDetail.chunk_count }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.citedCount')">{{ docDetail.cited_count ?? 0 }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.citedChunks')">
             <el-table
               :data="topCitedChunks(docDetail.cited_chunks)"
               size="small"
-              empty-text="还没有被引用的片段"
+              :empty-text="t('kbDetail.citedEmpty')"
             >
-              <el-table-column prop="rank" label="排名" width="70" />
-              <el-table-column prop="chunk_index" label="片段标号" width="90" />
-              <el-table-column prop="count" label="引用次数" />
+              <el-table-column prop="rank" :label="t('kbDetail.rank')" width="70" />
+              <el-table-column prop="chunk_index" :label="t('kbDetail.chunkNo')" width="90" />
+              <el-table-column prop="count" :label="t('kbDetail.citeCount')" />
             </el-table>
           </el-descriptions-item>
-          <el-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.lastIndexed')">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
           <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
-          <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
-          <el-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">
+          <el-descriptions-item :label="t('kbDetail.size')">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
+          <el-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" :label="t('kbDetail.errorReason')">
             <span class="error-msg">{{ docDetail.error_msg }}</span>
           </el-descriptions-item>
         </el-descriptions>
@@ -287,9 +287,9 @@
     </el-drawer>
 
     <el-dialog v-model="chunkVisible" :title="chunkTitle" width="760px">
-      <el-table v-loading="chunkLoading" :data="chunkPage" max-height="480" empty-text="还没有分块">
-        <el-table-column prop="chunk_index" label="分块标号" width="100" />
-        <el-table-column label="分块内容" min-width="480">
+      <el-table v-loading="chunkLoading" :data="chunkPage" max-height="480" :empty-text="t('kbDetail.noChunks')">
+        <el-table-column prop="chunk_index" :label="t('kbDetail.chunkIndex')" width="100" />
+        <el-table-column :label="t('kbDetail.chunkContent')" min-width="480">
           <template #default="{ row }">
             <div class="chunk-content">{{ row.content }}</div>
           </template>
@@ -307,21 +307,21 @@
 
     <!-- 索引记录 -->
     <el-drawer v-model="indexHistoryVisible" :title="indexHistoryTitle" size="720px">
-      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引记录">
-        <el-table-column label="索引触发时间" width="180">
+      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe :empty-text="t('kbDetail.noIndexHistory')">
+        <el-table-column :label="t('kbDetail.triggeredAt')" width="180">
           <template #default="{ row }">{{ formatTime(row.triggered_at) }}</template>
         </el-table-column>
-        <el-table-column label="索引结束时间" width="180">
+        <el-table-column :label="t('kbDetail.finishedAt')" width="180">
           <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
         </el-table-column>
-        <el-table-column label="本次索引状态" width="120">
+        <el-table-column :label="t('kbDetail.buildStatus')" width="120">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">
               {{ statusLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="错误原因" min-width="160" show-overflow-tooltip>
+        <el-table-column :label="t('kbDetail.errorReason')" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.error_msg || '-' }}</template>
         </el-table-column>
       </el-table>
@@ -332,6 +332,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
@@ -342,6 +343,7 @@ import {
   statusType,
 } from '@/utils/helpers'
 
+const { t } = useI18n()
 const route = useRoute()
 const kbId = computed(() => Number(route.params.id))
 
@@ -388,7 +390,7 @@ const chunkPageNo = ref(1)
 const chunkPageSize = 10
 const chunkTitle = computed(() => {
   const name = chunkDoc.value?.file_name || chunkDoc.value?.title
-  return name ? `分块 · ${name}` : '分块'
+  return name ? t('kbDetail.chunksOf', { name }) : t('kbDetail.chunks')
 })
 const chunkPage = computed(() => {
   const start = (chunkPageNo.value - 1) * chunkPageSize
@@ -400,7 +402,7 @@ const indexHistory = ref([])
 const indexHistoryDoc = ref(null)
 const indexHistoryTitle = computed(() => {
   const name = indexHistoryDoc.value?.file_name || indexHistoryDoc.value?.title
-  return name ? `索引记录 · ${name}` : '索引记录'
+  return name ? t('kbDetail.indexHistoryOf', { name }) : t('kbDetail.indexHistory')
 })
 
 async function loadKb() {
@@ -417,9 +419,9 @@ function formatRecall(recall) {
 }
 
 function recallTitle(row) {
-  if (row?.recall === null || row?.recall === undefined) return '还没有相关文档标注'
+  if (row?.recall === null || row?.recall === undefined) return t('kbDetail.recallNone')
   const k = row.recall_k ? `Top${row.recall_k} ` : ''
-  return `${k}命中 ${row.hit_queries ?? 0} / 标注 ${row.labeled_queries ?? 0}`
+  return t('kbDetail.recallHit', { k, hit: row.hit_queries ?? 0, labeled: row.labeled_queries ?? 0 })
 }
 
 function topCitedChunks(chunks) {
@@ -434,7 +436,7 @@ function topCitedChunks(chunks) {
 function formatChunkRanks(chunks) {
   const top = topCitedChunks(chunks)
   if (!top.length) return '—'
-  return top.map((c) => `#${c.rank} 片段${c.chunk_index} ${c.count}次`).join('；')
+  return top.map((c) => t('kbDetail.chunkRank', { rank: c.rank, index: c.chunk_index, count: c.count })).join(t('kbDetail.chunkRankSep'))
 }
 
 async function loadTree() {
@@ -514,7 +516,7 @@ function openDirEdit(data) {
 
 async function saveDir() {
   if (!dirForm.name.trim()) {
-    ElMessage.warning('请填写目录名称')
+    ElMessage.warning(t('kbDetail.needDirName'))
     return
   }
   dirSaving.value = true
@@ -525,7 +527,7 @@ async function saveDir() {
         description: dirForm.description,
         sort_order: dirForm.sort_order,
       })
-      ElMessage.success('目录已更新')
+      ElMessage.success(t('kbDetail.dirUpdated'))
     } else {
       const payload = {
         name: dirForm.name,
@@ -534,7 +536,7 @@ async function saveDir() {
       }
       if (dirParent.value?.id) payload.parent_id = dirParent.value.id
       await api.createDirectory(kbId.value, payload)
-      ElMessage.success('目录已创建')
+      ElMessage.success(t('kbDetail.dirCreated'))
     }
     dirVisible.value = false
     await loadTree()
@@ -544,9 +546,13 @@ async function saveDir() {
 }
 
 async function onDirDelete(data) {
-  await ElMessageBox.confirm(`确认删除目录「${data.name}」？`, '删除确认', { type: 'warning' })
+  await ElMessageBox.confirm(t('kbDetail.deleteDir', { name: data.name }), t('common.confirmDelete'), {
+    type: 'warning',
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
+  })
   await api.deleteDirectory(data.id)
-  ElMessage.success('目录已删除')
+  ElMessage.success(t('kbDetail.dirDeleted'))
   if (currentDir.value?.id === data.id) clearDirFilter()
   await loadTree()
 }
@@ -555,7 +561,11 @@ function onFileChange(file, files) {
   const raw = file?.raw
   if (raw && raw.size > maxUploadFileSize.value) {
     ElMessage.warning(
-      `文件「${file.name}」大小 ${(raw.size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+      t('kbDetail.fileTooLarge', {
+        name: file.name,
+        size: (raw.size / (1024 * 1024)).toFixed(1),
+        limit: maxUploadFileSizeMB.value,
+      }),
     )
     uploadRef.value?.handleRemove(file)
     fileList.value = files.filter((f) => f.uid !== file.uid)
@@ -569,7 +579,7 @@ function onFileRemove(_file, files) {
 }
 
 function onFileExceed() {
-  ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+  ElMessage.warning(t('kbDetail.tooManyFiles', { count: maxUploadFiles.value }))
 }
 
 async function loadUploadLimits() {
@@ -602,18 +612,22 @@ async function openImport() {
 
 async function doImport() {
   if (!fileList.value.length) {
-    ElMessage.warning('请选择文件')
+    ElMessage.warning(t('kbDetail.needFile'))
     return
   }
   if (fileList.value.length > maxUploadFiles.value) {
-    ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+    ElMessage.warning(t('kbDetail.tooManyFiles', { count: maxUploadFiles.value }))
     return
   }
   for (const f of fileList.value) {
     const size = f.raw?.size || 0
     if (size > maxUploadFileSize.value) {
       ElMessage.warning(
-        `文件「${f.name}」大小 ${(size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+        t('kbDetail.fileTooLarge', {
+          name: f.name,
+          size: (size / (1024 * 1024)).toFixed(1),
+          limit: maxUploadFileSizeMB.value,
+        }),
       )
       return
     }
@@ -632,7 +646,7 @@ async function doImport() {
   importing.value = true
   try {
     const result = await api.importDocuments(fd)
-    ElMessage.success(result?.message || `导入完成：新增 ${result?.imported || 0}，重复 ${result?.duplicated || 0}`)
+    ElMessage.success(result?.message || t('kbDetail.importDone', { imported: result?.imported || 0, duplicated: result?.duplicated || 0 }))
     importVisible.value = false
     importForm.title = ''
     importForm.directory_id = undefined
@@ -665,9 +679,9 @@ async function onReindexOne(row) {
   const result = await api.reindexDocuments([row.id])
   const item = result?.items?.[0]
   if (item?.skipped) {
-    ElMessage.warning(item.message || '未触发重新索引')
+    ElMessage.warning(item.message || t('kbDetail.reindexSkipped'))
   } else {
-    ElMessage.success(item?.message || '已触发重新索引')
+    ElMessage.success(item?.message || t('kbDetail.reindexStarted'))
   }
   await loadDocs()
   if (indexHistoryVisible.value && indexHistoryDoc.value?.id === row.id) {
@@ -697,29 +711,37 @@ async function openChunks(row) {
 }
 
 async function onDeleteOne(row) {
-  await ElMessageBox.confirm(`确认删除文档「${row.title}」？将级联清理向量与文件。`, '删除确认', {
+  await ElMessageBox.confirm(t('kbDetail.deleteDoc', { title: row.title }), t('common.confirmDelete'), {
     type: 'warning',
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
   })
   await api.deleteDocument(row.id)
-  ElMessage.success('已删除')
+  ElMessage.success(t('common.deleted'))
   if (indexHistoryDoc.value?.id === row.id) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchDelete() {
-  await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个文档？`, '批量删除', {
-    type: 'warning',
-  })
+  await ElMessageBox.confirm(
+    t('kbDetail.batchDeleteConfirm', { count: selectedIds.value.length }),
+    t('kbDetail.batchDelete'),
+    {
+      type: 'warning',
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+    },
+  )
   const deletedIds = selectedIds.value.slice()
   const result = await api.deleteDocuments(deletedIds)
-  ElMessage.success(result?.message || '批量删除完成')
+  ElMessage.success(result?.message || t('kbDetail.batchDeleteDone'))
   if (deletedIds.includes(indexHistoryDoc.value?.id)) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchReindex() {
   const result = await api.reindexDocuments(selectedIds.value)
-  ElMessage.success(result?.message || `已触发 ${result?.triggered || 0} 个文档重新索引`)
+  ElMessage.success(result?.message || t('kbDetail.batchReindexDone', { count: result?.triggered || 0 }))
   await loadDocs()
 }
 

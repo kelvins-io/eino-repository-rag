@@ -2,8 +2,8 @@
   <div class="chat-page">
     <div class="page-header">
       <div>
-        <h2>知识库问答</h2>
-        <p class="sub">基于 RAG 检索 + 会话记忆回答问题；可选 Agent 多步检索</p>
+        <h2>{{ t('chat.title') }}</h2>
+        <p class="sub">{{ t('chat.sub') }}</p>
       </div>
       <el-button :disabled="sessionRemaining === 0" @click="resetSession">{{ newSessionLabel }}</el-button>
     </div>
@@ -12,19 +12,19 @@
       <el-col :span="6">
         <div class="panel side">
           <el-form label-position="top">
-            <el-form-item label="问答模式">
+            <el-form-item :label="t('chat.mode')">
               <el-radio-group v-model="chatMode" size="small">
-                <el-radio-button value="rag">标准 RAG</el-radio-button>
-                <el-radio-button value="agent">Agent</el-radio-button>
+                <el-radio-button value="rag">{{ t('chat.rag') }}</el-radio-button>
+                <el-radio-button value="agent">{{ t('chat.agent') }}</el-radio-button>
               </el-radio-group>
               <div class="session-hint">
-                Agent 可多轮调用知识库检索，延迟与费用更高。
+                {{ t('chat.agentHint') }}
               </div>
             </el-form-item>
-            <el-form-item label="知识库">
+            <el-form-item :label="t('chat.knowledgeBase')">
               <el-select
                 v-model="kbId"
-                placeholder="选择知识库"
+                :placeholder="t('chat.selectKb')"
                 style="width: 100%"
                 @change="onKbChange"
               >
@@ -36,7 +36,7 @@
                 />
               </el-select>
             </el-form-item>
-            <el-form-item label="目录过滤（可选）">
+            <el-form-item :label="t('chat.dirFilter')">
               <el-tree-select
                 v-model="directoryId"
                 :data="treeData"
@@ -44,18 +44,18 @@
                 check-strictly
                 node-key="id"
                 :props="{ label: 'name', children: 'children', value: 'id' }"
-                placeholder="不选则检索整个知识库"
+                :placeholder="t('chat.dirPh')"
                 style="width: 100%"
                 @change="onDirectoryChange"
               />
             </el-form-item>
-            <el-form-item label="Session ID">
+            <el-form-item :label="t('chat.sessionId')">
               <el-select
                 v-model="sessionId"
                 filterable
                 allow-create
                 default-first-option
-                placeholder="选择或筛选历史会话"
+                :placeholder="t('chat.sessionPh')"
                 style="width: 100%"
                 :loading="sessionsLoading"
                 @change="onSessionChange"
@@ -69,16 +69,14 @@
                   <div class="session-option">
                     <div class="session-id">{{ s.session_id }}</div>
                     <div class="session-meta">
-                      <span>{{ s.title || '未命名会话' }}</span>
+                      <span>{{ s.title || t('chat.untitled') }}</span>
                       <span>{{ formatTime(s.updated_at) }}</span>
                     </div>
                   </div>
                 </el-option>
               </el-select>
               <div class="session-hint">
-                展示当前租户/用户在所选知识库
-                {{ directoryId ? '与目录' : '（未选目录）' }}
-                下的历史会话，可筛选切换。
+                {{ directoryId ? t('chat.sessionHintWithDir') : t('chat.sessionHintNoDir') }}
               </div>
             </el-form-item>
           </el-form>
@@ -89,7 +87,7 @@
         <div class="panel chat-panel">
           <div ref="listRef" class="messages">
             <div v-if="!messages.length" class="empty">
-              选择知识库后开始提问，同一会话会保留对话记忆。
+              {{ t('chat.empty') }}
             </div>
             <div
               v-for="(m, idx) in messages"
@@ -98,7 +96,7 @@
               :class="m.role"
             >
               <div class="chat-bubble" :class="m.role === 'user' ? 'user' : 'assistant'">
-                {{ m.content }}
+                {{ messageText(m) }}
               </div>
               <div v-if="showActions(m, idx)" class="msg-actions">
                 <el-button
@@ -116,7 +114,7 @@
                     <VideoPause v-if="speakingIdx === idx" />
                     <VideoPlay v-else />
                   </el-icon>
-                  {{ speakingIdx === idx ? '停止朗读' : '朗读' }}
+                  {{ speakingIdx === idx ? t('chat.stopSpeak') : t('chat.speak') }}
                 </el-button>
                 <div v-if="canFeedback(m, idx)" class="feedback">
                   <el-button
@@ -124,28 +122,28 @@
                     size="small"
                     :type="m.vote === 'up' ? 'primary' : ''"
                     :disabled="feedbackId === m.id"
-                    aria-label="点赞"
+                    :aria-label="t('chat.likeAria')"
                     @click="setVote(m, 'up')"
                   >
-                    {{ m.vote === 'up' ? '已赞' : '赞' }}
+                    {{ m.vote === 'up' ? t('chat.liked') : t('chat.like') }}
                   </el-button>
                   <el-button
                     text
                     size="small"
                     :type="m.vote === 'down' ? 'danger' : ''"
                     :disabled="feedbackId === m.id"
-                    aria-label="点踩"
+                    :aria-label="t('chat.dislikeAria')"
                     @click="setVote(m, 'down')"
                   >
-                    {{ m.vote === 'down' ? '已踩' : '踩' }}
+                    {{ m.vote === 'down' ? t('chat.disliked') : t('chat.dislike') }}
                   </el-button>
-                  <span class="feedback-label">评分</span>
+                  <span class="feedback-label">{{ t('chat.score') }}</span>
                   <el-rate
                     class="feedback-rate"
                     :model-value="m.score || 0"
                     :disabled="feedbackId === m.id"
                     clearable
-                    aria-label="评分"
+                    :aria-label="t('chat.score')"
                     @change="(val) => setScore(m, val)"
                   />
                 </div>
@@ -164,7 +162,7 @@
                 <el-collapse>
                   <el-collapse-item :name="idx">
                     <template #title>
-                      <span class="sources-title">引用来源（{{ m.sources.length }}）</span>
+                      <span class="sources-title">{{ t('chat.sources', { count: m.sources.length }) }}</span>
                     </template>
                     <div
                       v-for="(s, i) in m.sources"
@@ -172,10 +170,10 @@
                       class="source-item"
                     >
                       <div class="source-head">
-                        <strong>[{{ i + 1 }}] {{ s.title || `来源 ${i + 1}` }}</strong>
+                        <strong>[{{ i + 1 }}] {{ s.title || t('chat.sourceN', { n: i + 1 }) }}</strong>
                         <span class="source-meta">
                           <template v-if="s.doc_id">doc_id={{ s.doc_id }}</template>
-                          <template v-if="s.page"> · 第 {{ s.page }} 页</template>
+                          <template v-if="s.page"> · {{ t('chat.sourcePage', { page: s.page }) }}</template>
                           <template v-if="s.chunk_index != null"> · chunk={{ s.chunk_index }}</template>
                           <template v-if="s.score != null"> · score={{ Number(s.score).toFixed(3) }}</template>
                         </span>
@@ -186,14 +184,14 @@
                 </el-collapse>
               </div>
               <div v-if="canLabel(m, idx)" class="relevance">
-                <span class="feedback-label">相关文档</span>
+                <span class="feedback-label">{{ t('chat.relevantDocs') }}</span>
                 <el-select
                   :model-value="questionOf(idx).relevant_doc_ids"
                   multiple
                   filterable
                   collapse-tags
                   collapse-tags-tooltip
-                  placeholder="选择这条问题应召回的文档"
+                  :placeholder="t('chat.relevantPh')"
                   class="relevance-select"
                   :disabled="labelingId === questionOf(idx).id"
                   @change="(val) => setQuestionDocs(idx, val)"
@@ -212,7 +210,7 @@
                   :loading="labelingId === questionOf(idx).id"
                   @click="saveRelevance(questionOf(idx))"
                 >
-                  保存标注
+                  {{ t('chat.saveLabels') }}
                 </el-button>
               </div>
             </div>
@@ -230,9 +228,9 @@
               <div v-if="listening || transcribing" class="speech-live">
                 <span class="speech-dot" />
                 <span class="speech-live-text">
-                  {{ statusText || (transcribing ? '正在识别，请稍候…' : '正在录音，请开始说话…') }}
+                  {{ statusText || (transcribing ? t('chat.recognizingLive') : t('chat.recordingLive')) }}
                 </span>
-                <span v-if="listening" class="speech-live-hint">5 秒无声音将自动结束</span>
+                <span v-if="listening" class="speech-live-hint">{{ t('chat.silenceHint') }}</span>
               </div>
             </div>
             <div class="composer-actions">
@@ -260,7 +258,7 @@
                 :disabled="!kbId || !query.trim() || listening || transcribing"
                 @click="ask"
               >
-                发送
+                {{ t('chat.send') }}
               </el-button>
             </div>
           </div>
@@ -272,13 +270,16 @@
 
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Microphone, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { isTenantAdmin } from '@/utils/auth'
 import { useSpeechInput } from '@/composables/useSpeechInput'
 import { useSpeechOutput } from '@/composables/useSpeechOutput'
-import { getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
+import { EMPTY_ANSWER, getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
+
+const { t, locale } = useI18n()
 
 const sessionId = ref(getSessionId())
 const sessions = ref([])
@@ -309,7 +310,7 @@ const {
 } = useSpeechInput(query, {
   getPrompt() {
     const kb = kbs.value.find((item) => item.id === kbId.value)
-    return kb?.name ? `知识库问答，相关主题：${kb.name}` : '知识库问答'
+    return kb?.name ? t('chat.speechPromptWithKb', { name: kb.name }) : t('chat.speechPrompt')
   },
   onTranscribed: () => loadQuota(),
 })
@@ -329,33 +330,33 @@ watch(transcribing, (on, prev) => {
 })
 
 const speechPlaceholder = computed(() => {
-  if (transcribing.value) return '正在识别语音…'
-  if (listening.value) return '正在录音，5 秒无声音将自动结束'
-  return '输入问题，Enter 发送，Shift+Enter 换行'
+  if (transcribing.value) return t('chat.recognizing')
+  if (listening.value) return t('chat.recordingPlaceholder')
+  return t('chat.placeholder')
 })
 
 const speechTip = computed(() => {
-  if (voiceRemaining.value === 0) return '今日语音输入次数已用完'
-  if (!speechSupported.value) return '当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari'
-  if (transcribing.value) return '正在识别'
-  if (listening.value) return '点击停止并识别为文字'
-  return '语音输入'
+  if (voiceRemaining.value === 0) return t('chat.voiceUsedUp')
+  if (!speechSupported.value) return t('chat.speechUnsupported')
+  if (transcribing.value) return t('chat.recognizingShort')
+  if (listening.value) return t('chat.stopAndTranscribe')
+  return t('chat.voiceInput')
 })
 
 const speechAriaLabel = computed(() => {
-  if (transcribing.value) return '正在识别语音'
-  if (listening.value) return '停止语音输入'
-  return '语音输入'
+  if (transcribing.value) return t('chat.recognizingAria')
+  if (listening.value) return t('chat.stopVoiceAria')
+  return t('chat.voiceAria')
 })
 
 const newSessionLabel = computed(() => {
-  if (sessionRemaining.value == null) return '新会话'
-  return `新会话（今日剩余 ${sessionRemaining.value}）`
+  if (sessionRemaining.value == null) return t('chat.newSession')
+  return t('chat.newSessionRemaining', { n: sessionRemaining.value })
 })
 
 const voiceButtonLabel = computed(() => {
-  if (voiceRemaining.value == null) return '语音输入'
-  return `语音输入（今日剩余 ${voiceRemaining.value}）`
+  if (voiceRemaining.value == null) return t('chat.voiceInput')
+  return t('chat.voiceRemaining', { n: voiceRemaining.value })
 })
 
 async function loadQuota() {
@@ -371,11 +372,12 @@ async function loadQuota() {
 
 function formatTime(v) {
   if (!v) return ''
-  return new Date(v).toLocaleString()
+  const loc = locale.value === 'en' ? 'en-US' : 'zh-CN'
+  return new Date(v).toLocaleString(loc)
 }
 
 function sessionLabel(s) {
-  const title = s.title || '未命名会话'
+  const title = s.title || t('chat.untitled')
   const time = formatTime(s.updated_at)
   return time ? `${s.session_id} · ${title} · ${time}` : `${s.session_id} · ${title}`
 }
@@ -467,7 +469,7 @@ function resetSession() {
   stopSpeak()
   sessionId.value = newSessionId()
   messages.value = []
-  ElMessage.success('已开始新会话')
+  ElMessage.success(t('chat.newSessionStarted'))
 }
 
 async function scrollBottom() {
@@ -507,8 +509,12 @@ function canLabel(m, idx) {
   return !!questionOf(idx)?.id
 }
 
+function messageText(m) {
+  return m.content === EMPTY_ANSWER ? t('chat.emptyAnswer') : m.content
+}
+
 function docOptionLabel(d) {
-  const name = d.title || d.file_name || `文档 ${d.id}`
+  const name = d.title || d.file_name || t('chat.docFallback', { id: d.id })
   return `${name} (#${d.id})`
 }
 
@@ -556,7 +562,7 @@ async function saveRelevance(question) {
       doc_ids: prev,
     })
     question.relevant_doc_ids = saved?.doc_ids || []
-    ElMessage.success('已保存相关文档标注')
+    ElMessage.success(t('chat.labelsSaved'))
   } catch {
     question.relevant_doc_ids = prev
   } finally {
@@ -610,15 +616,15 @@ async function setScore(m, score) {
 function canSpeak(m, idx) {
   if (m.role !== 'assistant') return false
   const text = (m.content || '').trim()
-  if (!text || text === '(空回答)') return false
+  if (!text || text === EMPTY_ANSWER || text === '(空回答)') return false
   if (asking.value && idx === messages.value.length - 1) return false
   return true
 }
 
 function ttsButtonLabel(idx) {
-  if (speakingIdx.value === idx) return '停止朗读'
-  if (ttsRemaining.value === 0) return '今日文字转语音次数已用完'
-  return '朗读回答'
+  if (speakingIdx.value === idx) return t('chat.stopSpeak')
+  if (ttsRemaining.value === 0) return t('chat.ttsUsedUp')
+  return t('chat.speakAnswer')
 }
 
 async function speak(idx, text) {
@@ -666,14 +672,16 @@ async function ask() {
         }
       },
       onStep: (evt) => {
-        pushStep('step', evt.message || `步骤 ${evt.step}`)
+        pushStep('step', evt.message || t('chat.step', { step: evt.step }))
       },
       onToolStart: (evt) => {
-        const qText = evt.tool_query ? `：${evt.tool_query}` : ''
-        pushStep('tool', `检索中${qText}`)
+        pushStep(
+          'tool',
+          evt.tool_query ? t('chat.searchingQuery', { query: evt.tool_query }) : t('chat.searching'),
+        )
       },
       onToolResult: (evt) => {
-        pushStep('result', `检索完成（${evt.tool_count ?? 0} 条）`)
+        pushStep('result', t('chat.searchDone', { count: evt.tool_count ?? 0 }))
       },
       onDelta: async (chunk) => {
         messages.value[assistantIdx].content += chunk
@@ -693,14 +701,14 @@ async function ask() {
           messages.value[assistantIdx].sources = evt.sources
         }
         if (!messages.value[assistantIdx].content) {
-          messages.value[assistantIdx].content = '(空回答)'
+          messages.value[assistantIdx].content = EMPTY_ANSWER
         }
         await loadSessions()
         await scrollBottom()
       },
     })
   } catch (err) {
-    const msg = err?.message || '流式回答失败'
+    const msg = err?.message || t('chat.streamFailed')
     if (!messages.value[assistantIdx].content) {
       messages.value[assistantIdx].content = msg
     }

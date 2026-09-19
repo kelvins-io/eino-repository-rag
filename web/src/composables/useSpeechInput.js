@@ -1,6 +1,7 @@
 import { onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
+import { t } from '@/i18n'
 
 const MAX_RECORD_MS = 60_000
 const MIN_RECORD_MS = 400
@@ -131,7 +132,7 @@ export function useSpeechInput(query, options = {}) {
         return
       }
       if (Date.now() - lastVoiceAt >= SILENCE_MS) {
-        ElMessage.info('检测到静音，开始识别')
+        ElMessage.info(t('speech.silence'))
         stop()
       }
     }, SILENCE_POLL_MS)
@@ -140,7 +141,7 @@ export function useSpeechInput(query, options = {}) {
   function commitText(text) {
     const value = (text || '').trim()
     if (!value) {
-      ElMessage.info('未识别到语音内容')
+      ElMessage.info(t('speech.noSpeech'))
       return
     }
     const current = (query.value || '').trim()
@@ -149,7 +150,7 @@ export function useSpeechInput(query, options = {}) {
 
   async function transcribeBlob(file) {
     transcribing.value = true
-    statusText.value = '正在识别，请稍候…'
+    statusText.value = t('speech.recognizing')
     try {
       const prompt = options.getPrompt?.() || ''
       const data = await api.transcribeSpeech(file, { prompt })
@@ -166,7 +167,7 @@ export function useSpeechInput(query, options = {}) {
 
   async function start() {
     if (!supported.value) {
-      ElMessage.warning('当前浏览器不支持录音，请使用 Chrome、Edge 或 Safari')
+      ElMessage.warning(t('speech.unsupported'))
       return
     }
     if (listening.value || transcribing.value) return
@@ -177,7 +178,7 @@ export function useSpeechInput(query, options = {}) {
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
-      ElMessage.error('无法使用麦克风，请检查浏览器权限')
+      ElMessage.error(t('speech.micDenied'))
       return
     }
 
@@ -188,7 +189,7 @@ export function useSpeechInput(query, options = {}) {
         : new MediaRecorder(mediaStream)
     } catch {
       stopTracks()
-      ElMessage.error('无法开始录音')
+      ElMessage.error(t('speech.cannotStart'))
       return
     }
 
@@ -196,7 +197,7 @@ export function useSpeechInput(query, options = {}) {
       if (event.data && event.data.size > 0) chunks.push(event.data)
     }
     recorder.onerror = () => {
-      ElMessage.error('录音失败，请稍后重试')
+      ElMessage.error(t('speech.recordFailed'))
       commitOnStop = false
       stop()
     }
@@ -216,7 +217,7 @@ export function useSpeechInput(query, options = {}) {
         return
       }
       if (elapsed < MIN_RECORD_MS) {
-        ElMessage.info('录音时间过短，请重试')
+        ElMessage.info(t('speech.tooShort'))
         chunks = []
         statusText.value = ''
         return
@@ -224,7 +225,7 @@ export function useSpeechInput(query, options = {}) {
       const blob = new Blob(chunks, { type: mimeType.split(';')[0] || 'audio/webm' })
       chunks = []
       if (!blob.size) {
-        ElMessage.info('未采集到音频，请重试')
+        ElMessage.info(t('speech.noAudio'))
         statusText.value = ''
         return
       }
@@ -236,12 +237,12 @@ export function useSpeechInput(query, options = {}) {
 
     startedAt = Date.now()
     listening.value = true
-    statusText.value = '正在录音 0:00'
+    statusText.value = t('speech.recording', { time: '0:00' })
     tickTimer = setInterval(() => {
-      statusText.value = `正在录音 ${formatElapsed(Date.now() - startedAt)}`
+      statusText.value = t('speech.recording', { time: formatElapsed(Date.now() - startedAt) })
     }, 250)
     maxTimer = setTimeout(() => {
-      ElMessage.info('已达到最长录音时长，开始识别')
+      ElMessage.info(t('speech.maxDuration'))
       stop()
     }, MAX_RECORD_MS)
 
@@ -254,7 +255,7 @@ export function useSpeechInput(query, options = {}) {
       listening.value = false
       recorder = null
       stopTracks()
-      ElMessage.error('无法开始录音')
+      ElMessage.error(t('speech.cannotStart'))
     }
   }
 

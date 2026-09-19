@@ -2,10 +2,10 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>知识库</h2>
-        <p class="sub">管理当前登录用户下的知识库容器</p>
+        <h2>{{ t('kb.title') }}</h2>
+        <p class="sub">{{ t('kb.sub') }}</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建知识库</el-button>
+      <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('kb.create') }}</el-button>
     </div>
 
     <div class="panel">
@@ -16,20 +16,20 @@
         :default-sort="{ prop: 'id', order: 'descending' }"
       >
         <el-table-column prop="id" label="ID" width="80" sortable />
-        <el-table-column prop="name" label="名称" min-width="160">
+        <el-table-column prop="name" :label="t('common.name')" min-width="160">
           <template #default="{ row }">
             <el-button link type="primary" @click="goDetail(row)">{{ row.name }}</el-button>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
-        <el-table-column label="创建用户" width="140" show-overflow-tooltip>
+        <el-table-column prop="description" :label="t('common.description')" min-width="220" show-overflow-tooltip />
+        <el-table-column :label="t('kb.creator')" width="140" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.username || row.user_id || '-' }}
           </template>
         </el-table-column>
         <el-table-column
           prop="created_at"
-          label="创建时间"
+          :label="t('common.createdAt')"
           width="180"
           sortable
           :sort-method="sortByCreatedAt"
@@ -38,11 +38,11 @@
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column :label="t('common.actions')" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="goDetail(row)">进入</el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="onDelete(row)">删除</el-button>
+            <el-button link type="primary" @click="goDetail(row)">{{ t('kb.enter') }}</el-button>
+            <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+            <el-button link type="danger" @click="onDelete(row)">{{ t('common.delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -60,18 +60,18 @@
       </div>
     </div>
 
-    <el-dialog v-model="dialogVisible" :title="editing ? '编辑知识库' : '新建知识库'" width="480px">
-      <el-form :model="form" label-width="80px">
-        <el-form-item label="名称" required>
-          <el-input v-model="form.name" placeholder="例如：证券合规库" />
+    <el-dialog v-model="dialogVisible" :title="editing ? t('kb.editTitle') : t('kb.createTitle')" width="480px">
+      <el-form :model="form" label-width="110px">
+        <el-form-item :label="t('common.name')" required>
+          <el-input v-model="form.name" :placeholder="t('kb.namePh')" />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item :label="t('common.description')">
           <el-input v-model="form.description" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="saving" @click="onSave">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -80,9 +80,13 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { api } from '@/api'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const loading = ref(false)
@@ -94,11 +98,6 @@ const total = ref(0)
 const dialogVisible = ref(false)
 const editing = ref(null)
 const form = reactive({ name: '', description: '' })
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
 
 function sortByCreatedAt(a, b) {
   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -139,7 +138,7 @@ function openEdit(row) {
 
 async function onSave() {
   if (!form.name.trim()) {
-    ElMessage.warning('请填写名称')
+    ElMessage.warning(t('kb.needName'))
     return
   }
   saving.value = true
@@ -149,13 +148,13 @@ async function onSave() {
         name: form.name,
         description: form.description,
       })
-      ElMessage.success('已更新')
+      ElMessage.success(t('common.updated'))
     } else {
       await api.createKnowledgeBase({
         name: form.name,
         description: form.description,
       })
-      ElMessage.success('已创建')
+      ElMessage.success(t('common.created'))
       page.value = 1
     }
     dialogVisible.value = false
@@ -166,11 +165,13 @@ async function onSave() {
 }
 
 async function onDelete(row) {
-  await ElMessageBox.confirm(`确认删除知识库「${row.name}」？需先清空文档与目录。`, '删除确认', {
+  await ElMessageBox.confirm(t('kb.deleteConfirm', { name: row.name }), t('common.confirmDelete'), {
     type: 'warning',
+    confirmButtonText: t('common.confirm'),
+    cancelButtonText: t('common.cancel'),
   })
   await api.deleteKnowledgeBase(row.id)
-  ElMessage.success('已删除')
+  ElMessage.success(t('common.deleted'))
   if (list.value.length <= 1 && page.value > 1) {
     page.value -= 1
   }

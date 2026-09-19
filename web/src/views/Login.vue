@@ -1,43 +1,48 @@
 <template>
   <div class="auth-page">
+    <LanguageSwitch class="auth-lang" />
     <div class="auth-card">
-      <h1>登录</h1>
-      <p class="sub">使用租户 ID 与账号登录知识库</p>
+      <h1>{{ t('auth.loginTitle') }}</h1>
+      <p class="sub">{{ t('auth.loginSub') }}</p>
       <el-form :model="form" @submit.prevent="onSubmit" label-position="top">
-        <el-form-item label="租户 ID" required>
-          <el-input v-model="form.tenant_id" placeholder="例如 default" autocomplete="organization" />
+        <el-form-item :label="t('auth.tenantId')" required>
+          <el-input v-model="form.tenant_id" :placeholder="t('auth.tenantIdExample')" autocomplete="organization" />
         </el-form-item>
-        <el-form-item label="用户名" required>
-          <el-input v-model="form.username" placeholder="用户名" autocomplete="username" />
+        <el-form-item :label="t('auth.username')" required>
+          <el-input v-model="form.username" :placeholder="t('auth.username')" autocomplete="username" />
         </el-form-item>
-        <el-form-item label="密码" required>
+        <el-form-item :label="t('auth.password')" required>
           <el-input
             v-model="form.password"
             type="password"
             show-password
-            placeholder="密码"
+            :placeholder="t('auth.password')"
             autocomplete="current-password"
           />
         </el-form-item>
         <el-button type="primary" class="submit" :loading="loading" native-type="submit">
-          登录
+          {{ t('auth.loginTitle') }}
         </el-button>
       </el-form>
       <div class="footer">
-        还没有账号？
-        <router-link to="/register">去注册</router-link>
+        {{ t('auth.noAccount') }}
+        <router-link to="/register">{{ t('auth.goRegister') }}</router-link>
       </div>
     </div>
-    <a class="contact" href="mailto:1225807604@qq.com">联系我们：1225807604@qq.com</a>
+    <a class="contact" href="mailto:1225807604@qq.com">{{ t('auth.contact') }}1225807604@qq.com</a>
   </div>
 </template>
 
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import LanguageSwitch from '@/components/LanguageSwitch.vue'
 import { api } from '@/api'
 import { setAuth } from '@/utils/auth'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const route = useRoute()
@@ -50,11 +55,11 @@ const form = reactive({
 
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
-    ElMessage.warning('请填写租户 ID')
+    ElMessage.warning(t('auth.needTenantId'))
     return
   }
   if (!form.username.trim() || !form.password) {
-    ElMessage.warning('请填写用户名和密码')
+    ElMessage.warning(t('auth.needCredentials'))
     return
   }
   loading.value = true
@@ -65,7 +70,7 @@ async function onSubmit() {
       password: form.password,
     })
     setAuth(data)
-    ElMessage.success('登录成功')
+    ElMessage.success(t('auth.loginOk'))
     const redirect = route.query.redirect || '/knowledge-bases'
     router.replace(String(redirect))
   } finally {
@@ -133,5 +138,11 @@ h1 {
 
 .contact:hover {
   color: #fff;
+}
+
+.auth-lang {
+  position: absolute;
+  top: 20px;
+  right: 20px;
 }
 </style>

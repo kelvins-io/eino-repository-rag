@@ -2,27 +2,27 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>用户管理</h2>
-        <p class="sub">当前租户下的全部用户</p>
+        <h2>{{ t('users.title') }}</h2>
+        <p class="sub">{{ t('users.sub') }}</p>
       </div>
     </div>
 
     <div class="panel">
       <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column prop="username" label="用户名" min-width="160" show-overflow-tooltip />
-        <el-table-column label="创建时间" width="180">
+        <el-table-column prop="username" :label="t('auth.username')" min-width="160" show-overflow-tooltip />
+        <el-table-column :label="t('common.createdAt')" width="180">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="租户管理员" width="140">
+        <el-table-column :label="t('users.tenantAdmin')" width="140">
           <template #default="{ row }">
             <el-tag :type="row.is_admin ? 'success' : 'info'" size="small">
-              {{ row.is_admin ? '是' : '否' }}
+              {{ row.is_admin ? t('common.yes') : t('common.no') }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isTenantAdmin" label="允许登录" width="120">
+        <el-table-column v-if="isTenantAdmin" :label="t('users.loginEnabled')" width="120">
           <template #default="{ row }">
             <el-switch
               :model-value="row.login_enabled"
@@ -50,9 +50,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { getAuthUser } from '@/utils/auth'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const list = ref([])
@@ -61,11 +65,6 @@ const pageSize = ref(10)
 const total = ref(0)
 const toggling = ref('')
 const isTenantAdmin = computed(() => getAuthUser()?.username === 'admin')
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
 
 async function load() {
   loading.value = true
@@ -94,7 +93,7 @@ async function onToggleLogin(row, enabled) {
       enabled,
     })
     row.login_enabled = enabled
-    ElMessage.success(enabled ? '已允许登录' : '已关闭登录')
+    ElMessage.success(enabled ? t('users.loginOn') : t('users.loginOff'))
   } catch {
     await load()
   } finally {

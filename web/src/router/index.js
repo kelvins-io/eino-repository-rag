@@ -1,5 +1,7 @@
+import { watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import { i18n } from '@/i18n'
 import { isLoggedIn, isPlatformAdmin } from '@/utils/auth'
 
 const routes = [
@@ -7,13 +9,13 @@ const routes = [
     path: '/login',
     name: 'login',
     component: () => import('@/views/Login.vue'),
-    meta: { title: '登录', public: true },
+    meta: { titleKey: 'auth.loginTitle', public: true },
   },
   {
     path: '/register',
     name: 'register',
     component: () => import('@/views/Register.vue'),
-    meta: { title: '注册', public: true },
+    meta: { titleKey: 'auth.registerTitle', public: true },
   },
   {
     path: '/',
@@ -25,37 +27,37 @@ const routes = [
         path: 'knowledge-bases',
         name: 'knowledge-bases',
         component: () => import('@/views/KnowledgeBases.vue'),
-        meta: { title: '知识库', requiresAuth: true },
+        meta: { titleKey: 'nav.knowledgeBases', requiresAuth: true },
       },
       {
         path: 'knowledge-bases/:id',
         name: 'knowledge-base-detail',
         component: () => import('@/views/KnowledgeBaseDetail.vue'),
-        meta: { title: '知识库详情', requiresAuth: true },
+        meta: { titleKey: 'kbDetail.fallbackTitle', requiresAuth: true },
       },
       {
         path: 'chat',
         name: 'chat',
         component: () => import('@/views/Chat.vue'),
-        meta: { title: '知识库问答', requiresAuth: true },
+        meta: { titleKey: 'chat.title', requiresAuth: true },
       },
       {
         path: 'users',
         name: 'users',
         component: () => import('@/views/Users.vue'),
-        meta: { title: '用户管理', requiresAuth: true },
+        meta: { titleKey: 'nav.users', requiresAuth: true },
       },
       {
         path: 'tenant-manage',
         name: 'tenant-manage',
         component: () => import('@/views/TenantManage.vue'),
-        meta: { title: '租户管理', requiresAuth: true, requiresPlatformAdmin: true },
+        meta: { titleKey: 'nav.tenantManage', requiresAuth: true, requiresPlatformAdmin: true },
       },
       {
         path: 'tenants',
         name: 'tenants',
         component: () => import('@/views/Tenants.vue'),
-        meta: { title: '创建租户', requiresAuth: true, requiresPlatformAdmin: true },
+        meta: { titleKey: 'nav.createTenant', requiresAuth: true, requiresPlatformAdmin: true },
       },
     ],
   },
@@ -82,10 +84,19 @@ router.beforeEach((to) => {
   return true
 })
 
+function syncTitle(to) {
+  const key = to.meta?.titleKey
+  const name = key ? i18n.global.t(key) : 'Eino RAG'
+  document.title = key ? `${name} · Eino RAG` : 'Eino RAG'
+}
+
 router.afterEach((to) => {
-  document.title = to.meta.title
-    ? `${to.meta.title} · Eino RAG`
-    : 'Eino RAG'
+  syncTitle(to)
 })
+
+watch(
+  () => i18n.global.locale.value,
+  () => syncTitle(router.currentRoute.value),
+)
 
 export default router

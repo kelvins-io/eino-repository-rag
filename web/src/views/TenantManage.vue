@@ -2,78 +2,78 @@
   <div>
     <div class="page-header">
       <div>
-        <h2>租户管理</h2>
-        <p class="sub">全部租户及其上传、会话、轮次与语音配额，仅 default 租户的 admin 可查看和配置</p>
+        <h2>{{ t('tenantManage.title') }}</h2>
+        <p class="sub">{{ t('tenantManage.sub') }}</p>
       </div>
     </div>
 
     <div class="panel">
       <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column label="租户" min-width="200" show-overflow-tooltip>
+        <el-table-column :label="t('tenantManage.tenant')" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <div>{{ row.code }}</div>
             <div v-if="row.name && row.name !== row.code" class="tenant-name">{{ row.name }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="180">
+        <el-table-column :label="t('common.createdAt')" width="180">
           <template #default="{ row }">
             {{ formatTime(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="user_count" label="用户数" width="90" />
-        <el-table-column label="文件总数" width="150">
+        <el-table-column prop="user_count" :label="t('tenantManage.userCount')" width="90" />
+        <el-table-column :label="t('tenantManage.maxFiles')" width="150">
           <template #default="{ row }">
             <el-input-number v-model="row.max_files" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="已上传文件数" width="120">
+        <el-table-column :label="t('tenantManage.fileCount')" width="120">
           <template #default="{ row }">
             <span :class="{ 'usage-over': overLimit(row.file_count, row.max_files) }">{{ row.file_count ?? 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="单文件上限(MB)" width="160">
+        <el-table-column :label="t('tenantManage.maxFileSize')" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_file_size_mb" :min="1" :max="2048" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="每日新建会话" width="160">
+        <el-table-column :label="t('tenantManage.maxSessions')" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_sessions" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="今日已建会话数" width="130">
+        <el-table-column :label="t('tenantManage.todaySessions')" width="140">
           <template #default="{ row }">
             <span :class="{ 'usage-over': overLimit(row.today_session_count, row.max_sessions) }">{{ row.today_session_count ?? 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="每会话轮次" width="150">
+        <el-table-column :label="t('tenantManage.maxTurns')" width="150">
           <template #default="{ row }">
             <el-input-number v-model="row.max_turns" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="每日语音输入" width="150">
+        <el-table-column :label="t('tenantManage.maxVoice')" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_voice_inputs" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="今日已使用语音输入数" width="170">
+        <el-table-column :label="t('tenantManage.todayVoice')" width="170">
           <template #default="{ row }">
             <span :class="{ 'usage-over': overLimit(row.today_voice_inputs, row.max_voice_inputs) }">{{ row.today_voice_inputs ?? 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="每日文字转语音" width="160">
+        <el-table-column :label="t('tenantManage.maxTts')" width="160">
           <template #default="{ row }">
             <el-input-number v-model="row.max_tts" :min="1" :max="1000000" size="small" controls-position="right" />
           </template>
         </el-table-column>
-        <el-table-column label="今日已使用文字转语音数" width="190">
+        <el-table-column :label="t('tenantManage.todayTts')" width="170">
           <template #default="{ row }">
             <span :class="{ 'usage-over': overLimit(row.today_tts_count, row.max_tts) }">{{ row.today_tts_count ?? 0 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column :label="t('common.actions')" width="90" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">保存</el-button>
+            <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">{{ t('common.save') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -95,8 +95,12 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
+import { formatTime } from '@/utils/helpers'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const list = ref([])
@@ -104,11 +108,6 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const saving = ref('')
-
-function formatTime(v) {
-  if (!v) return '-'
-  return new Date(v).toLocaleString()
-}
 
 function overLimit(used, limit) {
   const current = Number(used)
@@ -144,27 +143,27 @@ async function saveLimits(row) {
   const maxVoiceInputs = Number(row.max_voice_inputs)
   const maxTTS = Number(row.max_tts)
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
-    ElMessage.warning('文件总数至少为 1')
+    ElMessage.warning(t('tenantManage.minFiles'))
     return
   }
   if (!Number.isInteger(maxFileSizeMB) || maxFileSizeMB < 1) {
-    ElMessage.warning('单文件上限至少为 1MB')
+    ElMessage.warning(t('tenantManage.minFileSize'))
     return
   }
   if (!Number.isInteger(maxSessions) || maxSessions < 1) {
-    ElMessage.warning('每日新建会话至少为 1')
+    ElMessage.warning(t('tenantManage.minSessions'))
     return
   }
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
-    ElMessage.warning('每会话轮次至少为 1')
+    ElMessage.warning(t('tenantManage.minTurns'))
     return
   }
   if (!Number.isInteger(maxVoiceInputs) || maxVoiceInputs < 1) {
-    ElMessage.warning('每日语音输入至少为 1')
+    ElMessage.warning(t('tenantManage.minVoice'))
     return
   }
   if (!Number.isInteger(maxTTS) || maxTTS < 1) {
-    ElMessage.warning('每日文字转语音至少为 1')
+    ElMessage.warning(t('tenantManage.minTts'))
     return
   }
   saving.value = row.code
@@ -178,7 +177,7 @@ async function saveLimits(row) {
       max_voice_inputs: maxVoiceInputs,
       max_tts: maxTTS,
     })
-    ElMessage.success('已保存')
+    ElMessage.success(t('common.saved'))
   } catch {
     await load()
   } finally {
