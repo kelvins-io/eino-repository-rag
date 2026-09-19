@@ -16,6 +16,9 @@ npm run dev
 
 ## 页面
 
+- `/login`、`/register`：登录 / 注册
 - `/knowledge-bases`：知识库列表与 CRUD
-- `/knowledge-bases/:id`：目录树、文档导入/管理、重新索引
-- `/chat`：知识库问答（会话记忆）
+- `/knowledge-bases/:id`：目录树、文档导入/管理、重新索引、分块与召回
+- `/chat`：知识库问答（会话记忆、标准 RAG / Agent、语音输入与朗读、反馈）
+- `/users`：本租户用户管理
+- `/tenant-manage`、`/tenants`：平台管理员的租户配额与创建租户
