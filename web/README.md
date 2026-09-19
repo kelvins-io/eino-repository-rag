@@ -1,6 +1,6 @@
 # Eino RAG Web
 
-Vue 3 + Element Plus 管理台，对接后端 `/api/v1`。
+Vue 3 + Arco Design 管理台，对接后端 `/api/v1`。
 
 ## 开发
 

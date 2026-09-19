@@ -418,7 +418,7 @@ internal/
   service/           # 业务编排
   handler/           # HTTP Handler
   server/            # 路由（含 CORS）
-web/                 # Vue3 + Element Plus 前端
+web/                 # Vue3 + Arco Design 前端
 storage/uploads/     # 上传文件落盘
 examples/            # 示例知识库文档
 ```
@@ -430,4 +430,4 @@ examples/            # 示例知识库文档
 - PostgreSQL + GORM
 - Redis Stack（短期记忆；可选向量检索）
 - Milvus Standalone（可选，对应 `milvus_lite` 配置）
-- Vue 3 + Vite + Element Plus + Vue Router + Axios
+- Vue 3 + Vite + Arco Design + Vue Router + Axios

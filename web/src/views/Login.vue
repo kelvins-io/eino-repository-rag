@@ -3,26 +3,32 @@
     <div class="auth-card">
       <h1>登录</h1>
       <p class="sub">使用租户 ID 与账号登录知识库</p>
-      <el-form :model="form" @submit.prevent="onSubmit" label-position="top">
-        <el-form-item label="租户 ID" required>
-          <el-input v-model="form.tenant_id" placeholder="例如 default" autocomplete="organization" />
-        </el-form-item>
-        <el-form-item label="用户名" required>
-          <el-input v-model="form.username" placeholder="用户名" autocomplete="username" />
-        </el-form-item>
-        <el-form-item label="密码" required>
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-            placeholder="密码"
-            autocomplete="current-password"
+      <a-form :model="form" layout="vertical" @submit="onSubmit">
+        <a-form-item field="tenant_id" label="租户 ID" required>
+          <a-input
+            v-model="form.tenant_id"
+            placeholder="例如 default"
+            :input-attrs="{ autocomplete: 'organization' }"
           />
-        </el-form-item>
-        <el-button type="primary" class="submit" :loading="loading" native-type="submit">
+        </a-form-item>
+        <a-form-item field="username" label="用户名" required>
+          <a-input
+            v-model="form.username"
+            placeholder="用户名"
+            :input-attrs="{ autocomplete: 'username' }"
+          />
+        </a-form-item>
+        <a-form-item field="password" label="密码" required>
+          <a-input-password
+            v-model="form.password"
+            placeholder="密码"
+            :input-attrs="{ autocomplete: 'current-password' }"
+          />
+        </a-form-item>
+        <a-button type="primary" class="submit" :loading="loading" html-type="submit">
           登录
-        </el-button>
-      </el-form>
+        </a-button>
+      </a-form>
       <div class="footer">
         还没有账号？
         <router-link to="/register">去注册</router-link>
@@ -35,7 +41,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { setAuth } from '@/utils/auth'
 
@@ -50,11 +56,11 @@ const form = reactive({
 
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
-    ElMessage.warning('请填写租户 ID')
+    Message.warning('请填写租户 ID')
     return
   }
   if (!form.username.trim() || !form.password) {
-    ElMessage.warning('请填写用户名和密码')
+    Message.warning('请填写用户名和密码')
     return
   }
   loading.value = true
@@ -65,7 +71,7 @@ async function onSubmit() {
       password: form.password,
     })
     setAuth(data)
-    ElMessage.success('登录成功')
+    Message.success('登录成功')
     const redirect = route.query.redirect || '/knowledge-bases'
     router.replace(String(redirect))
   } finally {

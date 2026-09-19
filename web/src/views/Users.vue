@@ -8,40 +8,40 @@
     </div>
 
     <div class="panel">
-      <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column prop="username" label="用户名" min-width="160" show-overflow-tooltip />
-        <el-table-column label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="租户管理员" width="140">
-          <template #default="{ row }">
-            <el-tag :type="row.is_admin ? 'success' : 'info'" size="small">
-              {{ row.is_admin ? '是' : '否' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="isTenantAdmin" label="允许登录" width="120">
-          <template #default="{ row }">
-            <el-switch
-              :model-value="row.login_enabled"
-              :disabled="row.is_admin || toggling === row.username"
-              @change="(enabled) => onToggleLogin(row, enabled)"
-            />
-          </template>
-        </el-table-column>
-      </el-table>
+      <a-table
+        row-key="username"
+        :columns="columns"
+        :data="list"
+        :loading="loading"
+        :pagination="false"
+      >
+        <template #created_at="{ record }">
+          {{ formatTime(record.created_at) }}
+        </template>
+        <template #admin="{ record }">
+          <a-tag :color="record.is_admin ? 'green' : 'gray'" size="small">
+            {{ record.is_admin ? '是' : '否' }}
+          </a-tag>
+        </template>
+        <template #login="{ record }">
+          <a-switch
+            :model-value="record.login_enabled"
+            :disabled="record.is_admin || toggling === record.username"
+            @change="(enabled) => onToggleLogin(record, enabled)"
+          />
+        </template>
+      </a-table>
 
       <div class="pager">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next"
+        <a-pagination
+          :current="page"
+          :page-size="pageSize"
           :total="total"
-          @current-change="load"
-          @size-change="onSizeChange"
+          show-total
+          show-page-size
+          :page-size-options="[10, 20, 50, 100]"
+          @change="onPageChange"
+          @page-size-change="onPageSizeChange"
         />
       </div>
     </div>
@@ -50,7 +50,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { getAuthUser } from '@/utils/auth'
 
@@ -61,6 +61,18 @@ const pageSize = ref(10)
 const total = ref(0)
 const toggling = ref('')
 const isTenantAdmin = computed(() => getAuthUser()?.username === 'admin')
+
+const columns = computed(() => {
+  const cols = [
+    { title: '用户名', dataIndex: 'username', ellipsis: true, tooltip: true },
+    { title: '创建时间', slotName: 'created_at', width: 180 },
+    { title: '租户管理员', slotName: 'admin', width: 140 },
+  ]
+  if (isTenantAdmin.value) {
+    cols.push({ title: '允许登录', slotName: 'login', width: 120 })
+  }
+  return cols
+})
 
 function formatTime(v) {
   if (!v) return '-'
@@ -81,7 +93,13 @@ async function load() {
   }
 }
 
-function onSizeChange() {
+function onPageChange(current) {
+  page.value = current
+  load()
+}
+
+function onPageSizeChange(size) {
+  pageSize.value = size
   page.value = 1
   load()
 }
@@ -94,7 +112,7 @@ async function onToggleLogin(row, enabled) {
       enabled,
     })
     row.login_enabled = enabled
-    ElMessage.success(enabled ? '已允许登录' : '已关闭登录')
+    Message.success(enabled ? '已允许登录' : '已关闭登录')
   } catch {
     await load()
   } finally {

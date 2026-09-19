@@ -1,10 +1,8 @@
 <template>
-  <div v-loading="pageLoading">
+  <a-spin :loading="pageLoading" class="page-spin">
     <div class="page-header">
       <div>
-        <el-button link type="primary" @click="$router.push('/knowledge-bases')">
-          ← 返回列表
-        </el-button>
+        <a-button type="text" @click="$router.push('/knowledge-bases')">← 返回列表</a-button>
         <h2>{{ kb?.name || '知识库详情' }}</h2>
         <p class="sub">
           {{ kb?.description || '管理目录树与文档导入' }}
@@ -14,327 +12,274 @@
         </p>
       </div>
       <div class="actions">
-        <el-tooltip
-          :disabled="!importQuotaFull"
-          content="已达到该租户导入文档数上限"
-          placement="top"
-        >
+        <a-tooltip :disabled="!importQuotaFull" content="已达到该租户导入文档数上限" position="top">
           <span>
-            <el-button :icon="Upload" type="primary" :disabled="importQuotaFull" @click="openImport">导入文档</el-button>
+            <a-button type="primary" :disabled="importQuotaFull" @click="openImport">
+              <template #icon><icon-upload /></template>
+              导入文档
+            </a-button>
           </span>
-        </el-tooltip>
-        <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
+        </a-tooltip>
+        <a-button @click="refreshAll">
+          <template #icon><icon-refresh /></template>
+          刷新
+        </a-button>
       </div>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="5">
+    <a-row :gutter="16">
+      <a-col :span="5">
         <div class="panel tree-panel">
           <div class="panel-title">
             <span>目录树</span>
-            <el-button size="small" :icon="Plus" @click="openDirCreate(null)">新建根目录</el-button>
+            <a-button size="small" @click="openDirCreate(null)">
+              <template #icon><icon-plus /></template>
+              新建根目录
+            </a-button>
           </div>
-          <el-tree
+          <a-tree
+            block-node
             :data="treeData"
-            node-key="id"
-            highlight-current
-            default-expand-all
-            :expand-on-click-node="false"
-            :props="{ label: 'name', children: 'children' }"
-            @node-click="onDirClick"
+            :field-names="{ key: 'id', title: 'name', children: 'children' }"
+            :selected-keys="currentDir ? [currentDir.id] : []"
+            v-model:expanded-keys="expandedKeys"
+            @select="onTreeSelect"
           >
-            <template #default="{ data }">
-              <div class="tree-node">
-                <span class="tree-label">{{ data.name }}</span>
-                <span class="tree-ops" @click.stop>
-                  <el-button link size="small" @click="openDirCreate(data)">子目录</el-button>
-                  <el-button link size="small" @click="openDirEdit(data)">编辑</el-button>
-                  <el-button link size="small" type="danger" @click="onDirDelete(data)">删</el-button>
-                </span>
-              </div>
+            <template #extra="node">
+              <span class="tree-ops" @click.stop>
+                <a-button type="text" size="mini" @click="openDirCreate(node)">子目录</a-button>
+                <a-button type="text" size="mini" @click="openDirEdit(node)">编辑</a-button>
+                <a-button type="text" status="danger" size="mini" @click="onDirDelete(node)">删</a-button>
+              </span>
             </template>
-          </el-tree>
-          <el-button class="all-docs" text type="primary" @click="clearDirFilter">
-            查看全部文档
-          </el-button>
+          </a-tree>
+          <a-button class="all-docs" type="text" @click="clearDirFilter">查看全部文档</a-button>
         </div>
-      </el-col>
+      </a-col>
 
-      <el-col :span="19">
+      <a-col :span="19">
         <div class="panel">
           <div class="panel-title">
             <span>
               文档列表
-              <el-tag v-if="currentDir" size="small" class="ml8">目录: {{ currentDir.name }}</el-tag>
+              <a-tag v-if="currentDir" size="small" class="ml8">目录: {{ currentDir.name }}</a-tag>
             </span>
             <div class="doc-toolbar">
-              <el-select
+              <a-select
                 v-model="statusFilter"
-                clearable
+                allow-clear
                 placeholder="全部状态"
                 style="width: 140px"
                 @change="onStatusFilterChange"
               >
-                <el-option label="待索引" value="pending" />
-                <el-option label="索引中" value="indexing" />
-                <el-option label="就绪" value="ready" />
-                <el-option label="失败" value="failed" />
-              </el-select>
-              <el-button
-                size="small"
-                :disabled="!selectedIds.length"
-                @click="onBatchReindex"
-              >
-                重新索引
-              </el-button>
-              <el-button
-                size="small"
-                type="danger"
-                :disabled="!selectedIds.length"
-                @click="onBatchDelete"
-              >
+                <a-option label="待索引" value="pending" />
+                <a-option label="索引中" value="indexing" />
+                <a-option label="就绪" value="ready" />
+                <a-option label="失败" value="failed" />
+              </a-select>
+              <a-button size="small" :disabled="!selectedIds.length" @click="onBatchReindex">重新索引</a-button>
+              <a-button size="small" type="primary" status="danger" :disabled="!selectedIds.length" @click="onBatchDelete">
                 批量删除
-              </el-button>
+              </a-button>
             </div>
           </div>
 
-          <el-table
-            v-loading="docLoading"
+          <a-table
+            row-key="id"
+            :columns="docColumns"
             :data="docs"
-            stripe
+            :loading="docLoading"
+            :pagination="false"
+            :row-selection="rowSelection"
+            :scroll="{ x: 1960 }"
             @selection-change="onSelectionChange"
           >
-            <el-table-column type="selection" width="48" />
-            <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="file_name" label="文件名" min-width="140" show-overflow-tooltip />
-            <el-table-column label="上传用户" width="120" show-overflow-tooltip>
-              <template #default="{ row }">
-                {{ row.username || row.user_id || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="status" label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="statusType(row.status)" size="small">
-                  {{ statusLabel(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="分块" width="70">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="openChunks(row)">{{ row.chunk_count }}</el-button>
-              </template>
-            </el-table-column>
-            <el-table-column label="召回率" width="90">
-              <template #default="{ row }">
-                <span :title="recallTitle(row)">{{ formatRecall(row.recall) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="引用次数" width="90">
-              <template #default="{ row }">
-                <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ row.cited_count ?? 0 }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="引用片段" min-width="180" show-overflow-tooltip>
-              <template #default="{ row }">
-                {{ formatChunkRanks(row.cited_chunks) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="上次索引时间" width="170">
-              <template #default="{ row }">{{ formatTime(row.last_indexed_at) }}</template>
-            </el-table-column>
-            <el-table-column prop="file_size" label="大小" width="90">
-              <template #default="{ row }">{{ formatSize(row.file_size) }}</template>
-            </el-table-column>
-            <el-table-column label="更新时间" width="170">
-              <template #default="{ row }">{{ formatTime(row.updated_at) }}</template>
-            </el-table-column>
-            <el-table-column label="创建时间" width="170">
-              <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="300" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="showDoc(row)">详情</el-button>
-                <el-button
-                  link
-                  type="primary"
-                  :disabled="row.status === 'indexing'"
-                  @click="onReindexOne(row)"
-                >
-                  重新索引
-                </el-button>
-                <el-button link type="primary" @click="openIndexHistory(row)">索引记录</el-button>
-                <el-button link type="danger" @click="onDeleteOne(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+            <template #owner="{ record }">
+              <span class="cell-ellipsis">{{ record.username || record.user_id || '-' }}</span>
+            </template>
+            <template #status="{ record }">
+              <a-tag :color="statusType(record.status)" size="small">{{ statusLabel(record.status) }}</a-tag>
+            </template>
+            <template #chunks="{ record }">
+              <a-button type="text" size="small" @click="openChunks(record)">{{ record.chunk_count }}</a-button>
+            </template>
+            <template #recall="{ record }">
+              <span :title="recallTitle(record)">{{ formatRecall(record.recall) }}</span>
+            </template>
+            <template #cited_count="{ record }">
+              <span title="历史回答中引用过该文档的次数，同一条回答只计 1 次">{{ record.cited_count ?? 0 }}</span>
+            </template>
+            <template #cited_chunks="{ record }">
+              <span class="cell-ellipsis" :title="formatChunkRanks(record.cited_chunks)">{{ formatChunkRanks(record.cited_chunks) }}</span>
+            </template>
+            <template #last_indexed_at="{ record }">{{ formatTime(record.last_indexed_at) }}</template>
+            <template #file_size="{ record }">{{ formatSize(record.file_size) }}</template>
+            <template #updated_at="{ record }">{{ formatTime(record.updated_at) }}</template>
+            <template #created_at="{ record }">{{ formatTime(record.created_at) }}</template>
+            <template #ops="{ record }">
+              <a-button type="text" size="mini" @click="showDoc(record)">详情</a-button>
+              <a-button type="text" size="mini" :disabled="record.status === 'indexing'" @click="onReindexOne(record)">重新索引</a-button>
+              <a-button type="text" size="mini" @click="openIndexHistory(record)">索引记录</a-button>
+              <a-button type="text" status="danger" size="mini" @click="onDeleteOne(record)">删除</a-button>
+            </template>
+          </a-table>
 
           <div class="pager">
-            <el-pagination
-              v-model:current-page="page"
-              v-model:page-size="pageSize"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next"
+            <a-pagination
+              :current="page"
+              :page-size="pageSize"
               :total="total"
-              @current-change="loadDocs"
-              @size-change="onDocSizeChange"
+              show-total
+              show-page-size
+              :page-size-options="[10, 20, 50, 100]"
+              @change="onPageChange"
+              @page-size-change="onPageSizeChange"
             />
           </div>
         </div>
-      </el-col>
-    </el-row>
+      </a-col>
+    </a-row>
 
-    <!-- 目录弹窗 -->
-    <el-dialog v-model="dirVisible" :title="dirEditing ? '编辑目录' : '新建目录'" width="440px">
-      <el-form :model="dirForm" label-width="80px">
-        <el-form-item label="名称" required>
-          <el-input v-model="dirForm.name" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="dirForm.description" type="textarea" :rows="2" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="dirForm.sort_order" :min="0" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dirVisible = false">取消</el-button>
-        <el-button type="primary" :loading="dirSaving" @click="saveDir">保存</el-button>
-      </template>
-    </el-dialog>
+    <a-modal v-model:visible="dirVisible" :title="dirEditing ? '编辑目录' : '新建目录'" :width="440" :footer="false" unmount-on-close>
+      <a-form :model="dirForm" auto-label-width>
+        <a-form-item field="name" label="名称" required>
+          <a-input v-model="dirForm.name" />
+        </a-form-item>
+        <a-form-item field="description" label="描述">
+          <a-textarea v-model="dirForm.description" :auto-size="{ minRows: 2, maxRows: 4 }" />
+        </a-form-item>
+        <a-form-item field="sort_order" label="排序">
+          <a-input-number v-model="dirForm.sort_order" :min="0" :step="1" :precision="0" />
+        </a-form-item>
+      </a-form>
+      <div class="modal-footer">
+        <a-button @click="dirVisible = false">取消</a-button>
+        <a-button type="primary" :loading="dirSaving" @click="saveDir">保存</a-button>
+      </div>
+    </a-modal>
 
-    <!-- 导入弹窗 -->
-    <el-dialog v-model="importVisible" title="导入文档" width="520px">
-      <el-form label-width="100px">
-        <el-form-item label="目标目录">
-          <el-tree-select
+    <a-modal v-model:visible="importVisible" title="导入文档" :width="520" :footer="false" unmount-on-close>
+      <a-form :model="importForm" auto-label-width>
+        <a-form-item label="目标目录">
+          <a-tree-select
             v-model="importForm.directory_id"
             :data="treeData"
-            clearable
-            check-strictly
-            node-key="id"
-            :props="{ label: 'name', children: 'children', value: 'id' }"
+            allow-clear
+            :field-names="{ key: 'id', title: 'name', children: 'children' }"
             placeholder="可选，不选则挂到知识库根"
-            style="width: 100%"
+            :tree-props="{ defaultExpandAll: true }"
           />
-        </el-form-item>
-        <el-form-item label="标题(单文件)">
-          <el-input v-model="importForm.title" placeholder="多文件时忽略，默认用文件名" />
-        </el-form-item>
-        <el-form-item label="文件" required>
-          <el-upload
-            ref="uploadRef"
-            drag
+        </a-form-item>
+        <a-form-item label="标题(单文件)">
+          <a-input v-model="importForm.title" placeholder="多文件时忽略，默认用文件名" />
+        </a-form-item>
+        <a-form-item label="文件" required>
+          <a-upload
+            v-model:file-list="fileList"
+            draggable
             multiple
-            accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.json,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.gif"
             :auto-upload="false"
             :limit="maxUploadFiles"
-            :on-change="onFileChange"
-            :on-remove="onFileRemove"
-            :on-exceed="onFileExceed"
+            accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.json,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.gif"
+            @change="onUploadChange"
+            @exceed-limit="onFileExceed"
+          />
+          <div class="upload-tip">
+            支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
+            <br />
+            单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个，本租户文件总数上限 {{ maxTenantFiles }}（已用 {{ tenantFileCount }}）
+          </div>
+        </a-form-item>
+      </a-form>
+      <div class="modal-footer">
+        <a-button @click="importVisible = false">取消</a-button>
+        <a-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">开始导入</a-button>
+      </div>
+    </a-modal>
+
+    <a-drawer v-model:visible="docDetailVisible" title="文档详情" :width="520" :footer="false" unmount-on-close>
+      <a-descriptions v-if="docDetail" :column="1" bordered>
+        <a-descriptions-item label="ID">{{ docDetail.id }}</a-descriptions-item>
+        <a-descriptions-item label="标题">{{ docDetail.title }}</a-descriptions-item>
+        <a-descriptions-item label="文件名">{{ docDetail.file_name }}</a-descriptions-item>
+        <a-descriptions-item label="上传用户">{{ docDetail.username || docDetail.user_id || '-' }}</a-descriptions-item>
+        <a-descriptions-item label="状态">
+          <a-tag :color="statusType(docDetail.status)" size="small">{{ statusLabel(docDetail.status) }}</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="分块数">{{ docDetail.chunk_count }}</a-descriptions-item>
+        <a-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</a-descriptions-item>
+        <a-descriptions-item label="引用片段">
+          <a-table
+            row-key="chunk_index"
+            :columns="citedColumns"
+            :data="topCitedChunks(docDetail.cited_chunks)"
+            :pagination="false"
+            size="small"
           >
-            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-            <div class="el-upload__text">拖拽或 <em>点击选择</em> 文件</div>
-            <template #tip>
-              <div class="el-upload__tip">
-                支持 PDF（含扫描件 OCR）/ 图片 / DOCX / XLSX / PPTX / HTML / MD / TXT / CSV / JSON（不支持旧版 .doc）
-                <br />
-                单文件 ≤ {{ maxUploadFileSizeMB }}MB，单次最多 {{ maxUploadFiles }} 个，本租户文件总数上限 {{ maxTenantFiles }}（已用 {{ tenantFileCount }}）
-              </div>
-            </template>
-          </el-upload>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">开始导入</el-button>
-      </template>
-    </el-dialog>
+            <template #empty>还没有被引用的片段</template>
+          </a-table>
+        </a-descriptions-item>
+        <a-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</a-descriptions-item>
+        <a-descriptions-item label="MD5">{{ docDetail.content_md5 }}</a-descriptions-item>
+        <a-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</a-descriptions-item>
+        <a-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">
+          <span class="error-msg">{{ docDetail.error_msg }}</span>
+        </a-descriptions-item>
+      </a-descriptions>
+    </a-drawer>
 
-    <!-- 文档详情 -->
-    <el-drawer v-model="docDetailVisible" title="文档详情" size="520px">
-      <template v-if="docDetail">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
-          <el-descriptions-item label="标题">{{ docDetail.title }}</el-descriptions-item>
-          <el-descriptions-item label="文件名">{{ docDetail.file_name }}</el-descriptions-item>
-          <el-descriptions-item label="上传用户">{{ docDetail.username || docDetail.user_id || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusType(docDetail.status)" size="small">
-              {{ statusLabel(docDetail.status) }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="分块数">{{ docDetail.chunk_count }}</el-descriptions-item>
-          <el-descriptions-item label="引用次数">{{ docDetail.cited_count ?? 0 }}</el-descriptions-item>
-          <el-descriptions-item label="引用片段">
-            <el-table
-              :data="topCitedChunks(docDetail.cited_chunks)"
-              size="small"
-              empty-text="还没有被引用的片段"
-            >
-              <el-table-column prop="rank" label="排名" width="70" />
-              <el-table-column prop="chunk_index" label="片段标号" width="90" />
-              <el-table-column prop="count" label="引用次数" />
-            </el-table>
-          </el-descriptions-item>
-          <el-descriptions-item label="上次索引时间">{{ formatTime(docDetail.last_indexed_at) }}</el-descriptions-item>
-          <el-descriptions-item label="MD5">{{ docDetail.content_md5 }}</el-descriptions-item>
-          <el-descriptions-item label="大小">{{ formatSize(docDetail.file_size) }}</el-descriptions-item>
-          <el-descriptions-item v-if="docDetail.status === 'failed' && docDetail.error_msg" label="错误原因">
-            <span class="error-msg">{{ docDetail.error_msg }}</span>
-          </el-descriptions-item>
-        </el-descriptions>
-      </template>
-    </el-drawer>
-
-    <el-dialog v-model="chunkVisible" :title="chunkTitle" width="760px">
-      <el-table v-loading="chunkLoading" :data="chunkPage" max-height="480" empty-text="还没有分块">
-        <el-table-column prop="chunk_index" label="分块标号" width="100" />
-        <el-table-column label="分块内容" min-width="480">
-          <template #default="{ row }">
-            <div class="chunk-content">{{ row.content }}</div>
-          </template>
-        </el-table-column>
-      </el-table>
+    <a-modal v-model:visible="chunkVisible" :title="chunkTitle" :width="760" :footer="false" unmount-on-close>
+      <a-table
+        row-key="chunk_index"
+        :columns="chunkColumns"
+        :data="chunkPage"
+        :loading="chunkLoading"
+        :pagination="false"
+        :scroll="{ y: 480 }"
+      >
+        <template #content="{ record }">
+          <div class="chunk-content">{{ record.content }}</div>
+        </template>
+        <template #empty>还没有分块</template>
+      </a-table>
       <div v-if="chunkRows.length > chunkPageSize" class="pager">
-        <el-pagination
-          v-model:current-page="chunkPageNo"
+        <a-pagination
+          v-model:current="chunkPageNo"
           :page-size="chunkPageSize"
-          layout="total, prev, pager, next"
           :total="chunkRows.length"
+          show-total
         />
       </div>
-    </el-dialog>
+    </a-modal>
 
-    <!-- 索引记录 -->
-    <el-drawer v-model="indexHistoryVisible" :title="indexHistoryTitle" size="720px">
-      <el-table v-loading="indexHistoryLoading" :data="indexHistory" stripe empty-text="暂无索引记录">
-        <el-table-column label="索引触发时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.triggered_at) }}</template>
-        </el-table-column>
-        <el-table-column label="索引结束时间" width="180">
-          <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
-        </el-table-column>
-        <el-table-column label="本次索引状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">
-              {{ statusLabel(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="错误原因" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.error_msg || '-' }}</template>
-        </el-table-column>
-      </el-table>
-    </el-drawer>
-  </div>
+    <a-drawer v-model:visible="indexHistoryVisible" :title="indexHistoryTitle" :width="720" :footer="false" unmount-on-close>
+      <a-table
+        row-key="_key"
+        :columns="historyColumns"
+        :data="indexHistory"
+        :loading="indexHistoryLoading"
+        :pagination="false"
+      >
+        <template #triggered_at="{ record }">{{ formatTime(record.triggered_at) }}</template>
+        <template #finished_at="{ record }">{{ formatTime(record.finished_at) }}</template>
+        <template #status="{ record }">
+          <a-tag :color="statusType(record.status)" size="small">{{ statusLabel(record.status) }}</a-tag>
+        </template>
+        <template #error_msg="{ record }">
+          <span class="cell-ellipsis" :title="record.error_msg || '-'">{{ record.error_msg || '-' }}</span>
+        </template>
+        <template #empty>暂无索引记录</template>
+      </a-table>
+    </a-drawer>
+  </a-spin>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
+import { confirmAction } from '@/utils/ui'
 import {
   formatSize,
   formatTime,
@@ -348,6 +293,7 @@ const kbId = computed(() => Number(route.params.id))
 const pageLoading = ref(false)
 const kb = ref(null)
 const treeData = ref([])
+const expandedKeys = ref([])
 const currentDir = ref(null)
 
 const docs = ref([])
@@ -366,7 +312,6 @@ const dirForm = reactive({ name: '', description: '', sort_order: 0 })
 
 const importVisible = ref(false)
 const importing = ref(false)
-const uploadRef = ref()
 const fileList = ref([])
 const importForm = reactive({ directory_id: undefined, title: '' })
 const maxUploadFileSizeMB = ref(50)
@@ -402,6 +347,51 @@ const indexHistoryTitle = computed(() => {
   const name = indexHistoryDoc.value?.file_name || indexHistoryDoc.value?.title
   return name ? `索引记录 · ${name}` : '索引记录'
 })
+
+const docColumns = [
+  { title: 'ID', dataIndex: 'id', width: 70 },
+  { title: '文件名', dataIndex: 'file_name', width: 160, ellipsis: true, tooltip: true },
+  { title: '上传用户', slotName: 'owner', width: 120 },
+  { title: '状态', slotName: 'status', width: 100 },
+  { title: '分块', slotName: 'chunks', width: 70 },
+  { title: '召回率', slotName: 'recall', width: 90 },
+  { title: '引用次数', slotName: 'cited_count', width: 90 },
+  { title: '引用片段', slotName: 'cited_chunks', width: 180 },
+  { title: '上次索引时间', slotName: 'last_indexed_at', width: 170 },
+  { title: '大小', slotName: 'file_size', width: 90 },
+  { title: '更新时间', slotName: 'updated_at', width: 170 },
+  { title: '创建时间', slotName: 'created_at', width: 170 },
+  { title: '操作', slotName: 'ops', width: 280, fixed: 'right' },
+]
+const citedColumns = [
+  { title: '排名', dataIndex: 'rank', width: 70 },
+  { title: '片段标号', dataIndex: 'chunk_index', width: 90 },
+  { title: '引用次数', dataIndex: 'count' },
+]
+const chunkColumns = [
+  { title: '分块标号', dataIndex: 'chunk_index', width: 100 },
+  { title: '分块内容', slotName: 'content' },
+]
+const historyColumns = [
+  { title: '索引触发时间', slotName: 'triggered_at', width: 180 },
+  { title: '索引结束时间', slotName: 'finished_at', width: 180 },
+  { title: '本次索引状态', slotName: 'status', width: 120 },
+  { title: '错误原因', slotName: 'error_msg' },
+]
+const rowSelection = computed(() => ({
+  type: 'checkbox',
+  showCheckedAll: true,
+  width: 48,
+  selectedRowKeys: selectedIds.value,
+}))
+
+function collectKeys(nodes, acc = []) {
+  for (const n of nodes || []) {
+    if (n?.id != null) acc.push(n.id)
+    if (n.children?.length) collectKeys(n.children, acc)
+  }
+  return acc
+}
 
 async function loadKb() {
   kb.value = await api.getKnowledgeBase(kbId.value)
@@ -439,6 +429,7 @@ function formatChunkRanks(chunks) {
 
 async function loadTree() {
   treeData.value = (await api.listDirectories(kbId.value)) || []
+  expandedKeys.value = collectKeys(treeData.value)
 }
 
 async function loadDocs() {
@@ -458,17 +449,25 @@ async function loadDocs() {
     const data = await api.listDocuments(params)
     docs.value = data?.list || []
     total.value = data?.total || 0
+    selectedIds.value = []
   } finally {
     docLoading.value = false
   }
 }
 
-function onDocSizeChange() {
+function onPageChange(current) {
+  page.value = current
+  loadDocs()
+}
+
+function onPageSizeChange(size) {
+  pageSize.value = size
   page.value = 1
   loadDocs()
 }
 
-function onStatusFilterChange() {
+function onStatusFilterChange(value) {
+  statusFilter.value = value || ''
   page.value = 1
   loadDocs()
 }
@@ -480,6 +479,12 @@ async function refreshAll() {
   } finally {
     pageLoading.value = false
   }
+}
+
+function onTreeSelect(_keys, data) {
+  const node = data?.node
+  if (!node || node.id == null) return
+  onDirClick(node)
 }
 
 function onDirClick(data) {
@@ -514,7 +519,7 @@ function openDirEdit(data) {
 
 async function saveDir() {
   if (!dirForm.name.trim()) {
-    ElMessage.warning('请填写目录名称')
+    Message.warning('请填写目录名称')
     return
   }
   dirSaving.value = true
@@ -525,7 +530,7 @@ async function saveDir() {
         description: dirForm.description,
         sort_order: dirForm.sort_order,
       })
-      ElMessage.success('目录已更新')
+      Message.success('目录已更新')
     } else {
       const payload = {
         name: dirForm.name,
@@ -534,7 +539,7 @@ async function saveDir() {
       }
       if (dirParent.value?.id) payload.parent_id = dirParent.value.id
       await api.createDirectory(kbId.value, payload)
-      ElMessage.success('目录已创建')
+      Message.success('目录已创建')
     }
     dirVisible.value = false
     await loadTree()
@@ -544,32 +549,31 @@ async function saveDir() {
 }
 
 async function onDirDelete(data) {
-  await ElMessageBox.confirm(`确认删除目录「${data.name}」？`, '删除确认', { type: 'warning' })
+  try {
+    await confirmAction(`确认删除目录「${data.name}」？`, '删除确认')
+  } catch {
+    return
+  }
   await api.deleteDirectory(data.id)
-  ElMessage.success('目录已删除')
+  Message.success('目录已删除')
   if (currentDir.value?.id === data.id) clearDirFilter()
   await loadTree()
 }
 
-function onFileChange(file, files) {
-  const raw = file?.raw
+function onUploadChange(list, fileItem) {
+  const raw = fileItem?.file
   if (raw && raw.size > maxUploadFileSize.value) {
-    ElMessage.warning(
-      `文件「${file.name}」大小 ${(raw.size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
+    Message.warning(
+      `文件「${fileItem.name}」大小 ${(raw.size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
     )
-    uploadRef.value?.handleRemove(file)
-    fileList.value = files.filter((f) => f.uid !== file.uid)
+    fileList.value = list.filter((f) => f.uid !== fileItem.uid)
     return
   }
-  fileList.value = files
-}
-
-function onFileRemove(_file, files) {
-  fileList.value = files
+  fileList.value = list
 }
 
 function onFileExceed() {
-  ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+  Message.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
 }
 
 async function loadUploadLimits() {
@@ -595,24 +599,27 @@ async function openImport() {
   importForm.title = ''
   importForm.directory_id = currentDir.value?.id
   fileList.value = []
-  uploadRef.value?.clearFiles()
   await loadUploadLimits()
   importVisible.value = true
 }
 
 async function doImport() {
   if (!fileList.value.length) {
-    ElMessage.warning('请选择文件')
+    Message.warning('请选择文件')
     return
   }
   if (fileList.value.length > maxUploadFiles.value) {
-    ElMessage.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
+    Message.warning(`单次最多上传 ${maxUploadFiles.value} 个文件`)
     return
   }
   for (const f of fileList.value) {
-    const size = f.raw?.size || 0
+    const size = f.file?.size || 0
+    if (!f.file) {
+      Message.warning(`文件「${f.name || ''}」读取失败，请重新选择`)
+      return
+    }
     if (size > maxUploadFileSize.value) {
-      ElMessage.warning(
+      Message.warning(
         `文件「${f.name}」大小 ${(size / (1024 * 1024)).toFixed(1)}MB 超过限制 ${maxUploadFileSizeMB.value}MB`,
       )
       return
@@ -627,25 +634,24 @@ async function doImport() {
     fd.append('title', importForm.title)
   }
   for (const f of fileList.value) {
-    fd.append('files', f.raw)
+    fd.append('files', f.file)
   }
   importing.value = true
   try {
     const result = await api.importDocuments(fd)
-    ElMessage.success(result?.message || `导入完成：新增 ${result?.imported || 0}，重复 ${result?.duplicated || 0}`)
+    Message.success(result?.message || `导入完成：新增 ${result?.imported || 0}，重复 ${result?.duplicated || 0}`)
     importVisible.value = false
     importForm.title = ''
     importForm.directory_id = undefined
     fileList.value = []
-    uploadRef.value?.clearFiles()
     await Promise.all([loadDocs(), loadUploadLimits()])
   } finally {
     importing.value = false
   }
 }
 
-function onSelectionChange(rows) {
-  selectedIds.value = rows.map((r) => r.id)
+function onSelectionChange(keys) {
+  selectedIds.value = keys
 }
 
 async function openIndexHistory(row) {
@@ -655,7 +661,10 @@ async function openIndexHistory(row) {
   indexHistory.value = []
   try {
     const data = await api.listIndexBuilds(row.id)
-    indexHistory.value = data?.list || []
+    indexHistory.value = (data?.list || []).map((item, i) => ({
+      ...item,
+      _key: item.id != null ? item.id : `${item.triggered_at || 't'}-${i}`,
+    }))
   } finally {
     indexHistoryLoading.value = false
   }
@@ -665,9 +674,9 @@ async function onReindexOne(row) {
   const result = await api.reindexDocuments([row.id])
   const item = result?.items?.[0]
   if (item?.skipped) {
-    ElMessage.warning(item.message || '未触发重新索引')
+    Message.warning(item.message || '未触发重新索引')
   } else {
-    ElMessage.success(item?.message || '已触发重新索引')
+    Message.success(item?.message || '已触发重新索引')
   }
   await loadDocs()
   if (indexHistoryVisible.value && indexHistoryDoc.value?.id === row.id) {
@@ -697,29 +706,33 @@ async function openChunks(row) {
 }
 
 async function onDeleteOne(row) {
-  await ElMessageBox.confirm(`确认删除文档「${row.title}」？将级联清理向量与文件。`, '删除确认', {
-    type: 'warning',
-  })
+  try {
+    await confirmAction(`确认删除文档「${row.title}」？将级联清理向量与文件。`, '删除确认')
+  } catch {
+    return
+  }
   await api.deleteDocument(row.id)
-  ElMessage.success('已删除')
+  Message.success('已删除')
   if (indexHistoryDoc.value?.id === row.id) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchDelete() {
-  await ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个文档？`, '批量删除', {
-    type: 'warning',
-  })
+  try {
+    await confirmAction(`确认删除选中的 ${selectedIds.value.length} 个文档？`, '批量删除')
+  } catch {
+    return
+  }
   const deletedIds = selectedIds.value.slice()
   const result = await api.deleteDocuments(deletedIds)
-  ElMessage.success(result?.message || '批量删除完成')
+  Message.success(result?.message || '批量删除完成')
   if (deletedIds.includes(indexHistoryDoc.value?.id)) indexHistoryVisible.value = false
   await loadDocs()
 }
 
 async function onBatchReindex() {
   const result = await api.reindexDocuments(selectedIds.value)
-  ElMessage.success(result?.message || `已触发 ${result?.triggered || 0} 个文档重新索引`)
+  Message.success(result?.message || `已触发 ${result?.triggered || 0} 个文档重新索引`)
   await loadDocs()
 }
 
@@ -727,6 +740,11 @@ onMounted(refreshAll)
 </script>
 
 <style scoped>
+.page-spin {
+  display: block;
+  width: 100%;
+}
+
 .actions {
   display: flex;
   gap: 8px;
@@ -750,27 +768,13 @@ onMounted(refreshAll)
   min-height: 520px;
 }
 
-.tree-node {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-right: 4px;
-  gap: 8px;
-}
-
-.tree-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tree-ops {
+  display: inline-flex;
+  gap: 2px;
   opacity: 0;
-  transition: opacity 0.15s;
 }
 
-.tree-node:hover .tree-ops {
+:deep(.arco-tree-node:hover) .tree-ops {
   opacity: 1;
 }
 
@@ -789,7 +793,7 @@ onMounted(refreshAll)
 }
 
 .error-msg {
-  color: var(--el-color-danger);
+  color: var(--app-danger);
   font-size: 12px;
 }
 
@@ -799,5 +803,26 @@ onMounted(refreshAll)
   line-height: 1.5;
   max-height: 160px;
   overflow: auto;
+}
+
+.cell-ellipsis {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-tip {
+  margin-top: 8px;
+  color: #86909c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 </style>

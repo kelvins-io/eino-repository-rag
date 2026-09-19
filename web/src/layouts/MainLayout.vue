@@ -1,6 +1,6 @@
 <template>
-  <el-container class="layout">
-    <el-aside width="220px" class="aside">
+  <a-layout class="layout">
+    <a-layout-sider class="aside" :width="220">
       <div class="brand">
         <div class="brand-mark">E</div>
         <div>
@@ -8,53 +8,47 @@
           <div class="brand-sub">知识库管理台</div>
         </div>
       </div>
-      <el-menu
-        :default-active="active"
-        router
-        background-color="#0f172a"
-        text-color="#cbd5e1"
-        active-text-color="#fff"
-      >
-        <el-menu-item index="/knowledge-bases">
-          <el-icon><Collection /></el-icon>
-          <span>知识库</span>
-        </el-menu-item>
-        <el-menu-item index="/chat">
-          <el-icon><ChatDotRound /></el-icon>
-          <span>知识问答</span>
-        </el-menu-item>
-        <el-menu-item index="/users">
-          <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="canCreateTenant" index="/tenant-manage">
-          <el-icon><OfficeBuilding /></el-icon>
-          <span>租户管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="canCreateTenant" index="/tenants">
-          <el-icon><OfficeBuilding /></el-icon>
-          <span>创建租户</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
+      <a-menu :selected-keys="[active]" @menu-item-click="onMenu">
+        <a-menu-item key="/knowledge-bases">
+          <template #icon><icon-bookmark /></template>
+          知识库
+        </a-menu-item>
+        <a-menu-item key="/chat">
+          <template #icon><icon-message /></template>
+          知识问答
+        </a-menu-item>
+        <a-menu-item key="/users">
+          <template #icon><icon-user /></template>
+          用户管理
+        </a-menu-item>
+        <a-menu-item v-if="canCreateTenant" key="/tenant-manage">
+          <template #icon><icon-home /></template>
+          租户管理
+        </a-menu-item>
+        <a-menu-item v-if="canCreateTenant" key="/tenants">
+          <template #icon><icon-apps /></template>
+          创建租户
+        </a-menu-item>
+      </a-menu>
+    </a-layout-sider>
 
-    <el-container>
-      <el-header class="header" height="56px">
+    <a-layout>
+      <a-layout-header class="header">
         <div class="header-left">{{ pageTitle }}</div>
         <div class="header-right">
-          <el-tag effect="plain" size="small">租户 {{ tenantCode }}</el-tag>
+          <a-tag size="small">租户 {{ tenantCode }}</a-tag>
           <span class="user">{{ displayName }}</span>
-          <el-tag :type="healthOk ? 'success' : 'danger'" effect="plain" size="small">
+          <a-tag :color="healthOk ? 'green' : 'red'" size="small">
             {{ healthOk ? 'API 正常' : 'API 异常' }}
-          </el-tag>
-          <el-button size="small" @click="logout">退出</el-button>
+          </a-tag>
+          <a-button size="small" @click="logout">退出</a-button>
         </div>
-      </el-header>
-      <el-main class="main">
+      </a-layout-header>
+      <a-layout-content class="main">
         <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      </a-layout-content>
+    </a-layout>
+  </a-layout>
 </template>
 
 <script setup>
@@ -83,6 +77,11 @@ const active = computed(() => {
 })
 
 const pageTitle = computed(() => route.meta.title || 'Eino RAG')
+
+function onMenu(key) {
+  if (!key || key === route.path) return
+  router.push(String(key))
+}
 
 function logout() {
   clearAuth()
@@ -116,8 +115,12 @@ onUnmounted(() => {
 .aside {
   background: var(--app-sidebar);
   color: var(--app-sidebar-text);
+}
+
+.aside :deep(.arco-layout-sider-children) {
   display: flex;
   flex-direction: column;
+  background: var(--app-sidebar);
 }
 
 .brand {
@@ -149,6 +152,7 @@ onUnmounted(() => {
 }
 
 .header {
+  height: 56px;
   background: #fff;
   border-bottom: 1px solid #e2e8f0;
   display: flex;
@@ -174,9 +178,35 @@ onUnmounted(() => {
 
 .main {
   padding: 20px;
+  background: var(--app-bg);
 }
 
-:deep(.el-menu) {
-  border-right: none;
+:deep(.arco-menu) {
+  background: transparent;
+}
+
+:deep(.arco-menu-inner) {
+  padding: 4px 8px;
+}
+
+:deep(.arco-menu-item) {
+  background: transparent;
+  color: #cbd5e1;
+  border-radius: 8px;
+}
+
+:deep(.arco-menu-item .arco-icon) {
+  color: #cbd5e1;
+}
+
+:deep(.arco-menu-item:hover),
+:deep(.arco-menu-item.arco-menu-selected) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+:deep(.arco-menu-item:hover .arco-icon),
+:deep(.arco-menu-item.arco-menu-selected .arco-icon) {
+  color: #fff;
 }
 </style>

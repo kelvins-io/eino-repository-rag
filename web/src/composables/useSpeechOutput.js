@@ -1,5 +1,5 @@
 import { onUnmounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 
 export function useSpeechOutput() {
@@ -38,7 +38,7 @@ export function useSpeechOutput() {
     }
     const value = (text || '').trim()
     if (!value || value === '(空回答)') {
-      ElMessage.info('没有可朗读的内容')
+      Message.info('没有可朗读的内容')
       return
     }
 
@@ -55,7 +55,7 @@ export function useSpeechOutput() {
       }
       audio.onerror = () => {
         if (seq === requestSeq) {
-          ElMessage.error('音频播放失败')
+          Message.error('音频播放失败')
           stop()
         }
       }

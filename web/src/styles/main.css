@@ -3,6 +3,7 @@
   --app-sidebar: #0f172a;
   --app-sidebar-text: #cbd5e1;
   --app-accent: #2563eb;
+  --app-danger: #f53f3f;
 }
 
 * {
@@ -104,4 +105,11 @@ a {
   margin-top: 4px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.arco-select-option:has(.session-option) {
+  height: auto;
+  line-height: 1.4;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }

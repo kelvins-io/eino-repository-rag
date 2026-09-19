@@ -8,85 +8,66 @@
     </div>
 
     <div class="panel">
-      <el-table v-loading="loading" :data="list" stripe>
-        <el-table-column label="租户" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div>{{ row.code }}</div>
-            <div v-if="row.name && row.name !== row.code" class="tenant-name">{{ row.name }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="user_count" label="用户数" width="90" />
-        <el-table-column label="文件总数" width="150">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_files" :min="1" :max="1000000" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="已上传文件数" width="120">
-          <template #default="{ row }">
-            <span :class="{ 'usage-over': overLimit(row.file_count, row.max_files) }">{{ row.file_count ?? 0 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="单文件上限(MB)" width="160">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_file_size_mb" :min="1" :max="2048" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="每日新建会话" width="160">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_sessions" :min="1" :max="1000000" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="今日已建会话数" width="130">
-          <template #default="{ row }">
-            <span :class="{ 'usage-over': overLimit(row.today_session_count, row.max_sessions) }">{{ row.today_session_count ?? 0 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="每会话轮次" width="150">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_turns" :min="1" :max="1000000" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="每日语音输入" width="150">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_voice_inputs" :min="1" :max="1000000" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="今日已使用语音输入数" width="170">
-          <template #default="{ row }">
-            <span :class="{ 'usage-over': overLimit(row.today_voice_inputs, row.max_voice_inputs) }">{{ row.today_voice_inputs ?? 0 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="每日文字转语音" width="160">
-          <template #default="{ row }">
-            <el-input-number v-model="row.max_tts" :min="1" :max="1000000" size="small" controls-position="right" />
-          </template>
-        </el-table-column>
-        <el-table-column label="今日已使用文字转语音数" width="190">
-          <template #default="{ row }">
-            <span :class="{ 'usage-over': overLimit(row.today_tts_count, row.max_tts) }">{{ row.today_tts_count ?? 0 }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" :loading="saving === row.code" @click="saveLimits(row)">保存</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <a-table
+        row-key="code"
+        :columns="columns"
+        :data="list"
+        :loading="loading"
+        :pagination="false"
+        :scroll="{ x: 2200 }"
+      >
+        <template #tenant="{ record }">
+          <div>{{ record.code }}</div>
+          <div v-if="record.name && record.name !== record.code" class="tenant-name">{{ record.name }}</div>
+        </template>
+        <template #created_at="{ record }">
+          {{ formatTime(record.created_at) }}
+        </template>
+        <template #max_files="{ record }">
+          <a-input-number v-model="record.max_files" :min="1" :max="1000000" size="small" :step="1" :precision="0" />
+        </template>
+        <template #file_count="{ record }">
+          <span :class="{ 'usage-over': overLimit(record.file_count, record.max_files) }">{{ record.file_count ?? 0 }}</span>
+        </template>
+        <template #max_file_size_mb="{ record }">
+          <a-input-number v-model="record.max_file_size_mb" :min="1" :max="2048" size="small" :step="1" :precision="0" />
+        </template>
+        <template #max_sessions="{ record }">
+          <a-input-number v-model="record.max_sessions" :min="1" :max="1000000" size="small" :step="1" :precision="0" />
+        </template>
+        <template #today_session_count="{ record }">
+          <span :class="{ 'usage-over': overLimit(record.today_session_count, record.max_sessions) }">{{ record.today_session_count ?? 0 }}</span>
+        </template>
+        <template #max_turns="{ record }">
+          <a-input-number v-model="record.max_turns" :min="1" :max="1000000" size="small" :step="1" :precision="0" />
+        </template>
+        <template #max_voice_inputs="{ record }">
+          <a-input-number v-model="record.max_voice_inputs" :min="1" :max="1000000" size="small" :step="1" :precision="0" />
+        </template>
+        <template #today_voice_inputs="{ record }">
+          <span :class="{ 'usage-over': overLimit(record.today_voice_inputs, record.max_voice_inputs) }">{{ record.today_voice_inputs ?? 0 }}</span>
+        </template>
+        <template #max_tts="{ record }">
+          <a-input-number v-model="record.max_tts" :min="1" :max="1000000" size="small" :step="1" :precision="0" />
+        </template>
+        <template #today_tts_count="{ record }">
+          <span :class="{ 'usage-over': overLimit(record.today_tts_count, record.max_tts) }">{{ record.today_tts_count ?? 0 }}</span>
+        </template>
+        <template #ops="{ record }">
+          <a-button type="text" size="small" :loading="saving === record.code" @click="saveLimits(record)">保存</a-button>
+        </template>
+      </a-table>
 
       <div class="pager">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next"
+        <a-pagination
+          :current="page"
+          :page-size="pageSize"
           :total="total"
-          @current-change="load"
-          @size-change="onSizeChange"
+          show-total
+          show-page-size
+          :page-size-options="[10, 20, 50, 100]"
+          @change="onPageChange"
+          @page-size-change="onPageSizeChange"
         />
       </div>
     </div>
@@ -95,7 +76,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 
 const loading = ref(false)
@@ -104,6 +85,23 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const saving = ref('')
+
+const columns = [
+  { title: '租户', slotName: 'tenant', width: 200 },
+  { title: '创建时间', slotName: 'created_at', width: 180 },
+  { title: '用户数', dataIndex: 'user_count', width: 90 },
+  { title: '文件总数', slotName: 'max_files', width: 150 },
+  { title: '已上传文件数', slotName: 'file_count', width: 120 },
+  { title: '单文件上限(MB)', slotName: 'max_file_size_mb', width: 160 },
+  { title: '每日新建会话', slotName: 'max_sessions', width: 160 },
+  { title: '今日已建会话数', slotName: 'today_session_count', width: 130 },
+  { title: '每会话轮次', slotName: 'max_turns', width: 150 },
+  { title: '每日语音输入', slotName: 'max_voice_inputs', width: 150 },
+  { title: '今日已使用语音输入数', slotName: 'today_voice_inputs', width: 170 },
+  { title: '每日文字转语音', slotName: 'max_tts', width: 160 },
+  { title: '今日已使用文字转语音数', slotName: 'today_tts_count', width: 190 },
+  { title: '操作', slotName: 'ops', width: 90, fixed: 'right' },
+]
 
 function formatTime(v) {
   if (!v) return '-'
@@ -131,7 +129,13 @@ async function load() {
   }
 }
 
-function onSizeChange() {
+function onPageChange(current) {
+  page.value = current
+  load()
+}
+
+function onPageSizeChange(size) {
+  pageSize.value = size
   page.value = 1
   load()
 }
@@ -144,27 +148,27 @@ async function saveLimits(row) {
   const maxVoiceInputs = Number(row.max_voice_inputs)
   const maxTTS = Number(row.max_tts)
   if (!Number.isInteger(maxFiles) || maxFiles < 1) {
-    ElMessage.warning('文件总数至少为 1')
+    Message.warning('文件总数至少为 1')
     return
   }
   if (!Number.isInteger(maxFileSizeMB) || maxFileSizeMB < 1) {
-    ElMessage.warning('单文件上限至少为 1MB')
+    Message.warning('单文件上限至少为 1MB')
     return
   }
   if (!Number.isInteger(maxSessions) || maxSessions < 1) {
-    ElMessage.warning('每日新建会话至少为 1')
+    Message.warning('每日新建会话至少为 1')
     return
   }
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
-    ElMessage.warning('每会话轮次至少为 1')
+    Message.warning('每会话轮次至少为 1')
     return
   }
   if (!Number.isInteger(maxVoiceInputs) || maxVoiceInputs < 1) {
-    ElMessage.warning('每日语音输入至少为 1')
+    Message.warning('每日语音输入至少为 1')
     return
   }
   if (!Number.isInteger(maxTTS) || maxTTS < 1) {
-    ElMessage.warning('每日文字转语音至少为 1')
+    Message.warning('每日文字转语音至少为 1')
     return
   }
   saving.value = row.code
@@ -178,7 +182,7 @@ async function saveLimits(row) {
       max_voice_inputs: maxVoiceInputs,
       max_tts: maxTTS,
     })
-    ElMessage.success('已保存')
+    Message.success('已保存')
   } catch {
     await load()
   } finally {
@@ -207,7 +211,7 @@ onUnmounted(() => {
 }
 
 .usage-over {
-  color: var(--el-color-danger);
+  color: var(--app-danger);
   font-weight: 600;
 }
 
@@ -215,5 +219,9 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+:deep(.arco-input-number) {
+  width: 120px;
 }
 </style>

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { clearAuth, getToken } from '@/utils/auth'
 
 const http = axios.create({
@@ -33,7 +33,7 @@ http.interceptors.response.use(
     const body = res.data
     if (body && typeof body.code === 'number' && body.code !== 0) {
       const msg = body.message || '请求失败'
-      ElMessage.error(msg)
+      Message.error(msg)
       return Promise.reject(new Error(msg))
     }
     return body?.data !== undefined ? body.data : body
@@ -47,7 +47,7 @@ http.interceptors.response.use(
     if (shouldForceLogout(status, msg)) {
       redirectToLogin()
     }
-    ElMessage.error(msg)
+    Message.error(msg)
     return Promise.reject(new Error(msg))
   },
 )
@@ -239,7 +239,7 @@ export const api = {
       if (shouldForceLogout(res.status, msg)) {
         redirectToLogin()
       }
-      ElMessage.error(msg)
+      Message.error(msg)
       throw new Error(msg)
     }
     return res.blob()

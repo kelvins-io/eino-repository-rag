@@ -33,12 +33,12 @@ export function formatTime(v) {
 
 export function statusType(status) {
   const map = {
-    pending: 'info',
-    indexing: 'warning',
-    ready: 'success',
-    failed: 'danger',
+    pending: 'gray',
+    indexing: 'orange',
+    ready: 'green',
+    failed: 'red',
   }
-  return map[status] || 'info'
+  return map[status] || 'gray'
 }
 
 export function statusLabel(status) {

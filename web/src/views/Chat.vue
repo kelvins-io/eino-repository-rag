@@ -5,62 +5,57 @@
         <h2>知识库问答</h2>
         <p class="sub">基于 RAG 检索 + 会话记忆回答问题；可选 Agent 多步检索</p>
       </div>
-      <el-button :disabled="sessionRemaining === 0" @click="resetSession">{{ newSessionLabel }}</el-button>
+      <a-button :disabled="sessionRemaining === 0" @click="resetSession">{{ newSessionLabel }}</a-button>
     </div>
 
-    <el-row :gutter="16">
-      <el-col :span="6">
+    <a-row :gutter="16">
+      <a-col :span="6">
         <div class="panel side">
-          <el-form label-position="top">
-            <el-form-item label="问答模式">
-              <el-radio-group v-model="chatMode" size="small">
-                <el-radio-button value="rag">标准 RAG</el-radio-button>
-                <el-radio-button value="agent">Agent</el-radio-button>
-              </el-radio-group>
+          <a-form :model="{}" layout="vertical">
+            <a-form-item label="问答模式">
+              <a-radio-group v-model="chatMode" type="button" size="small">
+                <a-radio value="rag">标准 RAG</a-radio>
+                <a-radio value="agent">Agent</a-radio>
+              </a-radio-group>
               <div class="session-hint">
                 Agent 可多轮调用知识库检索，延迟与费用更高。
               </div>
-            </el-form-item>
-            <el-form-item label="知识库">
-              <el-select
+            </a-form-item>
+            <a-form-item label="知识库">
+              <a-select
                 v-model="kbId"
                 placeholder="选择知识库"
-                style="width: 100%"
                 @change="onKbChange"
               >
-                <el-option
+                <a-option
                   v-for="kb in kbs"
                   :key="kb.id"
                   :label="kb.name"
                   :value="kb.id"
                 />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="目录过滤（可选）">
-              <el-tree-select
+              </a-select>
+            </a-form-item>
+            <a-form-item label="目录过滤（可选）">
+              <a-tree-select
                 v-model="directoryId"
                 :data="treeData"
-                clearable
-                check-strictly
-                node-key="id"
-                :props="{ label: 'name', children: 'children', value: 'id' }"
+                allow-clear
+                :field-names="{ key: 'id', title: 'name', children: 'children' }"
                 placeholder="不选则检索整个知识库"
-                style="width: 100%"
+                :tree-props="{ defaultExpandAll: true }"
                 @change="onDirectoryChange"
               />
-            </el-form-item>
-            <el-form-item label="Session ID">
-              <el-select
+            </a-form-item>
+            <a-form-item label="Session ID">
+              <a-select
                 v-model="sessionId"
-                filterable
+                allow-search
                 allow-create
-                default-first-option
                 placeholder="选择或筛选历史会话"
-                style="width: 100%"
                 :loading="sessionsLoading"
                 @change="onSessionChange"
               >
-                <el-option
+                <a-option
                   v-for="s in sessions"
                   :key="s.session_id"
                   :label="sessionLabel(s)"
@@ -73,19 +68,19 @@
                       <span>{{ formatTime(s.updated_at) }}</span>
                     </div>
                   </div>
-                </el-option>
-              </el-select>
+                </a-option>
+              </a-select>
               <div class="session-hint">
                 展示当前租户/用户在所选知识库
                 {{ directoryId ? '与目录' : '（未选目录）' }}
                 下的历史会话，可筛选切换。
               </div>
-            </el-form-item>
-          </el-form>
+            </a-form-item>
+          </a-form>
         </div>
-      </el-col>
+      </a-col>
 
-      <el-col :span="18">
+      <a-col :span="18">
         <div class="panel chat-panel">
           <div ref="listRef" class="messages">
             <div v-if="!messages.length" class="empty">
@@ -101,51 +96,48 @@
                 {{ m.content }}
               </div>
               <div v-if="showActions(m, idx)" class="msg-actions">
-                <el-button
+                <a-button
                   v-if="canSpeak(m, idx)"
                   class="tts-btn"
-                  text
+                  type="text"
                   size="small"
                   :loading="loadingIdx === idx"
-                  :type="speakingIdx === idx ? 'primary' : ''"
+                  :status="speakingIdx === idx ? 'success' : 'normal'"
                   :disabled="ttsRemaining === 0 && speakingIdx !== idx && loadingIdx !== idx"
                   :aria-label="ttsButtonLabel(idx)"
                   @click="speak(idx, m.content)"
                 >
-                  <el-icon>
-                    <VideoPause v-if="speakingIdx === idx" />
-                    <VideoPlay v-else />
-                  </el-icon>
+                  <icon-pause v-if="speakingIdx === idx" />
+                  <icon-play-arrow v-else />
                   {{ speakingIdx === idx ? '停止朗读' : '朗读' }}
-                </el-button>
+                </a-button>
                 <div v-if="canFeedback(m, idx)" class="feedback">
-                  <el-button
-                    text
+                  <a-button
+                    type="text"
                     size="small"
-                    :type="m.vote === 'up' ? 'primary' : ''"
+                    :status="m.vote === 'up' ? 'success' : 'normal'"
                     :disabled="feedbackId === m.id"
                     aria-label="点赞"
                     @click="setVote(m, 'up')"
                   >
                     {{ m.vote === 'up' ? '已赞' : '赞' }}
-                  </el-button>
-                  <el-button
-                    text
+                  </a-button>
+                  <a-button
+                    type="text"
                     size="small"
-                    :type="m.vote === 'down' ? 'danger' : ''"
+                    :status="m.vote === 'down' ? 'danger' : 'normal'"
                     :disabled="feedbackId === m.id"
                     aria-label="点踩"
                     @click="setVote(m, 'down')"
                   >
                     {{ m.vote === 'down' ? '已踩' : '踩' }}
-                  </el-button>
+                  </a-button>
                   <span class="feedback-label">评分</span>
-                  <el-rate
+                  <a-rate
                     class="feedback-rate"
                     :model-value="m.score || 0"
                     :disabled="feedbackId === m.id"
-                    clearable
-                    aria-label="评分"
+                    allow-clear
                     @change="(val) => setScore(m, val)"
                   />
                 </div>
@@ -161,11 +153,8 @@
                 </div>
               </div>
               <div v-if="m.sources?.length" class="sources">
-                <el-collapse>
-                  <el-collapse-item :name="idx">
-                    <template #title>
-                      <span class="sources-title">引用来源（{{ m.sources.length }}）</span>
-                    </template>
+                <a-collapse :bordered="false">
+                  <a-collapse-item :key="idx" :header="`引用来源（${m.sources.length}）`">
                     <div
                       v-for="(s, i) in m.sources"
                       :key="s.id || i"
@@ -182,48 +171,45 @@
                       </div>
                       <div class="source-body">{{ s.content }}</div>
                     </div>
-                  </el-collapse-item>
-                </el-collapse>
+                  </a-collapse-item>
+                </a-collapse>
               </div>
               <div v-if="canLabel(m, idx)" class="relevance">
                 <span class="feedback-label">相关文档</span>
-                <el-select
+                <a-select
                   :model-value="questionOf(idx).relevant_doc_ids"
                   multiple
-                  filterable
-                  collapse-tags
-                  collapse-tags-tooltip
+                  allow-search
+                  :max-tag-count="1"
                   placeholder="选择这条问题应召回的文档"
                   class="relevance-select"
                   :disabled="labelingId === questionOf(idx).id"
                   @change="(val) => setQuestionDocs(idx, val)"
                 >
-                  <el-option
+                  <a-option
                     v-for="d in kbDocs"
                     :key="d.id"
                     :label="docOptionLabel(d)"
                     :value="String(d.id)"
                   />
-                </el-select>
-                <el-button
+                </a-select>
+                <a-button
                   size="small"
-                  type="primary"
-                  plain
+                  type="outline"
                   :loading="labelingId === questionOf(idx).id"
                   @click="saveRelevance(questionOf(idx))"
                 >
                   保存标注
-                </el-button>
+                </a-button>
               </div>
             </div>
           </div>
 
           <div class="composer">
             <div class="composer-input">
-              <el-input
+              <a-textarea
                 v-model="query"
-                type="textarea"
-                :rows="3"
+                :auto-size="{ minRows: 3, maxRows: 6 }"
                 :placeholder="speechPlaceholder"
                 @keydown="onKeydown"
               />
@@ -236,44 +222,42 @@
               </div>
             </div>
             <div class="composer-actions">
-              <el-tooltip :content="speechTip" placement="top">
+              <a-tooltip :content="speechTip" position="top">
                 <span class="speech-btn-wrap">
-                  <el-button
+                  <a-button
                     class="speech-btn"
                     :class="{ 'is-listening': listening }"
-                    :type="listening ? 'danger' : 'default'"
+                    :status="listening ? 'danger' : 'normal'"
+                    :type="listening ? 'primary' : 'secondary'"
                     :loading="transcribing"
                     :disabled="asking || transcribing || !speechSupported || voiceRemaining === 0"
                     :aria-label="speechAriaLabel"
                     @click="toggleSpeech"
                   >
-                    <el-icon>
-                      <Microphone />
-                    </el-icon>
+                    <icon-voice />
                     <span>{{ voiceButtonLabel }}</span>
-                  </el-button>
+                  </a-button>
                 </span>
-              </el-tooltip>
-              <el-button
+              </a-tooltip>
+              <a-button
                 type="primary"
                 :loading="asking"
                 :disabled="!kbId || !query.trim() || listening || transcribing"
                 @click="ask"
               >
                 发送
-              </el-button>
+              </a-button>
             </div>
           </div>
         </div>
-      </el-col>
-    </el-row>
+      </a-col>
+    </a-row>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Microphone, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { isTenantAdmin } from '@/utils/auth'
 import { useSpeechInput } from '@/composables/useSpeechInput'
@@ -397,7 +381,8 @@ async function onKbChange() {
   await Promise.all([reloadSessionsAndHistory(), loadKbDocs()])
 }
 
-async function onDirectoryChange() {
+async function onDirectoryChange(value) {
+  if (value === '' || value === null) directoryId.value = undefined
   await reloadSessionsAndHistory()
 }
 
@@ -467,7 +452,7 @@ function resetSession() {
   stopSpeak()
   sessionId.value = newSessionId()
   messages.value = []
-  ElMessage.success('已开始新会话')
+  Message.success('已开始新会话')
 }
 
 async function scrollBottom() {
@@ -556,7 +541,7 @@ async function saveRelevance(question) {
       doc_ids: prev,
     })
     question.relevant_doc_ids = saved?.doc_ids || []
-    ElMessage.success('已保存相关文档标注')
+    Message.success('已保存相关文档标注')
   } catch {
     question.relevant_doc_ids = prev
   } finally {
@@ -704,7 +689,7 @@ async function ask() {
     if (!messages.value[assistantIdx].content) {
       messages.value[assistantIdx].content = msg
     }
-    ElMessage.error(msg)
+    Message.error(msg)
   } finally {
     asking.value = false
     await loadQuota()
@@ -719,6 +704,11 @@ onMounted(async () => {
 <style scoped>
 .side {
   min-height: 560px;
+}
+
+.side :deep(.arco-select-view),
+.side :deep(.arco-tree-select) {
+  width: 100%;
 }
 
 .session-hint {
@@ -812,13 +802,9 @@ onMounted(async () => {
   height: 24px;
 }
 
-.feedback-rate :deep(.el-rate) {
-  height: 24px;
-}
-
-.feedback-rate :deep(.el-rate__icon) {
+.feedback-rate :deep(.arco-rate) {
   font-size: 16px;
-  margin-right: 2px;
+  min-height: 24px;
 }
 
 .relevance {
@@ -841,36 +827,30 @@ onMounted(async () => {
   height: 28px;
 }
 
-.tts-btn :deep(.el-icon) {
-  margin-right: 4px;
-}
-
 .sources {
   max-width: 780px;
   width: 100%;
 }
 
-.sources :deep(.el-collapse) {
+.sources :deep(.arco-collapse) {
   border: none;
   background: transparent;
 }
 
-.sources :deep(.el-collapse-item__header) {
-  height: auto;
-  line-height: 1.4;
-  padding: 4px 0;
+.sources :deep(.arco-collapse-item-header) {
   background: transparent;
   border: none;
   color: #64748b;
   font-size: 13px;
+  padding: 4px 0;
 }
 
-.sources :deep(.el-collapse-item__wrap) {
-  border: none;
+.sources :deep(.arco-collapse-item-content) {
   background: transparent;
+  padding: 0;
 }
 
-.sources :deep(.el-collapse-item__content) {
+.sources :deep(.arco-collapse-item-content-box) {
   padding: 4px 0 0;
 }
 

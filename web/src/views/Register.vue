@@ -3,38 +3,42 @@
     <div class="auth-card">
       <h1>注册</h1>
       <p class="sub">填写已有租户 ID 创建账号（租户需先由管理员创建）</p>
-      <el-form :model="form" @submit.prevent="onSubmit" label-position="top">
-        <el-form-item label="租户 ID" required>
-          <el-input v-model="form.tenant_id" placeholder="请输入已有租户 ID" autocomplete="organization" />
-        </el-form-item>
-        <el-form-item label="用户名" required>
-          <el-input v-model="form.username" placeholder="用户名" autocomplete="username" />
-        </el-form-item>
-        <el-form-item label="显示名">
-          <el-input v-model="form.display_name" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="密码" required>
-          <el-input
+      <a-form :model="form" layout="vertical" @submit="onSubmit">
+        <a-form-item field="tenant_id" label="租户 ID" required>
+          <a-input
+            v-model="form.tenant_id"
+            placeholder="请输入已有租户 ID"
+            :input-attrs="{ autocomplete: 'organization' }"
+          />
+        </a-form-item>
+        <a-form-item field="username" label="用户名" required>
+          <a-input
+            v-model="form.username"
+            placeholder="用户名"
+            :input-attrs="{ autocomplete: 'username' }"
+          />
+        </a-form-item>
+        <a-form-item field="display_name" label="显示名">
+          <a-input v-model="form.display_name" placeholder="可选" />
+        </a-form-item>
+        <a-form-item field="password" label="密码" required>
+          <a-input-password
             v-model="form.password"
-            type="password"
-            show-password
             placeholder="至少 6 位"
-            autocomplete="new-password"
+            :input-attrs="{ autocomplete: 'new-password' }"
           />
-        </el-form-item>
-        <el-form-item label="确认密码" required>
-          <el-input
+        </a-form-item>
+        <a-form-item field="password2" label="确认密码" required>
+          <a-input-password
             v-model="form.password2"
-            type="password"
-            show-password
             placeholder="再次输入密码"
-            autocomplete="new-password"
+            :input-attrs="{ autocomplete: 'new-password' }"
           />
-        </el-form-item>
-        <el-button type="primary" class="submit" :loading="loading" native-type="submit">
+        </a-form-item>
+        <a-button type="primary" class="submit" :loading="loading" html-type="submit">
           注册并登录
-        </el-button>
-      </el-form>
+        </a-button>
+      </a-form>
       <div class="footer">
         已有账号？
         <router-link to="/login">去登录</router-link>
@@ -47,7 +51,7 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { Message } from '@arco-design/web-vue'
 import { api } from '@/api'
 import { setAuth } from '@/utils/auth'
 
@@ -63,23 +67,23 @@ const form = reactive({
 
 async function onSubmit() {
   if (!form.tenant_id.trim()) {
-    ElMessage.warning('请填写租户 ID')
+    Message.warning('请填写租户 ID')
     return
   }
   if (form.tenant_id.trim().toLowerCase() === 'default') {
-    ElMessage.warning('当前租户不允许注册新用户')
+    Message.warning('当前租户不允许注册新用户')
     return
   }
   if (!form.username.trim()) {
-    ElMessage.warning('请填写用户名')
+    Message.warning('请填写用户名')
     return
   }
   if (form.password.length < 6) {
-    ElMessage.warning('密码至少 6 位')
+    Message.warning('密码至少 6 位')
     return
   }
   if (form.password !== form.password2) {
-    ElMessage.warning('两次密码不一致')
+    Message.warning('两次密码不一致')
     return
   }
   loading.value = true
@@ -91,7 +95,7 @@ async function onSubmit() {
       display_name: form.display_name.trim(),
     })
     setAuth(data)
-    ElMessage.success('注册成功')
+    Message.success('注册成功')
     router.replace('/knowledge-bases')
   } finally {
     loading.value = false
