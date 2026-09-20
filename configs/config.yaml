@@ -5,6 +5,8 @@ server:
 log:
   level: "info"          # debug | info | warn | error
   encoding: "console"    # console | json
+  rotate_daily: true     # 文件输出按本地日期轮转，例如 logs/app.log -> logs/app-2006-01-02.log
+  max_age_days: 30       # 归档保留天数；负数表示不删除
   output_paths:
     - "stdout"
   error_output_paths:

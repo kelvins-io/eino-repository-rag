@@ -67,6 +67,12 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.Redis.DialTimeout() != 5*time.Second || c.Milvus.ConnectTimeout() != 10*time.Second {
 		t.Fatalf("duration helpers dial=%s milvus=%s", c.Redis.DialTimeout(), c.Milvus.ConnectTimeout())
 	}
+	if c.Log.RotateDaily == nil || !*c.Log.RotateDaily {
+		t.Fatal("rotate_daily should default to true")
+	}
+	if c.Log.MaxAgeDays != 30 {
+		t.Fatalf("max_age_days=%d", c.Log.MaxAgeDays)
+	}
 }
 
 func TestApplyEnvOverridesTimeouts(t *testing.T) {

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -11,9 +12,10 @@ import (
 )
 
 var (
-	mu     sync.RWMutex
-	global *zap.Logger
-	sugar  *zap.SugaredLogger
+	mu      sync.RWMutex
+	global  *zap.Logger
+	sugar   *zap.SugaredLogger
+	closers []io.Closer
 )
 
 // Config zap 日志配置。
@@ -26,24 +28,28 @@ type Config struct {
 	OutputPaths []string `yaml:"output_paths"`
 	// ErrorOutputPaths 错误输出路径
 	ErrorOutputPaths []string `yaml:"error_output_paths"`
+	// RotateDaily 为 true 时，文件输出按本地日期轮转（stdout/stderr 不受影响）
+	RotateDaily bool `yaml:"rotate_daily"`
+	// MaxAgeDays 归档保留天数；超过的按日期归档会被删除。<=0 表示不删除
+	MaxAgeDays int `yaml:"max_age_days"`
 }
 
 func init() {
 	// 保证配置加载前 Fatal/错误也有可用 logger
-	l, err := newLogger(Config{Level: "info", Encoding: "console"})
+	l, cs, err := newLogger(Config{Level: "info", Encoding: "console"})
 	if err != nil {
 		panic(fmt.Sprintf("init default logger: %v", err))
 	}
-	replaceGlobals(l)
+	replaceGlobals(l, cs)
 }
 
 // Init 按配置初始化全局 logger。
 func Init(cfg Config) error {
-	l, err := newLogger(cfg)
+	l, cs, err := newLogger(cfg)
 	if err != nil {
 		return err
 	}
-	replaceGlobals(l)
+	replaceGlobals(l, cs)
 	return nil
 }
 
@@ -82,18 +88,23 @@ func NamedS(name string) *zap.SugaredLogger {
 	return L().Named(name).Sugar()
 }
 
-func replaceGlobals(l *zap.Logger) {
+func replaceGlobals(l *zap.Logger, cs []io.Closer) {
 	mu.Lock()
-	defer mu.Unlock()
+	old := closers
 	if global != nil {
 		_ = global.Sync()
 	}
 	global = l
 	sugar = l.Sugar()
+	closers = cs
+	mu.Unlock()
 	zap.ReplaceGlobals(l)
+	for _, c := range old {
+		_ = c.Close()
+	}
 }
 
-func newLogger(cfg Config) (*zap.Logger, error) {
+func newLogger(cfg Config) (*zap.Logger, []io.Closer, error) {
 	level := parseLevel(cfg.Level)
 	encoding := strings.ToLower(strings.TrimSpace(cfg.Encoding))
 	if encoding == "" {
@@ -125,13 +136,14 @@ func newLogger(cfg Config) (*zap.Logger, error) {
 		encoder = zapcore.NewConsoleEncoder(encCfg)
 	}
 
-	sink, err := openSinks(outputs)
+	sink, sinkClosers, err := openSinks(outputs, cfg.RotateDaily, cfg.MaxAgeDays)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	errSink, err := openSinks(errOutputs)
+	errSink, errClosers, err := openSinks(errOutputs, cfg.RotateDaily, cfg.MaxAgeDays)
 	if err != nil {
-		return nil, err
+		closeAll(sinkClosers)
+		return nil, nil, err
 	}
 
 	core := zapcore.NewCore(encoder, sink, level)
@@ -140,7 +152,7 @@ func newLogger(cfg Config) (*zap.Logger, error) {
 		zap.AddCaller(),
 		zap.AddStacktrace(zapcore.ErrorLevel),
 	}
-	return zap.New(core, opts...), nil
+	return zap.New(core, opts...), append(sinkClosers, errClosers...), nil
 }
 
 func parseLevel(s string) zap.AtomicLevel {
@@ -162,8 +174,13 @@ func parseLevel(s string) zap.AtomicLevel {
 	return lvl
 }
 
-func openSinks(paths []string) (zapcore.WriteSyncer, error) {
+func openSinks(paths []string, rotateDaily bool, maxAgeDays int) (zapcore.WriteSyncer, []io.Closer, error) {
 	writers := make([]zapcore.WriteSyncer, 0, len(paths))
+	var opened []io.Closer
+	fail := func(err error) (zapcore.WriteSyncer, []io.Closer, error) {
+		closeAll(opened)
+		return nil, nil, err
+	}
 	for _, p := range paths {
 		p = strings.TrimSpace(p)
 		switch p {
@@ -172,15 +189,31 @@ func openSinks(paths []string) (zapcore.WriteSyncer, error) {
 		case "stderr":
 			writers = append(writers, zapcore.AddSync(os.Stderr))
 		default:
+			if rotateDaily {
+				dw, err := openDailyWriter(p, maxAgeDays, nil)
+				if err != nil {
+					return fail(err)
+				}
+				writers = append(writers, dw)
+				opened = append(opened, dw)
+				continue
+			}
 			f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 			if err != nil {
-				return nil, fmt.Errorf("open log file %s: %w", p, err)
+				return fail(fmt.Errorf("open log file %s: %w", p, err))
 			}
 			writers = append(writers, zapcore.AddSync(f))
+			opened = append(opened, f)
 		}
 	}
 	if len(writers) == 1 {
-		return writers[0], nil
+		return writers[0], opened, nil
 	}
-	return zap.CombineWriteSyncers(writers...), nil
+	return zap.CombineWriteSyncers(writers...), opened, nil
+}
+
+func closeAll(closers []io.Closer) {
+	for _, c := range closers {
+		_ = c.Close()
+	}
 }

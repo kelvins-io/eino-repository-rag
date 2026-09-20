@@ -54,10 +54,14 @@ type LogConfig struct {
 	Level string `yaml:"level"`
 	// Encoding: json | console
 	Encoding string `yaml:"encoding"`
-	// OutputPaths 输出路径，如 stdout / 文件路径
+	// OutputPaths 输出路径，如 stdout / 文件路径。文件会按本地日期轮转。
 	OutputPaths []string `yaml:"output_paths"`
 	// ErrorOutputPaths 错误输出路径
 	ErrorOutputPaths []string `yaml:"error_output_paths"`
+	// RotateDaily 文件输出是否按本地日期轮转；nil 表示默认开启。stdout/stderr 不轮转。
+	RotateDaily *bool `yaml:"rotate_daily"`
+	// MaxAgeDays 归档保留天数。0 表示默认 30 天；负数表示不删除过期归档。
+	MaxAgeDays int `yaml:"max_age_days"`
 }
 
 // VectorIndexProvider 向量索引后端
@@ -494,6 +498,13 @@ func (c *Config) setDefaults() {
 	}
 	if len(c.Log.ErrorOutputPaths) == 0 {
 		c.Log.ErrorOutputPaths = []string{"stderr"}
+	}
+	if c.Log.RotateDaily == nil {
+		enabled := true
+		c.Log.RotateDaily = &enabled
+	}
+	if c.Log.MaxAgeDays == 0 {
+		c.Log.MaxAgeDays = 30
 	}
 	if c.JWT.Secret == "" {
 		c.JWT.Secret = "eino-rag-dev-secret-change-me"

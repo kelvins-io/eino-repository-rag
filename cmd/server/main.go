@@ -41,6 +41,8 @@ func main() {
 		Encoding:         cfg.Log.Encoding,
 		OutputPaths:      cfg.Log.OutputPaths,
 		ErrorOutputPaths: cfg.Log.ErrorOutputPaths,
+		RotateDaily:      cfg.Log.RotateDaily != nil && *cfg.Log.RotateDaily,
+		MaxAgeDays:       cfg.Log.MaxAgeDays,
 	}); err != nil {
 		logger.L().Fatal("init logger failed", zap.Error(err))
 	}

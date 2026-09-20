@@ -5,6 +5,8 @@ server:
 log:
   level: "info"
   encoding: "json"
+  rotate_daily: true
+  max_age_days: 30
   output_paths:
     - "stdout"
   error_output_paths:
