@@ -2,8 +2,9 @@
   <div class="auth-page">
     <LanguageSwitch class="auth-lang" />
     <div class="auth-card">
+      <div class="auth-brand">EINO RAG</div>
       <h1>{{ t('auth.loginTitle') }}</h1>
-      <p class="sub">{{ t('auth.loginSub') }}</p>
+      <p class="auth-hint">{{ t('auth.loginSub') }}</p>
       <el-form :model="form" @submit.prevent="onSubmit" label-position="top">
         <el-form-item :label="t('auth.tenantId')" required>
           <el-input v-model="form.tenant_id" :placeholder="t('auth.tenantIdExample')" autocomplete="organization" />
@@ -20,11 +21,11 @@
             autocomplete="current-password"
           />
         </el-form-item>
-        <el-button type="primary" class="submit" :loading="loading" native-type="submit">
+        <el-button type="primary" class="auth-submit" :loading="loading" native-type="submit">
           {{ t('auth.loginTitle') }}
         </el-button>
       </el-form>
-      <div class="footer">
+      <div class="auth-footer">
         {{ t('auth.noAccount') }}
         <router-link to="/register">{{ t('auth.goRegister') }}</router-link>
       </div>
@@ -81,47 +82,67 @@ async function onSubmit() {
 
 <style scoped>
 .auth-page {
+  --bg: #f4f6fb;
+  --panel: #ffffff;
+  --line: #e6eaf2;
+  --text: #1f2a37;
+  --muted: #6b7280;
+  --brand: #3b6dff;
+
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   position: relative;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(59, 109, 255, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(17, 24, 39, 0.08), transparent 50%),
+    var(--bg);
 }
 
 .auth-card {
   width: 100%;
   max-width: 400px;
-  background: #fff;
-  border-radius: 12px;
-  padding: 28px 28px 22px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+  box-shadow: 0 12px 40px rgba(17, 24, 39, 0.06);
 }
 
-h1 {
-  margin: 0;
-  font-size: 22px;
+.auth-brand {
+  color: var(--brand);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
 }
 
-.sub {
-  margin: 6px 0 20px;
-  color: #64748b;
-  font-size: 13px;
+.auth-card h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
 }
 
-.submit {
+.auth-hint {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.auth-submit {
   width: 100%;
-  margin-top: 4px;
 }
 
-.footer {
+.auth-footer {
   margin-top: 16px;
   text-align: center;
-  font-size: 13px;
-  color: #64748b;
+  color: var(--muted);
+  font-size: 14px;
 }
 
-.footer a {
-  color: #2563eb;
+.auth-footer a {
+  color: var(--brand);
   text-decoration: none;
 }
 
@@ -132,12 +153,12 @@ h1 {
   bottom: 24px;
   text-align: center;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--muted);
   text-decoration: none;
 }
 
 .contact:hover {
-  color: #fff;
+  color: var(--brand);
 }
 
 .auth-lang {
