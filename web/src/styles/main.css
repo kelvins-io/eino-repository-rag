@@ -1,8 +1,13 @@
 :root {
-  --app-bg: #f3f5f8;
-  --app-sidebar: #0f172a;
-  --app-sidebar-text: #cbd5e1;
+  --app-bg: #f4f6fb;
+  --app-sidebar: #e8f1ff;
+  --app-sidebar-text: #3b4a63;
+  --app-sidebar-active: #3b6dff;
   --app-accent: #2563eb;
+  --app-bg-glow:
+    radial-gradient(1200px 600px at 10% -10%, rgba(59, 109, 255, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(17, 24, 39, 0.08), transparent 50%),
+    var(--app-bg);
 }
 
 * {
@@ -15,7 +20,7 @@ body,
   margin: 0;
   height: 100%;
   font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
-  background: var(--app-bg);
+  background: var(--app-bg-glow);
   color: #0f172a;
 }
 

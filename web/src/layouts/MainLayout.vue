@@ -11,9 +11,9 @@
       <el-menu
         :default-active="active"
         router
-        background-color="#0f172a"
-        text-color="#cbd5e1"
-        active-text-color="#fff"
+        background-color="transparent"
+        text-color="#3b4a63"
+        active-text-color="#3b6dff"
       >
         <el-menu-item index="/knowledge-bases">
           <el-icon><Collection /></el-icon>
@@ -116,6 +116,7 @@ onUnmounted(() => {
 <style scoped>
 .layout {
   min-height: 100vh;
+  background: transparent;
 }
 
 .aside {
@@ -123,6 +124,7 @@ onUnmounted(() => {
   color: var(--app-sidebar-text);
   display: flex;
   flex-direction: column;
+  border-right: 1px solid #d7e4fb;
 }
 
 .brand {
@@ -145,12 +147,12 @@ onUnmounted(() => {
 
 .brand-name {
   font-weight: 650;
-  color: #fff;
+  color: #1f2a37;
 }
 
 .brand-sub {
   font-size: 12px;
-  color: #94a3b8;
+  color: #6b7c99;
 }
 
 .header {
@@ -179,9 +181,24 @@ onUnmounted(() => {
 
 .main {
   padding: 20px;
+  background: transparent;
+}
+
+:deep(.el-container) {
+  background: transparent;
 }
 
 :deep(.el-menu) {
   border-right: none;
+  background: transparent;
+}
+
+:deep(.el-menu-item:hover) {
+  background: rgba(59, 109, 255, 0.08) !important;
+}
+
+:deep(.el-menu-item.is-active) {
+  background: rgba(59, 109, 255, 0.14) !important;
+  font-weight: 600;
 }
 </style>
