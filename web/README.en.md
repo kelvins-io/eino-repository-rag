@@ -21,7 +21,9 @@ Or from the repo root:
 make web-install && make web
 ```
 
-Default URL: http://localhost:5173 . In development Vite proxies `/api` and `/health` to `http://localhost:8080`. `.env.development` sets `VITE_API_BASE` empty so the browser uses the same origin (the proxy).
+Default URL: http://localhost:5173 . In development Vite proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` to `http://localhost:8080`. `.env.development` sets `VITE_API_BASE` empty so the browser uses the same origin (the proxy).
+
+Proxy / subpath prefix: set `VITE_BASE=/rag` in `web/.env.*` or the environment (path only, no origin). Then open http://localhost:5173/rag/ ; the SPA, assets, and same-origin API all use that prefix. Empty or `/` keeps the app at the site root.
 
 First login: change the tenant ID to `default` and use that tenant's `admin` password printed in backend logs. `default` cannot self-register; other tenants can create accounts at `/register`.
 
@@ -34,7 +36,7 @@ npm run build      # writes dist/
 npm run preview    # preview the production build
 ```
 
-`.env.production` defaults to `VITE_API_BASE=http://localhost:8080` (browser talks to the API directly; needs CORS). The Docker image builds with `VITE_API_BASE` empty; nginx reverse-proxies `/api` and `/health` on the same origin, so you do not need to change that file.
+`.env.production` defaults to `VITE_API_BASE=http://localhost:8080` (browser talks to the API directly; needs CORS). The Docker image builds with `VITE_API_BASE` empty; nginx reverse-proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` on the same origin, so you do not need to change that file. The `VITE_BASE` build arg (default `/`) must match the frontend prefix.
 
 From the repo root:
 
@@ -84,8 +86,9 @@ web/
     router/        # Routes and auth guards
     utils/         # JWT storage, platform/tenant admin checks
   Dockerfile       # Multi-stage: Vite build + nginx
-  nginx.conf       # Static files + proxy /api, /health
-  vite.config.js   # Dev proxy to :8080
+  nginx.conf       # Static files + proxy /api, /health (site root)
+  nginx.prefix.conf # Used by the Dockerfile when VITE_BASE is a subpath
+  vite.config.js   # Dev proxy to :8080; reads VITE_BASE
 ```
 
 ## Stack

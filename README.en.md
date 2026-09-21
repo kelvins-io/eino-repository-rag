@@ -298,9 +298,9 @@ npm run dev
 # or from repo root: make web-install && make web
 ```
 
-Open http://localhost:5173 . In development Vite proxies `/api` and `/health` to the backend. Production builds use `VITE_API_BASE` from `web/.env.production` and talk to the API directly (needs CORS).
+Open http://localhost:5173 . In development Vite proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` to the backend. Production builds use `VITE_API_BASE` from `web/.env.production` and talk to the API directly (needs CORS). For a reverse-proxy subpath, set `VITE_BASE=/rag` (then open http://localhost:5173/rag/ ).
 
-The Docker frontend image (`web/Dockerfile`) builds with `VITE_API_BASE=` (same origin); nginx reverse-proxies the API, so you do not need to change `.env.production`.
+The Docker frontend image (`web/Dockerfile`) builds with `VITE_API_BASE=` (same origin); nginx reverse-proxies the API, so you do not need to change `.env.production`. Pass `VITE_BASE` (default `/`) as a build arg for a subpath.
 
 UI: login/register (`?tenant_id=` prefills the tenant ID, otherwise `guest`), Chinese/English locale switch, knowledge-base CRUD, directory tree, document import/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. Documents whose source file was removed after a successful index cannot be reindexed. Platform admin login still requires tenant ID `default`.
 

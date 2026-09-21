@@ -21,7 +21,9 @@ npm run dev
 make web-install && make web
 ```
 
-默认 http://localhost:5173 。开发模式下 Vite 把 `/api`、`/health` 代理到 `http://localhost:8080`，`.env.development` 中 `VITE_API_BASE` 为空（同源走代理）。
+默认 http://localhost:5173 。开发模式下 Vite 把 `{VITE_BASE}/api`、`{VITE_BASE}/health` 代理到 `http://localhost:8080`，`.env.development` 中 `VITE_API_BASE` 为空（同源走代理）。
+
+子路径 / 反向代理前缀：在 `web/.env.*` 或环境变量里设置 `VITE_BASE=/rag`（不要末尾域名）。开发时打开 http://localhost:5173/rag/ ；页面、静态资源和同源 API 都会带上该前缀。留空或 `/` 则与现在一样挂在站点根路径。
 
 首次使用：在登录页把租户 ID 改为 `default`，用后端日志里该租户 `admin` 的初始密码登录。`default` 不允许自助注册，其他租户可在 `/register` 创建账号。
 
@@ -34,7 +36,7 @@ npm run build      # 产出 dist/
 npm run preview    # 预览生产构建
 ```
 
-`.env.production` 默认 `VITE_API_BASE=http://localhost:8080`，浏览器直连后端（依赖 CORS）。Docker 镜像构建时会把 `VITE_API_BASE` 置空，由 nginx 同源反代 `/api`、`/health`，不必改该文件。
+`.env.production` 默认 `VITE_API_BASE=http://localhost:8080`，浏览器直连后端（依赖 CORS）。Docker 镜像构建时会把 `VITE_API_BASE` 置空，由 nginx 同源反代 `{VITE_BASE}/api`、`{VITE_BASE}/health`，不必改该文件。构建参数 `VITE_BASE`（默认 `/`）与前端前缀一致。
 
 仓库根目录：
 
@@ -84,8 +86,9 @@ web/
     router/        # 路由与登录守卫
     utils/         # JWT 本地存储、平台/租户管理员判断
   Dockerfile       # 多阶段：Vite build + nginx
-  nginx.conf       # 静态资源 + 反代 /api、/health
-  vite.config.js   # 开发代理 :8080
+  nginx.conf       # 静态资源 + 反代 /api、/health（根路径）
+  nginx.prefix.conf # 子路径部署时由 Dockerfile 按 VITE_BASE 生成
+  vite.config.js   # 开发代理 :8080，读取 VITE_BASE
 ```
 
 ## 技术栈

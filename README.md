@@ -298,9 +298,9 @@ npm run dev
 # 或在仓库根目录：make web-install && make web
 ```
 
-浏览器打开 http://localhost:5173 。开发模式下 Vite 会把 `/api`、`/health` 代理到后端；生产构建通过 `web/.env.production` 的 `VITE_API_BASE` 直连后端（依赖 CORS）。
+浏览器打开 http://localhost:5173 。开发模式下 Vite 会把 `{VITE_BASE}/api`、`{VITE_BASE}/health` 代理到后端；生产构建通过 `web/.env.production` 的 `VITE_API_BASE` 直连后端（依赖 CORS）。反向代理子路径时设置 `VITE_BASE=/rag`（开发打开 http://localhost:5173/rag/ ）。
 
-Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。
+Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。子路径用构建参数 `VITE_BASE`（默认 `/`）。
 
 前端能力：登录/注册（`?tenant_id=` 预填租户 ID，未提供时默认 `guest`）、中英文界面切换、知识库 CRUD、目录树、文档导入/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理的文档会禁用重新索引。平台管理员登录时需把租户 ID 改为 `default`。
 

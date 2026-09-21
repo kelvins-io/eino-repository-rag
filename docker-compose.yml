@@ -157,7 +157,7 @@ services:
       retries: 10
       start_period: 20s
 
-  # 前端：nginx 静态资源 + 反代 /api、/health → app
+  # 前端：nginx 静态资源 + 反代 {VITE_BASE}/api、/health → app
   web:
     profiles: ["app"]
     build:
@@ -165,6 +165,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE: ${VITE_API_BASE:-}
+        VITE_BASE: ${VITE_BASE:-/}
     image: eino-repository-rag-web:latest
     container_name: eino-rag-web
     ports:

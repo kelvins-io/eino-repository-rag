@@ -2,18 +2,22 @@ import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { t } from '@/i18n'
 import { clearAuth, getToken } from '@/utils/auth'
+import { appLocation, getApiBase, withBase } from '@/utils/base'
 
 const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || '',
+  baseURL: getApiBase(),
   timeout: 120000,
 })
 
 function redirectToLogin() {
   clearAuth()
-  const path = window.location.pathname
-  if (path.startsWith('/login') || path.startsWith('/register')) return
-  const redirect = encodeURIComponent(path + window.location.search)
-  window.location.href = `/login?redirect=${redirect}`
+  const loc = appLocation()
+  const path = loc.split('?')[0]
+  if (path === '/login' || path.startsWith('/login/') || path === '/register' || path.startsWith('/register/')) {
+    return
+  }
+  const redirect = encodeURIComponent(loc)
+  window.location.href = withBase(`login?redirect=${redirect}`)
 }
 
 function shouldForceLogout(status, msg) {
@@ -58,7 +62,7 @@ http.interceptors.response.use(
  * 消费聊天 SSE 流（标准 RAG 或 Agent）。
  */
 async function consumeChatStream(url, data, handlers = {}, signal) {
-  const base = import.meta.env.VITE_API_BASE || ''
+  const base = getApiBase()
   const token = getToken()
   const headers = {
     'Content-Type': 'application/json',
@@ -221,7 +225,7 @@ export const api = {
     })
   },
   synthesizeSpeech: async (text) => {
-    const base = import.meta.env.VITE_API_BASE || ''
+    const base = getApiBase()
     const token = getToken()
     const headers = { 'Content-Type': 'application/json' }
     if (token) headers.Authorization = `Bearer ${token}`
