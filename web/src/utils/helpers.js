@@ -50,3 +50,11 @@ export function statusLabel(status) {
   const key = `status.${status}`
   return i18n.global.te(key) ? i18n.global.t(key) : status
 }
+
+/** 从路由 query 读取 tenant_id；空值或非字符串返回空串。 */
+export function tenantIdFromQuery(query) {
+  const raw = query?.tenant_id
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}

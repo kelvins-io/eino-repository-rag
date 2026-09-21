@@ -23,7 +23,9 @@ make web-install && make web
 
 默认 http://localhost:5173 。开发模式下 Vite 把 `/api`、`/health` 代理到 `http://localhost:8080`，`.env.development` 中 `VITE_API_BASE` 为空（同源走代理）。
 
-首次使用：用后端日志里 `default` 租户 `admin` 的初始密码登录。`default` 不允许自助注册，其他租户可在 `/register` 创建账号。
+首次使用：在登录页把租户 ID 改为 `default`，用后端日志里该租户 `admin` 的初始密码登录。`default` 不允许自助注册，其他租户可在 `/register` 创建账号。
+
+登录页和注册页会读取地址栏 `?tenant_id=` 并填入租户 ID；没有该参数或值为空时默认填 `guest`。两个页面互相跳转时会带上当前输入的租户 ID；登录页仍是 `default` 时不会带到注册页，注册页回落到 `guest`。
 
 ## 构建
 
@@ -49,8 +51,8 @@ Docker 前端：http://localhost:5173 。
 
 | 路径 | 说明 |
 |------|------|
-| `/login` | 租户 ID + 用户名登录 |
-| `/register` | 在已有非 `default` 租户下注册并登录 |
+| `/login` | 租户 ID + 用户名登录；`?tenant_id=` 预填，缺省 `guest` |
+| `/register` | 在已有非 `default` 租户下注册并登录；`?tenant_id=` 预填，缺省 `guest` |
 | `/knowledge-bases` | 知识库列表与 CRUD |
 | `/knowledge-bases/:id` | 目录树、文档导入/列表/删除、重新索引、分块、索引记录、召回率与引用 |
 | `/chat` | 知识问答：标准 RAG / Agent、会话记忆、目录过滤、语音输入与朗读、点赞评分、相关文档标注 |

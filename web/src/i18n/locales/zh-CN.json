@@ -38,7 +38,7 @@
     "loginTitle": "登录",
     "loginSub": "使用租户 ID 与账号登录知识库",
     "tenantId": "租户 ID",
-    "tenantIdExample": "例如 default",
+    "tenantIdExample": "例如 guest",
     "username": "用户名",
     "password": "密码",
     "noAccount": "还没有账号？",

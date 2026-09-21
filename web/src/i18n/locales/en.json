@@ -38,7 +38,7 @@
     "loginTitle": "Log in",
     "loginSub": "Sign in with a tenant ID and account",
     "tenantId": "Tenant ID",
-    "tenantIdExample": "e.g. default",
+    "tenantIdExample": "e.g. guest",
     "username": "Username",
     "password": "Password",
     "noAccount": "No account yet?",

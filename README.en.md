@@ -13,6 +13,7 @@ Frontend details: [web/README.en.md](web/README.en.md).
   - Self-registration is blocked on `default`; other tenants can register
   - Platform admin (`default` / `admin`) can create tenants, view quotas, and update limits
   - Each tenant `admin` can enable/disable login for users in that tenant
+  - Login and register accept `?tenant_id=` to prefill the tenant ID, and default to `guest` when it is absent (platform admin still uses tenant `default`)
 - **Tenant quotas**: total files / max file size / new sessions per day / turns per session / voice inputs per day / TTS per day (defaults are all 5)
 - **Document import**: `POST /api/v1/documents/import`, multiple files per request; MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery); **the local upload is deleted after a successful index**, so the document cannot be reindexed afterward (failed jobs keep the source file for retry)
 - **Parsing / OCR**: PDF, Office (DOCX/XLSX/PPTX), Markdown/HTML/text/CSV/JSON, images; scanned PDFs / images / text-less PPTX·DOCX fall back to Tesseract (compose `ocr` service; no local brew required)
@@ -301,7 +302,7 @@ Open http://localhost:5173 . In development Vite proxies `/api` and `/health` to
 
 The Docker frontend image (`web/Dockerfile`) builds with `VITE_API_BASE=` (same origin); nginx reverse-proxies the API, so you do not need to change `.env.production`.
 
-UI: login/register, Chinese/English locale switch, knowledge-base CRUD, directory tree, document import/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. Documents whose source file was removed after a successful index cannot be reindexed.
+UI: login/register (`?tenant_id=` prefills the tenant ID, otherwise `guest`), Chinese/English locale switch, knowledge-base CRUD, directory tree, document import/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. Documents whose source file was removed after a successful index cannot be reindexed. Platform admin login still requires tenant ID `default`.
 
 See [web/README.en.md](web/README.en.md) for frontend-only docs.
 

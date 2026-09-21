@@ -23,7 +23,9 @@ make web-install && make web
 
 Default URL: http://localhost:5173 . In development Vite proxies `/api` and `/health` to `http://localhost:8080`. `.env.development` sets `VITE_API_BASE` empty so the browser uses the same origin (the proxy).
 
-First login: use the `default` tenant `admin` password printed in backend logs. `default` cannot self-register; other tenants can create accounts at `/register`.
+First login: change the tenant ID to `default` and use that tenant's `admin` password printed in backend logs. `default` cannot self-register; other tenants can create accounts at `/register`.
+
+Login and register read `?tenant_id=` and fill the tenant ID field. If the parameter is missing or blank, the field defaults to `guest`. Links between the two pages keep the current value; leaving login while it is still `default` does not carry that value, so register falls back to `guest`.
 
 ## Build
 
@@ -49,8 +51,8 @@ Unauthenticated visits to protected routes redirect to `/login`. Accounts other 
 
 | Path | Description |
 |------|-------------|
-| `/login` | Login with tenant ID + username |
-| `/register` | Register under an existing non-`default` tenant and sign in |
+| `/login` | Login with tenant ID + username; `?tenant_id=` prefills, otherwise `guest` |
+| `/register` | Register under an existing non-`default` tenant and sign in; `?tenant_id=` prefills, otherwise `guest` |
 | `/knowledge-bases` | Knowledge-base list and CRUD |
 | `/knowledge-bases/:id` | Directory tree, import/list/delete, reindex, chunks, index history, recall and citations |
 | `/chat` | Q&A: standard RAG / Agent, session memory, directory filter, voice in/out, votes/scores, relevant-doc labels |

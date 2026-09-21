@@ -27,7 +27,7 @@
       </el-form>
       <div class="auth-footer">
         {{ t('auth.noAccount') }}
-        <router-link to="/register">{{ t('auth.goRegister') }}</router-link>
+        <router-link :to="registerLink">{{ t('auth.goRegister') }}</router-link>
       </div>
     </div>
     <a class="contact" href="mailto:1225807604@qq.com">{{ t('auth.contact') }}1225807604@qq.com</a>
@@ -35,13 +35,14 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import LanguageSwitch from '@/components/LanguageSwitch.vue'
 import { api } from '@/api'
 import { setAuth } from '@/utils/auth'
+import { tenantIdFromQuery } from '@/utils/helpers'
 
 const { t } = useI18n()
 
@@ -49,9 +50,15 @@ const router = useRouter()
 const route = useRoute()
 const loading = ref(false)
 const form = reactive({
-  tenant_id: 'default',
+  tenant_id: tenantIdFromQuery(route.query) || 'guest',
   username: '',
   password: '',
+})
+
+const registerLink = computed(() => {
+  const id = form.tenant_id.trim()
+  if (!id || id.toLowerCase() === 'default') return '/register'
+  return { path: '/register', query: { tenant_id: id } }
 })
 
 async function onSubmit() {
