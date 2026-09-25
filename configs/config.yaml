@@ -1,5 +1,5 @@
 server:
-  addr: ":8080"
+  addr: ":8090"
   mode: "debug"
 
 log:

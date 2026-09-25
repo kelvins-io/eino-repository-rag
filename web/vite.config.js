@@ -27,14 +27,14 @@ export default defineConfig(({ mode }) => {
 
   const proxy = {
     [`${prefix}/api`]: {
-      target: 'http://localhost:8080',
+      target: 'http://localhost:8090',
       changeOrigin: true,
       timeout: 120000,
       proxyTimeout: 120000,
       rewrite,
     },
     [`${prefix}/health`]: {
-      target: 'http://localhost:8080',
+      target: 'http://localhost:8090',
       changeOrigin: true,
       rewrite,
     },

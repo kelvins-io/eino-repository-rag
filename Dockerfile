@@ -21,7 +21,7 @@ RUN mkdir -p /app/storage/uploads \
     && chown -R appuser:appuser /app
 
 USER appuser
-EXPOSE 8080
+EXPOSE 8090
 
-ENV SERVER_ADDR=:8080
+ENV SERVER_ADDR=:8090
 ENTRYPOINT ["/app/server", "-config", "/app/configs/config.yaml"]

@@ -134,13 +134,13 @@ services:
       POSTGRES_DB: eino_rag
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ""
-      SERVER_ADDR: ":8080"
+      SERVER_ADDR: ":8090"
       # 默认 redis 向量库；Milvus：VECTOR_INDEX_PROVIDER=milvus_lite + --profile milvus
       VECTOR_INDEX_PROVIDER: ${VECTOR_INDEX_PROVIDER:-redis}
       MILVUS_ADDRESS: ${MILVUS_ADDRESS:-milvus:19530}
-      OCR_ENDPOINT: http://ocr:8080
+      OCR_ENDPOINT: http://ocr:8090
     ports:
-      - "8080:8080"
+      - "8090:8090"
     volumes:
       - uploads:/app/storage/uploads
     depends_on:
@@ -151,7 +151,7 @@ services:
       ocr:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
       interval: 10s
       timeout: 5s
       retries: 10
