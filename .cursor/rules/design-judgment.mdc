@@ -1,0 +1,40 @@
+---
+description: Design judgment — spirit over letter; when to follow vs break rules
+globs: web/**/*.{vue,js,css,html}
+alwaysApply: false
+---
+
+# Design Judgment
+
+Rules guide judgment; they do not replace it. If applying a rule makes the screen uglier, the application is wrong.
+
+## Restraint
+
+- Semantic red/green = system states only (error/success), not decoration
+- Non-neutral colors on a screen: if >2, too many
+- Prefer 1 accent + neutrals
+
+## Don't Fix What Isn't Broken
+
+If a proven pattern already looks good, don't change it only because a rule seems to conflict. Appearance is the judge.
+
+## Practical Defaults
+
+- Header/toolbar icons: tappable containers, same size (~40–44px)
+- If content fills >80% of viewport, too dense — aim 60–70% content
+- List items of the same function must match visually (except content)
+- Hero of a screen may be centered for visual gravity
+
+## When Rules Conflict
+
+1. Build following rules → screenshot → “does it look premium?”
+2. If no, adjust interpretation; keep the spirit
+3. Better-looking version wins
+
+## When to Break a Rule
+
+Only if you can name the rule, explain why it fails the user here, keep it reversible, and expect most designers would agree.
+
+## Maturity Ladder
+
+Functional → Consistent → Polished → Delightful → Adaptive. Never skip ahead.

@@ -1,0 +1,40 @@
+---
+description: UI anti-patterns to never ship — CTAs, contrast, dark patterns, checklist
+globs: web/**/*.{vue,js,css,html}
+alwaysApply: false
+---
+
+# Design Anti-Patterns
+
+## Stop and Fix
+
+- **AP-01** Circular buttons must be fixed square + radius = size/2 (no HUG/AUTO)
+- **AP-02** Exactly 1 accent color for primary actions; hierarchy via filled/outlined/ghost, not more colors
+- **AP-03** One padding value for same-type cards; 8px grid only
+- **AP-04** Max 2 border-radius values + pill across the product
+- **AP-05** Body ≥16px; weight ≥400 below 18px; contrast ≥4.5:1; no weight 300 below 18px
+- **AP-06** Only 1 filled primary CTA per screen
+- **AP-07** Mobile primary CTA in bottom half (thumb zone)
+- **AP-08** Labels = verb + noun (`Save Draft`), never OK/Yes/Submit/Confirm alone
+- **AP-09** Feedback ≤100ms; loading state if >400ms
+- **AP-10** Modals need ≥2 close paths (X + overlay / swipe)
+- **AP-14** Nav icons need text labels
+- **AP-15** Transitions ~300ms, gentle easing; no bounce in professional UIs
+- **AP-16** ≥3 text sizes for hierarchy (e.g. 24 / 18 / 16 / 12)
+- **AP-17** Cards: max 3–4 lines; link to detail
+
+## Dark Patterns — Never
+
+Confirm-shaming, buried deletion, hidden costs, forced continuity, trick questions, first-use overload, settings graveyard, notification spam, choice overload (>3–4), fake scarcity / pre-checked upsells.
+
+## Self-Review Checklist
+
+- [ ] One primary filled CTA
+- [ ] Circular buttons actually circular
+- [ ] One accent color
+- [ ] Consistent radius / card padding
+- [ ] Clear type hierarchy (3+ sizes)
+- [ ] Mobile CTA in thumb zone
+- [ ] Verb + noun labels
+- [ ] Loading for slow actions
+- [ ] Modals closable 2+ ways

@@ -1,0 +1,39 @@
+---
+description: Core visual design principles — hierarchy, 8px grid, contrast, touch targets
+globs: web/**/*.{vue,js,css,html}
+alwaysApply: false
+---
+
+# Core Design Principles
+
+Before creating ANY screen, answer:
+1. What is the SINGLE primary action?
+2. What is the visual hierarchy? (1st, 2nd, 3rd)
+3. Does spacing follow the 8px grid?
+4. Are touch targets at least 44×44px?
+5. Is text contrast 4.5:1 or higher?
+
+## 7 Pillars
+
+1. **Hierarchy** — size, weight, color, position, spacing signal importance
+2. **Contrast** — text ≥4.5:1 (large text ≥3:1); never light gray on white
+3. **Alignment** — 8px grid for spacing/padding/sizes; left-align by default
+4. **Proximity** — related 8–12px; unrelated 24–32px+; label→input 4–8px; section→section 32–48px
+5. **Repetition** — same pattern = same meaning; reuse before inventing
+6. **Whitespace** — aim 60–70% content / 30–40% background
+7. **Unity** — consistent radius, shadow, palette, type scale, spacing scale
+
+## Golden Rules
+
+- Touch targets: ≥44×44px
+- Body ≥16px; caption ≥12px; screen title 20–28px
+- Circular buttons: width === height, radius = width/2
+
+## Trade-off Priority
+
+Accessibility > Safety > Readability > Consistency > Density > Aesthetics
+
+## Orientation
+
+User must always know: where they are, what they can do, what will happen, how to go back.
+Error copy blames the system, not the user — offer a fix example.
