@@ -29,7 +29,7 @@ docker-build:
 
 # 依赖 + 后端/前端镜像（需 .env 中 DEEPSEEK_API_KEY / EMBEDDING_API_KEY）
 docker-up:
-	docker compose --profile app up -d --build
+	docker compose --profile app --profile milvus up -d --build
 
 docker-down:
 	docker compose --profile app --profile milvus down

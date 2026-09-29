@@ -2,11 +2,8 @@ FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache ca-certificates
 WORKDIR /src
 
-COPY go.mod go.sum ./
-COPY vendor/ ./vendor/
-COPY cmd/ ./cmd/
-COPY internal/ ./internal/
-
+COPY . .
+RUN go mod vendor
 RUN CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
 
 FROM alpine:3.20

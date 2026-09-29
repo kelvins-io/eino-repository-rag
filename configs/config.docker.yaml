@@ -1,5 +1,5 @@
 server:
-  addr: ":8080"
+  addr: ":8090"
   mode: "release"
 
 log:
@@ -39,7 +39,7 @@ redis:
   write_timeout_seconds: 5
 
 vector_index:
-  provider: "redis"
+  provider: "milvus_lite"
 
 milvus:
   address: "milvus:19530"
@@ -139,3 +139,9 @@ memory:
   summary_enabled: true
   summary_trigger_messages: 8
   summary_timeout_seconds: 30
+
+# ReAct Agent：多步 knowledge_retrieve；enabled=false 时不注册 /chat/agent
+agent:
+  enabled: true
+  max_steps: 4
+  tool_top_k: 5
