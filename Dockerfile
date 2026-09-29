@@ -13,6 +13,14 @@ WORKDIR /app
 
 COPY --from=builder /out/server /app/server
 COPY configs/config.docker.yaml /app/configs/config.yaml
+# Prefer root .env when present; otherwise use .env.example as .env
+COPY .env* /tmp/dotenv/
+RUN if [ -f /tmp/dotenv/.env ]; then \
+      cp /tmp/dotenv/.env /app/.env; \
+    else \
+      cp /tmp/dotenv/.env.example /app/.env; \
+    fi \
+    && rm -rf /tmp/dotenv
 
 RUN mkdir -p /app/storage/uploads \
     && chown -R appuser:appuser /app
