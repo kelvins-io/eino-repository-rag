@@ -2,6 +2,8 @@ FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache ca-certificates
 WORKDIR /src
 
+ENV GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
+
 COPY . .
 RUN go mod vendor
 RUN CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
