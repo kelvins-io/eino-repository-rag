@@ -4,7 +4,7 @@
 
 Enterprise knowledge-base RAG service built on [CloudWeGo Eino](https://github.com/cloudwego/eino): multi-tenant JWT auth, document ingest with async indexing, hybrid retrieval, streaming Q&A, and a Vue 3 admin UI with Chinese/English locales.
 
-Frontend details: [web/README.en.md](web/README.en.md).
+Frontend details: [web/README.en.md](web/README.en.md). Mobile app: [mobile/README.md](mobile/README.md).
 
 ## Features
 
@@ -572,6 +572,7 @@ internal/
   server/            # Routes (incl. CORS)
   service/           # Business logic
 web/                 # Vue 3 + Element Plus UI
+mobile/              # Flutter mobile app (iOS / Android)
 storage/uploads/     # Uploaded files
 examples/            # Sample KB docs and golden.jsonl
 docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web

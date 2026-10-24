@@ -2,9 +2,9 @@
 
 [English](README.en.md) | [中文](README.md)
 
-基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的企业知识库 RAG 服务：多租户 JWT 鉴权、文档导入与异步索引、Hybrid 检索、流式问答，以及 Vue 3 中英文管理台。
+基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的企业知识库 RAG 服务：多租户 JWT 鉴权、文档导入与异步索引、Hybrid 检索、流式问答，以及 Vue 3 中英文管理台与 Flutter 手机端。
 
-前端说明见 [web/README.md](web/README.md)。
+前端说明见 [web/README.md](web/README.md)；手机端见 [mobile/README.md](mobile/README.md)。
 
 ## 能力
 
@@ -291,6 +291,18 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
 
 前后端分离：后端 API `:8080`，前端 Vite 开发服 `:5173`。
 
+### 6.1 启动手机端（可选）
+
+Flutter 客户端（iOS / Android）：登录、配置服务端与默认知识库/目录、扫描录入、流式对话检索。详见 [mobile/README.md](mobile/README.md)。
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+Android 模拟器默认连接 `http://10.0.2.2:8080`，iOS 模拟器可用 `http://127.0.0.1:8080`，真机请填电脑局域网 IP。
+
 ```bash
 cd web
 npm install
@@ -570,6 +582,7 @@ internal/
   server/            # 路由（含 CORS）
   service/           # 业务编排
 web/                 # Vue 3 + Element Plus 前端
+mobile/              # Flutter 手机端（iOS / Android）
 storage/uploads/     # 上传文件落盘
 examples/            # 示例知识库文档与 golden.jsonl
 docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
