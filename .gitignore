@@ -69,3 +69,5 @@ mobile/android/key.properties
 # Editor/IDE
 # .idea/
 # .vscode/
+.DS_Store
+**/.DS_Store
