@@ -60,12 +60,18 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.Milvus.ConnectTimeoutSeconds != 10 {
 		t.Fatalf("milvus connect=%d", c.Milvus.ConnectTimeoutSeconds)
 	}
+	if c.Milvus.InitTimeoutSeconds != 60 {
+		t.Fatalf("milvus init=%d", c.Milvus.InitTimeoutSeconds)
+	}
 	dsn := c.Postgres.DSN()
 	if !strings.Contains(dsn, "connect_timeout=10") {
 		t.Fatalf("dsn=%s", dsn)
 	}
 	if c.Redis.DialTimeout() != 5*time.Second || c.Milvus.ConnectTimeout() != 10*time.Second {
 		t.Fatalf("duration helpers dial=%s milvus=%s", c.Redis.DialTimeout(), c.Milvus.ConnectTimeout())
+	}
+	if c.Milvus.InitTimeout() != 60*time.Second {
+		t.Fatalf("milvus init timeout=%s", c.Milvus.InitTimeout())
 	}
 	if c.Log.RotateDaily == nil || !*c.Log.RotateDaily {
 		t.Fatal("rotate_daily should default to true")
@@ -89,6 +95,7 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 	t.Setenv("REDIS_READ_TIMEOUT_SECONDS", "7")
 	t.Setenv("REDIS_WRITE_TIMEOUT_SECONDS", "6")
 	t.Setenv("MILVUS_CONNECT_TIMEOUT_SECONDS", "12")
+	t.Setenv("MILVUS_INIT_TIMEOUT_SECONDS", "90")
 
 	c := Config{
 		DeepSeek:  DeepSeekConfig{TimeoutSeconds: 120},
@@ -104,6 +111,7 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 	c.Redis.ReadTimeoutSeconds = 5
 	c.Redis.WriteTimeoutSeconds = 5
 	c.Milvus.ConnectTimeoutSeconds = 10
+	c.Milvus.InitTimeoutSeconds = 60
 	c.applyEnv()
 	if c.DeepSeek.TimeoutSeconds != 180 || c.Embedding.TimeoutSeconds != 90 ||
 		c.Rerank.TimeoutSeconds != 45 || c.ASR.TimeoutSeconds != 70 || c.ASR.MaxAudioMB != 12 ||
@@ -111,10 +119,11 @@ func TestApplyEnvOverridesTimeouts(t *testing.T) {
 		c.RAG.QueryExpandTimeoutSeconds != 15 || c.Memory.SummaryTimeoutSeconds != 25 ||
 		c.Postgres.ConnectTimeoutSeconds != 8 || c.Redis.DialTimeoutSeconds != 3 ||
 		c.Redis.ReadTimeoutSeconds != 7 || c.Redis.WriteTimeoutSeconds != 6 ||
-		c.Milvus.ConnectTimeoutSeconds != 12 {
-		t.Fatalf("env override failed postgres=%d redis=%d/%d/%d milvus=%d",
+		c.Milvus.ConnectTimeoutSeconds != 12 || c.Milvus.InitTimeoutSeconds != 90 {
+		t.Fatalf("env override failed postgres=%d redis=%d/%d/%d milvus=%d/%d",
 			c.Postgres.ConnectTimeoutSeconds, c.Redis.DialTimeoutSeconds,
-			c.Redis.ReadTimeoutSeconds, c.Redis.WriteTimeoutSeconds, c.Milvus.ConnectTimeoutSeconds)
+			c.Redis.ReadTimeoutSeconds, c.Redis.WriteTimeoutSeconds,
+			c.Milvus.ConnectTimeoutSeconds, c.Milvus.InitTimeoutSeconds)
 	}
 }
 
@@ -132,6 +141,7 @@ func TestLoadYAMLTimeouts(t *testing.T) {
 	t.Setenv("REDIS_READ_TIMEOUT_SECONDS", "")
 	t.Setenv("REDIS_WRITE_TIMEOUT_SECONDS", "")
 	t.Setenv("MILVUS_CONNECT_TIMEOUT_SECONDS", "")
+	t.Setenv("MILVUS_INIT_TIMEOUT_SECONDS", "")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cfg.yaml")
 	content := []byte(`
@@ -143,6 +153,7 @@ redis:
   write_timeout_seconds: 6
 milvus:
   connect_timeout_seconds: 11
+  init_timeout_seconds: 45
 deepseek:
   timeout_seconds: 200
 embedding:
@@ -174,6 +185,9 @@ memory:
 	}
 	if cfg.Milvus.ConnectTimeoutSeconds != 11 {
 		t.Fatalf("milvus=%d", cfg.Milvus.ConnectTimeoutSeconds)
+	}
+	if cfg.Milvus.InitTimeoutSeconds != 45 {
+		t.Fatalf("milvus init=%d", cfg.Milvus.InitTimeoutSeconds)
 	}
 	if cfg.DeepSeek.TimeoutSeconds != 200 {
 		t.Fatalf("deepseek=%d", cfg.DeepSeek.TimeoutSeconds)

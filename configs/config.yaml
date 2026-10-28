@@ -52,6 +52,7 @@ milvus:
   metric_type: "COSINE"
   dimension: 1024
   connect_timeout_seconds: 10
+  init_timeout_seconds: 60   # Indexer/Retriever（含 LoadCollection）超时；超时请检查 MinIO 对象是否丢失
 
 deepseek:
   api_key: ""

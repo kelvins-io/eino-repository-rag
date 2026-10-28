@@ -87,6 +87,8 @@ type MilvusConfig struct {
 	Dimension int `yaml:"dimension"`
 	// ConnectTimeoutSeconds gRPC 建连超时；0 表示 10s
 	ConnectTimeoutSeconds int `yaml:"connect_timeout_seconds"`
+	// InitTimeoutSeconds 创建 Indexer/Retriever（含 LoadCollection）超时；0 表示 60s
+	InitTimeoutSeconds int `yaml:"init_timeout_seconds"`
 }
 
 type ServerConfig struct {
@@ -161,6 +163,10 @@ func (c RedisConfig) PingTimeout() time.Duration {
 
 func (c MilvusConfig) ConnectTimeout() time.Duration {
 	return secondsOr(c.ConnectTimeoutSeconds, 10)
+}
+
+func (c MilvusConfig) InitTimeout() time.Duration {
+	return secondsOr(c.InitTimeoutSeconds, 60)
 }
 
 type DeepSeekConfig struct {
@@ -454,6 +460,7 @@ func (c *Config) applyEnv() {
 	applyPositiveIntEnv(&c.Redis.ReadTimeoutSeconds, "REDIS_READ_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Redis.WriteTimeoutSeconds, "REDIS_WRITE_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.Milvus.ConnectTimeoutSeconds, "MILVUS_CONNECT_TIMEOUT_SECONDS")
+	applyPositiveIntEnv(&c.Milvus.InitTimeoutSeconds, "MILVUS_INIT_TIMEOUT_SECONDS")
 	applyPositiveIntEnv(&c.RAG.MaxUploadFileSizeMB, "MAX_UPLOAD_FILE_SIZE_MB")
 	applyPositiveIntEnv(&c.RAG.MaxUploadFiles, "MAX_UPLOAD_FILES")
 }
@@ -556,6 +563,9 @@ func (c *Config) setDefaults() {
 	}
 	if c.Milvus.ConnectTimeoutSeconds <= 0 {
 		c.Milvus.ConnectTimeoutSeconds = 10
+	}
+	if c.Milvus.InitTimeoutSeconds <= 0 {
+		c.Milvus.InitTimeoutSeconds = 60
 	}
 	if c.DeepSeek.Model == "" {
 		c.DeepSeek.Model = "deepseek-chat"

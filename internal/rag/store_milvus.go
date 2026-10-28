@@ -50,7 +50,15 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 	idxMetric := parseIndexerMetric(cfg.Milvus.MetricType)
 	retMetric := parseRetrieverMetric(cfg.Milvus.MetricType)
 
-	idx, err := milvusindexer.NewIndexer(ctx, &milvusindexer.IndexerConfig{
+	// NewIndexer / NewRetriever 会 LoadCollection.Await；对象存储损坏时可能一直等，必须带超时。
+	initTimeout := cfg.Milvus.InitTimeout()
+	initCtx, initCancel := context.WithTimeout(ctx, initTimeout)
+	defer initCancel()
+
+	logger.S().Infof("[rag] milvus_lite init start address=%s collection=%s dim=%d init_timeout=%s",
+		cfg.Milvus.Address, cfg.Milvus.Collection, dim, initTimeout)
+
+	idx, err := milvusindexer.NewIndexer(initCtx, &milvusindexer.IndexerConfig{
 		Client:     client,
 		Collection: cfg.Milvus.Collection,
 		Embedding:  emb,
@@ -64,10 +72,13 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 	})
 	if err != nil {
 		_ = client.Close(ctx)
+		if initCtx.Err() != nil {
+			return nil, fmt.Errorf("create milvus indexer timed out after %s (check milvus load / minio objects): %w", initTimeout, err)
+		}
 		return nil, fmt.Errorf("create milvus indexer: %w", err)
 	}
 
-	ret, err := milvusretriever.NewRetriever(ctx, &milvusretriever.RetrieverConfig{
+	ret, err := milvusretriever.NewRetriever(initCtx, &milvusretriever.RetrieverConfig{
 		Client:       client,
 		Collection:   cfg.Milvus.Collection,
 		TopK:         cfg.RAG.TopK,
@@ -78,11 +89,14 @@ func newMilvusLiteVectorStore(ctx context.Context, cfg *config.Config, emb embed
 	})
 	if err != nil {
 		_ = client.Close(ctx)
+		if initCtx.Err() != nil {
+			return nil, fmt.Errorf("create milvus retriever timed out after %s (check milvus load / minio objects): %w", initTimeout, err)
+		}
 		return nil, fmt.Errorf("create milvus retriever: %w", err)
 	}
 
-	logger.S().Infof("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s connect_timeout=%s",
-		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType, cfg.Milvus.ConnectTimeout())
+	logger.S().Infof("[rag] milvus_lite vector store ready address=%s collection=%s dim=%d metric=%s connect_timeout=%s init_timeout=%s",
+		cfg.Milvus.Address, cfg.Milvus.Collection, dim, cfg.Milvus.MetricType, cfg.Milvus.ConnectTimeout(), initTimeout)
 
 	return &milvusVectorStore{
 		cfg:       cfg,

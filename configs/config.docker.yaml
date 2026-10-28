@@ -49,6 +49,7 @@ milvus:
   metric_type: "COSINE"
   dimension: 1024
   connect_timeout_seconds: 10
+  init_timeout_seconds: 60
 
 deepseek:
   api_key: ""
