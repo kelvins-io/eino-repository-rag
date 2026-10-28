@@ -143,7 +143,7 @@ services:
       # 默认 redis 向量库；Milvus：VECTOR_INDEX_PROVIDER=milvus_lite + --profile milvus
       VECTOR_INDEX_PROVIDER: ${VECTOR_INDEX_PROVIDER:-redis}
       MILVUS_ADDRESS: ${MILVUS_ADDRESS:-milvus:19530}
-      OCR_ENDPOINT: http://ocr:8090
+      OCR_ENDPOINT: http://ocr:8080
     ports:
       - "8090:8090"
     volumes:

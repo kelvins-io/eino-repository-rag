@@ -15,21 +15,21 @@
   - 各租户 `admin` 可开关本租户用户登录
   - 登录/注册页支持 `?tenant_id=` 预填租户 ID，缺省为 `guest`（平台管理员仍使用租户 `default`）
 - **租户配额**：文件总数 / 单文件大小 / 每日新建会话 / 单会话轮次 / 每日语音输入 / 每日 TTS（默认均为 5）
-- **文档导入**：`POST /api/v1/documents/import`，一次多个文件；知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地上传文件**，此后不可重新索引（失败会保留源文件以便重试）
+- **文档导入**：`POST /api/v1/documents/import`，一次多个文件；可按文件填写 `title` / `source`；知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地上传文件**，此后不可重新索引（失败会保留源文件以便重试）
 - **文档解析 / OCR**：PDF、Office（DOCX/XLSX/PPTX）、Markdown/HTML/文本/CSV/JSON、图片；扫描 PDF / 图片 / 无文字 PPTX·DOCX 回退 Tesseract（compose `ocr` 服务，本机无需 brew）
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤（含子目录）；租户内知识库共享可读
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar
 - **Query 改写 / 多路召回**：LLM 生成 N 条改写，与原问题分别召回后再 RRF；重排仍用原问题
 - **结构切分**：PDF/PPTX 按页、XLSX 按工作表、Markdown/HTML 按标题；超长段再 Recursive，保留 `page`/`section` meta
-- **引用后校验**：生成完成后校验 `[n]` 是否落在 sources 内，清洗幻觉引用
+- **引用后校验**：生成完成后校验 `[n]` 是否落在 sources 内，清洗幻觉引用；对话引用片段展示并可点击打开 `source` 链接
 - **Agent / Workflow**：Eino ReAct + `knowledge_retrieve` 多步检索（`POST /api/v1/chat/agent`）；标准线性 RAG 走 `/chat/query`（均为 SSE）
 - **Rerank**：OpenAI 兼容 Cross-Encoder（如 SiliconFlow `BAAI/bge-reranker-v2-m3`）
 - **语音**：ASR 语音输入（SenseVoice / OpenAI 兼容 transcriptions）+ TTS 回答朗读（CosyVoice / OpenAI 兼容 speech）
 - **问答反馈**：对助手回答点赞/点踩/1–5 分；为用户问题标注相关文档，用于文档召回率
 - **检索可观测**：文档分块列表、索引构建历史、文档召回率（Hit@K）与引用次数
 - **Golden Eval**：JSONL 评测集 + Hit@K / Recall@K / MRR（`cmd/eval`）
-- **大模型回答**：DeepSeek（`eino-ext/components/model/deepseek`）
+- **大模型回答**：DeepSeek（默认 `deepseek-v4-flash`，`eino-ext/components/model/deepseek`）
 - **记忆机制**
   - 短期记忆：Redis List（会话级，带 TTL）
   - 长期记忆：PostgreSQL `messages` / `conversations`
@@ -103,11 +103,13 @@ milvus:
   collection: "kb_docs"
   metric_type: "COSINE"
   dimension: 1024
+  connect_timeout_seconds: 10
+  init_timeout_seconds: 60   # Indexer/Retriever（含 LoadCollection）；超时请检查 MinIO 对象是否丢失
 ```
 
-也可用环境变量覆盖：`VECTOR_INDEX_PROVIDER=milvus_lite`、`MILVUS_ADDRESS=localhost:19530`。
+也可用环境变量覆盖：`VECTOR_INDEX_PROVIDER=milvus_lite`、`MILVUS_ADDRESS=localhost:19530`、`MILVUS_INIT_TIMEOUT_SECONDS=60`。
 
-> 说明：官方 Milvus Lite（本地 `.db` 文件）目前主要面向 Python；本项目 Go 侧通过 gRPC 连接本地 Milvus Standalone，配置项命名为 `milvus_lite`，便于本地轻量部署。
+> 说明：官方 Milvus Lite（本地 `.db` 文件）目前主要面向 Python；本项目 Go 侧通过 gRPC 连接本地 Milvus Standalone，配置项命名为 `milvus_lite`，便于本地轻量部署。compose 的 MinIO 使用 Chainguard 镜像（`cgr.dev/chainguard/minio`），避免 Docker Hub 下架导致拉取失败。
 
 ### 3.1 Hybrid + Rerank（可选，默认开启）
 
@@ -192,7 +194,7 @@ rag:
     concurrency: 1
     timeout_seconds: 60
     page_seg_mode: 6
-  index_job_timeout_minutes: 30
+  index_job_timeout_minutes: 60
 ```
 
 ```bash
@@ -243,7 +245,7 @@ make docker-up
 # 仅构建：make docker-build
 ```
 
-- API：http://localhost:8080
+- API：http://localhost:8090
 - Web：http://localhost:5173（nginx 静态资源；`/api`、`/health` 反代到 `app`）
 
 Milvus 模式：
@@ -252,7 +254,7 @@ Milvus 模式：
 VECTOR_INDEX_PROVIDER=milvus_lite docker compose --profile app --profile milvus up -d --build
 ```
 
-后端镜像使用 `configs/config.docker.yaml`（服务名 `postgres`/`redis`，JSON 日志，`upload_dir=/app/storage/uploads`）。默认监听 `:8080`，已启用 CORS。
+后端镜像使用 `configs/config.docker.yaml`（服务名 `postgres`/`redis`，JSON 日志，`upload_dir=/app/storage/uploads`）。默认监听 `:8090`，已启用 CORS。
 
 ### 5. 认证（租户 + JWT）
 
@@ -260,20 +262,20 @@ VECTOR_INDEX_PROVIDER=milvus_lite docker compose --profile app --profile milvus 
 
 ```bash
 # 使用日志中的 default/admin 密码登录
-curl -X POST http://localhost:8080/api/v1/auth/login \
+curl -X POST http://localhost:8090/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"tenant_id":"default","username":"admin","password":"<日志中的初始密码>"}'
 # 响应 data.token → 后续请求头: Authorization: Bearer <token>
 
 # 当前用户
-curl http://localhost:8080/api/v1/auth/me \
+curl http://localhost:8090/api/v1/auth/me \
   -H "Authorization: Bearer <token>"
 ```
 
 **平台管理员**（`default` 租户的 `admin`）可创建租户。新租户会自动创建 `admin`，密码同样只写服务日志，响应里只有 `admin_username`。
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/tenants \
+curl -X POST http://localhost:8090/api/v1/tenants \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"code":"acme","name":"Acme 公司"}'
@@ -282,14 +284,14 @@ curl -X POST http://localhost:8080/api/v1/tenants \
 其他租户可自助注册（`default` 不允许）：
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/register \
+curl -X POST http://localhost:8090/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"tenant_id":"acme","username":"alice","password":"secret1"}'
 ```
 
 ### 6. 启动 Web 前端（可选）
 
-前后端分离：后端 API `:8080`，前端 Vite 开发服 `:5173`。
+前后端分离：后端 API `:8090`，前端 Vite 开发服 `:5173`。
 
 ### 6.1 启动手机端（可选）
 
@@ -301,7 +303,7 @@ flutter pub get
 flutter run
 ```
 
-Android 模拟器默认连接 `http://10.0.2.2:8080`，iOS 模拟器可用 `http://127.0.0.1:8080`，真机请填电脑局域网 IP。
+Android 模拟器默认连接 `http://10.0.2.2:8090`，iOS 模拟器可用 `http://127.0.0.1:8090`，真机请填电脑局域网 IP。
 
 ```bash
 cd web
@@ -314,7 +316,7 @@ npm run dev
 
 Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。子路径用构建参数 `VITE_BASE`（默认 `/`）。
 
-前端能力：登录/注册（`?tenant_id=` 预填租户 ID，未提供时默认 `guest`）、中英文界面切换、知识库 CRUD、目录树、文档导入/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理的文档会禁用重新索引。平台管理员登录时需把租户 ID 改为 `default`。
+前端能力：登录/注册（`?tenant_id=` 预填租户 ID，未提供时默认 `guest`）、中英文界面切换、知识库 CRUD、目录树、文档导入（可填标题与来源 URL）/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent，引用可点开来源）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理的文档会禁用重新索引。平台管理员登录时需把租户 ID 改为 `default`。
 
 ## API
 
@@ -336,13 +338,13 @@ Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同�
 
 ```bash
 # 租户 admin 禁止某用户登录
-curl -X PUT http://localhost:8080/api/v1/users/login-enabled \
+curl -X PUT http://localhost:8090/api/v1/users/login-enabled \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"username":"alice","enabled":false}'
 
 # 调整租户配额
-curl -X PUT http://localhost:8080/api/v1/tenants/limits \
+curl -X PUT http://localhost:8090/api/v1/tenants/limits \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"code":"acme","max_files":20,"max_file_size_mb":50,"max_sessions":20,"max_turns":30,"max_voice_inputs":20,"max_tts":20}'
@@ -352,19 +354,19 @@ curl -X PUT http://localhost:8080/api/v1/tenants/limits \
 
 ```bash
 # 创建知识库
-curl -X POST http://localhost:8080/api/v1/knowledge-bases \
+curl -X POST http://localhost:8090/api/v1/knowledge-bases \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"证券合规库","description":"合规与制度文档"}'
 
 # 列表 / 详情 / 更新 / 删除
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/knowledge-bases?page=1&page_size=10"
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/knowledge-bases/1"
-curl -X PUT http://localhost:8080/api/v1/knowledge-bases/1 \
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/knowledge-bases?page=1&page_size=10"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/knowledge-bases/1"
+curl -X PUT http://localhost:8090/api/v1/knowledge-bases/1 \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"证券合规库","description":"更新说明"}'
-curl -X DELETE http://localhost:8080/api/v1/knowledge-bases/1 \
+curl -X DELETE http://localhost:8090/api/v1/knowledge-bases/1 \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -372,25 +374,25 @@ curl -X DELETE http://localhost:8080/api/v1/knowledge-bases/1 \
 
 ```bash
 # 在知识库下创建目录（parent_id 可省略表示根目录）
-curl -X POST http://localhost:8080/api/v1/knowledge-bases/1/directories \
+curl -X POST http://localhost:8090/api/v1/knowledge-bases/1/directories \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"合规制度","description":"红线与适当性","sort_order":1}'
 
-curl -X POST http://localhost:8080/api/v1/knowledge-bases/1/directories \
+curl -X POST http://localhost:8090/api/v1/knowledge-bases/1/directories \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"融资融券","parent_id":1,"sort_order":2}'
 
 # 获取目录树
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/knowledge-bases/1/directories"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/knowledge-bases/1/directories"
 
 # 更新 / 删除目录
-curl -X PUT http://localhost:8080/api/v1/directories/1 \
+curl -X PUT http://localhost:8090/api/v1/directories/1 \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"name":"合规制度","sort_order":1}'
-curl -X DELETE http://localhost:8080/api/v1/directories/2 \
+curl -X DELETE http://localhost:8090/api/v1/directories/2 \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -404,7 +406,7 @@ curl -X DELETE http://localhost:8080/api/v1/directories/2 \
 
 ```bash
 # 单文件
-curl -X POST http://localhost:8080/api/v1/documents/import \
+curl -X POST http://localhost:8090/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "title=合规红线" \
@@ -413,7 +415,7 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
   -F "directory_id=1"
 
 # 多文件（title / source 与 file 按顺序一一对应）
-curl -X POST http://localhost:8080/api/v1/documents/import \
+curl -X POST http://localhost:8090/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "file=@./examples/kb_securities_02_suitability.md" \
@@ -433,11 +435,11 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
 
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8080/api/v1/documents?knowledge_base_id=1&directory_id=1"
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/1"
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/1/chunks"
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/1/index-builds"
-curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/1/recall?k=5"
+  "http://localhost:8090/api/v1/documents?knowledge_base_id=1&directory_id=1"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/documents/1"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/documents/1/chunks"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/documents/1/index-builds"
+curl -H "Authorization: Bearer <token>" "http://localhost:8090/api/v1/documents/1/recall?k=5"
 ```
 
 ### 删除文档
@@ -446,11 +448,11 @@ curl -H "Authorization: Bearer <token>" "http://localhost:8080/api/v1/documents/
 
 ```bash
 # 单文档
-curl -X DELETE http://localhost:8080/api/v1/documents/1 \
+curl -X DELETE http://localhost:8090/api/v1/documents/1 \
   -H "Authorization: Bearer <token>"
 
 # 批量
-curl -X POST http://localhost:8080/api/v1/documents/delete \
+curl -X POST http://localhost:8090/api/v1/documents/delete \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"ids":[1,2,3]}'
@@ -461,7 +463,7 @@ curl -X POST http://localhost:8080/api/v1/documents/delete \
 对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后、源文件仍在时重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、源文件已清理（`source_available=false`）、或请求内重复的 ID 会跳过。
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/documents/reindex \
+curl -X POST http://localhost:8090/api/v1/documents/reindex \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"ids":[1,2,3]}'
@@ -470,7 +472,7 @@ curl -X POST http://localhost:8080/api/v1/documents/reindex \
 ### 知识库问答（SSE，带记忆，可按分类过滤）
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/chat/query \
+curl -N -X POST http://localhost:8090/api/v1/chat/query \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
@@ -491,7 +493,7 @@ curl -N -X POST http://localhost:8080/api/v1/chat/query \
 需 `agent.enabled: true`。请求体与 `/chat/query` 相同：
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/chat/agent \
+curl -N -X POST http://localhost:8090/api/v1/chat/agent \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -507,12 +509,12 @@ SSE 事件：`meta` → `step` / `tool_start` / `tool_result`（可多轮）→ 
 
 ```bash
 # 语音转写（webm / mp3 / wav / m4a / ogg 等）
-curl -X POST http://localhost:8080/api/v1/chat/transcribe \
+curl -X POST http://localhost:8090/api/v1/chat/transcribe \
   -H "Authorization: Bearer <token>" \
   -F "file=@./recording.webm"
 
 # 文本朗读（返回音频二进制）
-curl -X POST http://localhost:8080/api/v1/chat/speech \
+curl -X POST http://localhost:8090/api/v1/chat/speech \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"text":"从业人员不得泄露内幕信息。"}' \
@@ -524,20 +526,20 @@ curl -X POST http://localhost:8080/api/v1/chat/speech \
 ```bash
 # 会话列表（需 knowledge_base_id）
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8080/api/v1/chat/sessions?knowledge_base_id=1"
+  "http://localhost:8090/api/v1/chat/sessions?knowledge_base_id=1"
 
 # 长期记忆
 curl -H "Authorization: Bearer <token>" \
-  "http://localhost:8080/api/v1/chat/history?session_id=s-demo-001"
+  "http://localhost:8090/api/v1/chat/history?session_id=s-demo-001"
 
 # 对助手回答点赞 / 评分（vote 空字符串或 score=0 表示取消该项）
-curl -X PUT http://localhost:8080/api/v1/chat/feedback \
+curl -X PUT http://localhost:8090/api/v1/chat/feedback \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"session_id":"s-demo-001","message_id":12,"vote":"up","score":5}'
 
 # 为用户问题标注相关文档（doc_ids 空数组表示清除）
-curl -X PUT http://localhost:8080/api/v1/chat/relevance \
+curl -X PUT http://localhost:8090/api/v1/chat/relevance \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"session_id":"s-demo-001","message_id":11,"knowledge_base_id":1,"doc_ids":["1"]}'
@@ -549,14 +551,14 @@ curl -X PUT http://localhost:8080/api/v1/chat/relevance \
 
 | 区块 | 说明 |
 |------|------|
-| `server` | 监听地址、Gin mode |
-| `log` | zap：level / encoding（console \| json） |
+| `server` | 监听地址（默认 `:8090`）、Gin mode |
+| `log` | zap：level / encoding（console \| json）；`rotate_daily` / `max_age_days` 按日轮转与归档保留 |
 | `jwt` | HS256 密钥、有效期、issuer（生产用 `JWT_SECRET`） |
 | `postgres` | 文档导入记录与长期记忆（`connect_timeout_seconds`） |
 | `redis` | 短期记忆、索引队列；`provider=redis` 时兼作向量索引 |
 | `vector_index` | 向量后端：`redis` / `milvus_lite` |
-| `milvus` | `provider=milvus_lite` 时的连接与集合配置 |
-| `deepseek` | 对话大模型（`timeout_seconds`） |
+| `milvus` | `provider=milvus_lite` 时的连接与集合配置（含 `connect_timeout_seconds` / `init_timeout_seconds`） |
+| `deepseek` | 对话大模型（默认 `deepseek-v4-flash`，`timeout_seconds`） |
 | `embedding` | OpenAI 兼容向量模型（超时、拆批、重试、并发） |
 | `rag` | 切分 / TopK / Hybrid / Query 改写 / 结构切分 / 引用校验 / 索引队列 / OCR / 上传上限 |
 | `rerank` | Cross-Encoder 重排 |
@@ -602,3 +604,4 @@ docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
 - Milvus Standalone（可选，对应 `milvus_lite` 配置）
 - Tesseract + poppler（OCR sidecar）
 - Vue 3 + Vite + Element Plus + Vue Router + Vue I18n + Axios
+- Flutter（mobile：iOS / Android）

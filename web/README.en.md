@@ -8,7 +8,7 @@ Repo-level docs: [../README.en.md](../README.en.md).
 
 ## Development
 
-Start the backend on `:8080`, then in this directory:
+Start the backend on `:8090`, then in this directory:
 
 ```bash
 npm install
@@ -21,7 +21,7 @@ Or from the repo root:
 make web-install && make web
 ```
 
-Default URL: http://localhost:5173 . In development Vite proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` to `http://localhost:8080`. `.env.development` sets `VITE_API_BASE` empty so the browser uses the same origin (the proxy).
+Default URL: http://localhost:5173 . In development Vite proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` to `http://localhost:8090`. `.env.development` sets `VITE_API_BASE` empty so the browser uses the same origin (the proxy).
 
 Proxy / subpath prefix: set `VITE_BASE=/rag` in `web/.env.*` or the environment (path only, no origin). Then open http://localhost:5173/rag/ ; the SPA, assets, and same-origin API all use that prefix. Empty or `/` keeps the app at the site root.
 
@@ -36,7 +36,7 @@ npm run build      # writes dist/
 npm run preview    # preview the production build
 ```
 
-`.env.production` defaults to `VITE_API_BASE=http://localhost:8080` (browser talks to the API directly; needs CORS). The Docker image builds with `VITE_API_BASE` empty; nginx reverse-proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` on the same origin, so you do not need to change that file. The `VITE_BASE` build arg (default `/`) must match the frontend prefix.
+`.env.production` defaults to `VITE_API_BASE=http://localhost:8090` (browser talks to the API directly; needs CORS). The Docker image builds with `VITE_API_BASE` empty; nginx reverse-proxies `{VITE_BASE}/api` and `{VITE_BASE}/health` on the same origin, so you do not need to change that file. The `VITE_BASE` build arg (default `/`) must match the frontend prefix.
 
 From the repo root:
 
@@ -56,8 +56,8 @@ Unauthenticated visits to protected routes redirect to `/login`. Accounts other 
 | `/login` | Login with tenant ID + username; `?tenant_id=` prefills, otherwise `guest` |
 | `/register` | Register under an existing non-`default` tenant and sign in; `?tenant_id=` prefills, otherwise `guest` |
 | `/knowledge-bases` | Knowledge-base list and CRUD |
-| `/knowledge-bases/:id` | Directory tree, import/list/delete, reindex, chunks, index history, recall and citations |
-| `/chat` | Q&A: standard RAG / Agent, session memory, directory filter, voice in/out, votes/scores, relevant-doc labels |
+| `/knowledge-bases/:id` | Directory tree, import (optional title and source URL)/list/delete, reindex, chunks, index history, recall and citations |
+| `/chat` | Q&A: standard RAG / Agent, session memory, directory filter, clickable citation sources, voice in/out, votes/scores, relevant-doc labels |
 | `/users` | Users in this tenant; tenant `admin` can toggle others' login |
 | `/tenant-manage` | Platform admin: tenant quotas and today's usage |
 | `/tenants` | Platform admin: create a tenant |
@@ -88,7 +88,7 @@ web/
   Dockerfile       # Multi-stage: Vite build + nginx
   nginx.conf       # Static files + proxy /api, /health (site root)
   nginx.prefix.conf # Used by the Dockerfile when VITE_BASE is a subpath
-  vite.config.js   # Dev proxy to :8080; reads VITE_BASE
+  vite.config.js   # Dev proxy to :8090; reads VITE_BASE
 ```
 
 ## Stack
