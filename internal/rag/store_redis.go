@@ -39,6 +39,7 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 		// 兼容旧索引：尝试补充分类字段
 		_, _ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "kb_id", "TAG").Result()
 		_, _ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "directory_id", "TAG").Result()
+		_, _ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "source", "TEXT").Result()
 		return nil
 	}
 
@@ -57,6 +58,7 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 		"format", "TAG",
 		"chunk_index", "TAG",
 		"page", "TAG",
+		"source", "TEXT",
 		s.cfg.Redis.VectorField, "VECTOR", "HNSW", "6",
 		"TYPE", "FLOAT32",
 		"DIM", strconv.Itoa(s.cfg.Redis.VectorDim),
@@ -69,6 +71,7 @@ func (s *redisVectorStore) ensureIndex(ctx context.Context) error {
 			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "format", "TAG").Err()
 			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "chunk_index", "TAG").Err()
 			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "page", "TAG").Err()
+			_ = s.rdb.Do(ctx, "FT.ALTER", s.cfg.Redis.IndexName, "SCHEMA", "ADD", "source", "TEXT").Err()
 			return nil
 		}
 		return fmt.Errorf("create redis vector index: %w", err)
@@ -100,6 +103,7 @@ func (s *redisVectorStore) Store(ctx context.Context, docs []*schema.Document) e
 					"format":       {Value: metaString(d.MetaData, "format")},
 					"chunk_index":  {Value: metaString(d.MetaData, "chunk_index")},
 					"page":         {Value: metaString(d.MetaData, "page")},
+					"source":       {Value: metaString(d.MetaData, "source")},
 				},
 			}, nil
 		},
@@ -272,7 +276,7 @@ func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *R
 		VectorField:  s.cfg.Redis.VectorField,
 		TopK:         topK,
 		Embedding:    s.embedder,
-		ReturnFields: []string{"content", "doc_id", "tenant_id", "user_id", "kb_id", "directory_id", "title", "format", "chunk_index", "page", s.cfg.Redis.VectorField},
+		ReturnFields: []string{"content", "doc_id", "tenant_id", "user_id", "kb_id", "directory_id", "title", "format", "chunk_index", "page", "source", s.cfg.Redis.VectorField},
 		DocumentConverter: func(ctx context.Context, doc redis.Document) (*schema.Document, error) {
 			return &schema.Document{
 				ID:      doc.ID,
@@ -287,6 +291,7 @@ func (s *redisVectorStore) Retrieve(ctx context.Context, query string, filter *R
 					"format":       doc.Fields["format"],
 					"chunk_index":  doc.Fields["chunk_index"],
 					"page":         doc.Fields["page"],
+					"source":       doc.Fields["source"],
 					"channel":      "dense",
 				},
 			}, nil

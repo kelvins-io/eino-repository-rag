@@ -83,6 +83,18 @@ func (r *DocumentRepo) GetByID(id uint) (*model.Document, error) {
 	return &doc, nil
 }
 
+// GetByIDs 按主键批量查询文档；ids 为空时返回空切片。
+func (r *DocumentRepo) GetByIDs(ids []uint) ([]model.Document, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var docs []model.Document
+	if err := r.db.Where("id IN ?", ids).Find(&docs).Error; err != nil {
+		return nil, err
+	}
+	return docs, nil
+}
+
 // GetByKnowledgeBaseAndMD5 按知识库内内容 MD5 查找已导入文档
 func (r *DocumentRepo) GetByKnowledgeBaseAndMD5(kbID uint, md5 string) (*model.Document, error) {
 	var doc model.Document

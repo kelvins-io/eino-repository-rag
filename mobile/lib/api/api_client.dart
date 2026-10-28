@@ -205,6 +205,7 @@ class ApiClient {
     required int knowledgeBaseId,
     int? directoryId,
     String? title,
+    String? source,
     required List<MultipartFile> files,
   }) async {
     final form = FormData();
@@ -212,10 +213,12 @@ class ApiClient {
     if (directoryId != null) {
       form.fields.add(MapEntry('directory_id', '$directoryId'));
     }
-    if (title != null && title.trim().isNotEmpty) {
-      form.fields.add(MapEntry('title', title.trim()));
-    }
+    final titleValue = title?.trim() ?? '';
+    final sourceValue = source?.trim() ?? '';
     for (final f in files) {
+      // 与 files 一一对应；手机端目前共用同一标题/来源
+      form.fields.add(MapEntry('title', titleValue));
+      form.fields.add(MapEntry('source', sourceValue));
       form.files.add(MapEntry('files', f));
     }
     try {

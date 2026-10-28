@@ -3,10 +3,60 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kelvins-io/eino-repository-rag/internal/model"
 )
+
+func TestNormalizeImportSources(t *testing.T) {
+	long := strings.Repeat("a", 1100)
+	tests := []struct {
+		name string
+		raw  []string
+		n    int
+		want []string
+	}{
+		{"empty", nil, 3, []string{"", "", ""}},
+		{"broadcast", []string{" https://a "}, 3, []string{"https://a", "https://a", "https://a"}},
+		{"aligned", []string{"u1", "u2", "u3"}, 3, []string{"u1", "u2", "u3"}},
+		{"partial", []string{"u1", "u2"}, 3, []string{"u1", "u2", ""}},
+		{"truncate", []string{long}, 1, []string{long[:1024]}},
+		{"zero files", []string{"u1"}, 0, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeImportSources(tt.raw, tt.n)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %#v want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeImportTitles(t *testing.T) {
+	long := strings.Repeat("t", 300)
+	tests := []struct {
+		name string
+		raw  []string
+		n    int
+		want []string
+	}{
+		{"empty", nil, 2, []string{"", ""}},
+		{"no broadcast", []string{" 仅首个 "}, 3, []string{"仅首个", "", ""}},
+		{"aligned", []string{"a", "b"}, 2, []string{"a", "b"}},
+		{"truncate", []string{long}, 1, []string{long[:256]}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeImportTitles(tt.raw, tt.n)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %#v want %#v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestSourceUploadExists(t *testing.T) {
 	if sourceUploadExists("") || sourceUploadExists("   ") {

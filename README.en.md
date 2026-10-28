@@ -398,19 +398,24 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "title=Compliance red lines" \
+  -F "source=https://intranet.example.com/docs/compliance.md" \
   -F "knowledge_base_id=1" \
   -F "directory_id=1"
 
-# Multiple files
+# Multiple files (title / source match file order)
 curl -X POST http://localhost:8080/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "file=@./examples/kb_securities_02_suitability.md" \
+  -F "title=Compliance red lines" \
+  -F "title=Suitability" \
+  -F "source=https://intranet.example.com/docs/compliance.md" \
+  -F "source=https://intranet.example.com/docs/suitability.md" \
   -F "knowledge_base_id=1" \
   -F "directory_id=1"
 ```
 
-If `knowledge_base_id` is omitted, files go to the user's default knowledge base. New files: `pending` → `indexing` → `ready` / `failed`. `title` applies only to single-file imports; multi-file uses each filename.
+If `knowledge_base_id` is omitted, files go to the user's default knowledge base. New files: `pending` → `indexing` → `ready` / `failed`. Optional `title` and `source` may be repeated to match `file`/`files` **in order**; empty title falls back to the filename. A single `source` applies to every file; a single `title` with multiple files applies only to the first file. `source` is usually an original URL and appears as a clickable link in chat citations.
 
 After a successful index the local upload is deleted and `file_path` is cleared; list/detail responses set `source_available=false`. Failed jobs keep the source file so you can retry.
 

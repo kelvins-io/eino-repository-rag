@@ -393,10 +393,26 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 		}
 	}
 
+	var titles, sources []string
+	if form != nil {
+		titles = append(titles, form.Value["title"]...)
+		sources = append(sources, form.Value["source"]...)
+	}
+	if len(titles) == 0 {
+		if v := c.PostForm("title"); v != "" {
+			titles = []string{v}
+		}
+	}
+	if len(sources) == 0 {
+		if v := c.PostForm("source"); v != "" {
+			sources = []string{v}
+		}
+	}
 	opts := service.ImportOptions{
 		UserID:   currentUserID(c),
 		TenantID: currentTenantID(c),
-		Title:    c.PostForm("title"),
+		Titles:   titles,
+		Sources:  sources,
 	}
 	if v := c.PostForm("knowledge_base_id"); v != "" {
 		id, err := strconv.ParseUint(v, 10, 64)

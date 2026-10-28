@@ -22,6 +22,7 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   final _titleCtrl = TextEditingController();
+  final _sourceCtrl = TextEditingController();
   final _picker = ImagePicker();
   final List<String> _paths = [];
   int? _kbId;
@@ -53,6 +54,7 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _sourceCtrl.dispose();
     super.dispose();
   }
 
@@ -142,6 +144,7 @@ class _ScanScreenState extends State<ScanScreen> {
     final appState = context.read<AppState>();
     final messenger = ScaffoldMessenger.of(context);
     final title = _titleCtrl.text.trim();
+    final source = _sourceCtrl.text.trim();
     final kbId = _kbId!;
     final dirId = _dirId;
     final paths = List<String>.from(_paths);
@@ -176,6 +179,7 @@ class _ScanScreenState extends State<ScanScreen> {
             knowledgeBaseId: kbId,
             directoryId: dirId,
             title: title.isEmpty ? null : title,
+            source: source.isEmpty ? null : source,
             files: files,
           );
 
@@ -240,7 +244,15 @@ class _ScanScreenState extends State<ScanScreen> {
                         controller: _titleCtrl,
                         decoration: const InputDecoration(
                           labelText: '文档标题（可选）',
-                          hintText: '不填则使用文件名',
+                          hintText: '不填则使用文件名；多文件时应用到全部',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _sourceCtrl,
+                        decoration: const InputDecoration(
+                          labelText: '文档来源（可选）',
+                          hintText: '原文链接；多文件时应用到全部',
                         ),
                       ),
                     ],

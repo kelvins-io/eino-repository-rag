@@ -78,6 +78,7 @@ func buildSourceDocument(d *schema.Document) SourceDocument {
 		Title:      metaString(d.MetaData, "title"),
 		Section:    metaString(d.MetaData, "section"),
 		Format:     metaString(d.MetaData, "format"),
+		Source:     metaString(d.MetaData, "source"),
 		Content:    truncate(d.Content, 300),
 		Score:      d.Score(),
 	}

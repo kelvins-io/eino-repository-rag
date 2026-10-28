@@ -58,3 +58,10 @@ export function tenantIdFromQuery(query) {
   if (typeof value !== 'string') return ''
   return value.trim()
 }
+
+/** 是否为可点击打开的 http(s) 链接。 */
+export function isHttpUrl(value) {
+  if (typeof value !== 'string') return false
+  const s = value.trim()
+  return /^https?:\/\//i.test(s)
+}

@@ -210,12 +210,14 @@ class AppState extends ChangeNotifier {
     required int knowledgeBaseId,
     int? directoryId,
     String? title,
+    String? source,
     required List<MultipartFile> files,
   }) {
     return api.importDocuments(
       knowledgeBaseId: knowledgeBaseId,
       directoryId: directoryId,
       title: title,
+      source: source,
       files: files,
     );
   }

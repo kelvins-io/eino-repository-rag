@@ -211,7 +211,7 @@
     </el-dialog>
 
     <!-- 导入弹窗 -->
-    <el-dialog v-model="importVisible" :title="t('kbDetail.importTitle')" width="520px">
+    <el-dialog v-model="importVisible" :title="t('kbDetail.importTitle')" width="560px">
       <el-form label-width="140px">
         <el-form-item :label="t('kbDetail.targetDir')">
           <el-tree-select
@@ -224,9 +224,6 @@
             :placeholder="t('kbDetail.targetDirPh')"
             style="width: 100%"
           />
-        </el-form-item>
-        <el-form-item :label="t('kbDetail.titleSingle')">
-          <el-input v-model="importForm.title" :placeholder="t('kbDetail.titlePh')" />
         </el-form-item>
         <el-form-item :label="t('kbDetail.file')" required>
           <el-upload
@@ -251,6 +248,23 @@
             </template>
           </el-upload>
         </el-form-item>
+        <el-form-item v-if="fileList.length" :label="t('kbDetail.fileMeta')">
+          <div class="file-meta-list">
+            <div v-for="f in fileList" :key="f.uid" class="file-meta-row">
+              <div class="file-meta-name" :title="f.name">{{ f.name }}</div>
+              <el-input
+                v-model="fileTitles[f.uid]"
+                :placeholder="t('kbDetail.titlePh')"
+                clearable
+              />
+              <el-input
+                v-model="fileSources[f.uid]"
+                :placeholder="t('kbDetail.docSourcePh')"
+                clearable
+              />
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="importVisible = false">{{ t('common.cancel') }}</el-button>
@@ -265,6 +279,16 @@
           <el-descriptions-item label="ID">{{ docDetail.id }}</el-descriptions-item>
           <el-descriptions-item :label="t('kbDetail.docTitle')">{{ docDetail.title }}</el-descriptions-item>
           <el-descriptions-item :label="t('kbDetail.fileName')">{{ docDetail.file_name }}</el-descriptions-item>
+          <el-descriptions-item :label="t('kbDetail.docSource')">
+            <a
+              v-if="isHttpUrl(docDetail.source)"
+              :href="docDetail.source"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="source-link"
+            >{{ docDetail.source }}</a>
+            <span v-else>{{ docDetail.source || '-' }}</span>
+          </el-descriptions-item>
           <el-descriptions-item :label="t('kbDetail.uploader')">{{ docDetail.username || docDetail.user_id || '-' }}</el-descriptions-item>
           <el-descriptions-item :label="t('common.status')">
             <el-tag :type="statusType(docDetail.status)" size="small">
@@ -347,6 +371,7 @@ import { api } from '@/api'
 import {
   formatSize,
   formatTime,
+  isHttpUrl,
   statusLabel,
   statusType,
 } from '@/utils/helpers'
@@ -378,7 +403,9 @@ const importVisible = ref(false)
 const importing = ref(false)
 const uploadRef = ref()
 const fileList = ref([])
-const importForm = reactive({ directory_id: undefined, title: '' })
+const importForm = reactive({ directory_id: undefined })
+const fileTitles = reactive({})
+const fileSources = reactive({})
 const maxUploadFileSizeMB = ref(50)
 const maxUploadFiles = ref(20)
 const maxTenantFiles = ref(5)
@@ -565,6 +592,22 @@ async function onDirDelete(data) {
   await loadTree()
 }
 
+function syncFileMetaMap(map, files) {
+  const next = {}
+  for (const f of files) {
+    next[f.uid] = map[f.uid] ?? ''
+  }
+  for (const uid of Object.keys(map)) {
+    delete map[uid]
+  }
+  Object.assign(map, next)
+}
+
+function syncFileMeta(files) {
+  syncFileMetaMap(fileTitles, files)
+  syncFileMetaMap(fileSources, files)
+}
+
 function onFileChange(file, files) {
   const raw = file?.raw
   if (raw && raw.size > maxUploadFileSize.value) {
@@ -577,13 +620,16 @@ function onFileChange(file, files) {
     )
     uploadRef.value?.handleRemove(file)
     fileList.value = files.filter((f) => f.uid !== file.uid)
+    syncFileMeta(fileList.value)
     return
   }
   fileList.value = files
+  syncFileMeta(files)
 }
 
 function onFileRemove(_file, files) {
   fileList.value = files
+  syncFileMeta(files)
 }
 
 function onFileExceed() {
@@ -608,11 +654,20 @@ async function loadUploadLimits() {
   }
 }
 
+function clearFileMeta() {
+  for (const uid of Object.keys(fileTitles)) {
+    delete fileTitles[uid]
+  }
+  for (const uid of Object.keys(fileSources)) {
+    delete fileSources[uid]
+  }
+}
+
 async function openImport() {
   if (importQuotaFull.value) return
-  importForm.title = ''
   importForm.directory_id = currentDir.value?.id
   fileList.value = []
+  clearFileMeta()
   uploadRef.value?.clearFiles()
   await loadUploadLimits()
   importVisible.value = true
@@ -645,10 +700,9 @@ async function doImport() {
   if (importForm.directory_id) {
     fd.append('directory_id', String(importForm.directory_id))
   }
-  if (importForm.title && fileList.value.length === 1) {
-    fd.append('title', importForm.title)
-  }
   for (const f of fileList.value) {
+    fd.append('title', (fileTitles[f.uid] || '').trim())
+    fd.append('source', (fileSources[f.uid] || '').trim())
     fd.append('files', f.raw)
   }
   importing.value = true
@@ -656,9 +710,9 @@ async function doImport() {
     const result = await api.importDocuments(fd)
     ElMessage.success(result?.message || t('kbDetail.importDone', { imported: result?.imported || 0, duplicated: result?.duplicated || 0 }))
     importVisible.value = false
-    importForm.title = ''
     importForm.directory_id = undefined
     fileList.value = []
+    clearFileMeta()
     uploadRef.value?.clearFiles()
     await Promise.all([loadDocs(), loadUploadLimits()])
   } finally {
@@ -848,5 +902,43 @@ onMounted(refreshAll)
   line-height: 1.5;
   max-height: 160px;
   overflow: auto;
+}
+
+.source-link {
+  color: var(--el-color-primary);
+  word-break: break-all;
+  text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
+.file-meta-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.file-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.file-meta-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.file-meta-name {
+  font-size: 12px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

@@ -200,6 +200,7 @@ class SourceDocument {
   final int page;
   final String title;
   final String section;
+  final String source;
   final String content;
   final double score;
 
@@ -210,6 +211,7 @@ class SourceDocument {
     required this.page,
     required this.title,
     required this.section,
+    this.source = '',
     required this.content,
     required this.score,
   });
@@ -221,6 +223,7 @@ class SourceDocument {
         page: _asInt(json['page']),
         title: '${json['title'] ?? ''}',
         section: '${json['section'] ?? ''}',
+        source: '${json['source'] ?? ''}',
         content: '${json['content'] ?? ''}',
         score: (json['score'] is num) ? (json['score'] as num).toDouble() : 0,
       );

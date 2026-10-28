@@ -162,6 +162,7 @@ func (p *Pipeline) AgentQueryStream(ctx context.Context, req QueryRequest, onEve
 	for _, d := range docs {
 		sources = append(sources, buildSourceDocument(d))
 	}
+	p.attachDocumentSources(sources)
 
 	finalSources := sources
 	check := validateCitations(answer, len(sources))

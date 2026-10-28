@@ -220,6 +220,9 @@ func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 		chunk.MetaData["directory_id"] = ptrUintToMeta(doc.DirectoryID)
 		chunk.MetaData["title"] = doc.Title
 		chunk.MetaData["format"] = parsed.Format
+		if src := strings.TrimSpace(doc.Source); src != "" {
+			chunk.MetaData["source"] = src
+		}
 		chunk.MetaData["chunk_index"] = i
 		if page := metaInt(chunk.MetaData, "page"); page <= 0 {
 			if page = inferPageFromContent(chunk.Content); page > 0 {
@@ -364,6 +367,7 @@ type SourceDocument struct {
 	Title      string  `json:"title,omitempty"`
 	Section    string  `json:"section,omitempty"` // 结构切分得到的章节/页/工作表名
 	Format     string  `json:"format,omitempty"`
+	Source     string  `json:"source,omitempty"` // 文档来源链接（导入时可选填写）
 	Content    string  `json:"content"`
 	Score      float64 `json:"score,omitempty"`
 }
@@ -460,6 +464,7 @@ func (p *Pipeline) QueryStream(ctx context.Context, req QueryRequest, onEvent St
 	for _, d := range docs {
 		sources = append(sources, buildSourceDocument(d))
 	}
+	p.attachDocumentSources(sources)
 
 	if err := onEvent(StreamEvent{
 		Type:            StreamEventMeta,
@@ -794,6 +799,55 @@ func pruneEmptyParents(filePath, uploadDirAbs string) {
 			return
 		}
 		dir = filepath.Dir(abs)
+	}
+}
+
+// attachDocumentSources 按 doc_id 从文档表回填来源链接；向量元数据缺失时仍可展示。
+func (p *Pipeline) attachDocumentSources(sources []SourceDocument) {
+	if p == nil || p.docRepo == nil || len(sources) == 0 {
+		return
+	}
+	seen := make(map[uint]struct{}, len(sources))
+	ids := make([]uint, 0, len(sources))
+	for _, s := range sources {
+		if s.Source != "" {
+			continue
+		}
+		id, err := strconv.ParseUint(strings.TrimSpace(s.DocID), 10, 64)
+		if err != nil || id == 0 {
+			continue
+		}
+		uid := uint(id)
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		ids = append(ids, uid)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	docs, err := p.docRepo.GetByIDs(ids)
+	if err != nil {
+		logger.S().Warnf("[rag] attach document sources: %v", err)
+		return
+	}
+	byID := make(map[string]string, len(docs))
+	for i := range docs {
+		if src := strings.TrimSpace(docs[i].Source); src != "" {
+			byID[strconv.FormatUint(uint64(docs[i].ID), 10)] = src
+		}
+	}
+	if len(byID) == 0 {
+		return
+	}
+	for i := range sources {
+		if sources[i].Source != "" {
+			continue
+		}
+		if src := byID[sources[i].DocID]; src != "" {
+			sources[i].Source = src
+		}
 	}
 }
 

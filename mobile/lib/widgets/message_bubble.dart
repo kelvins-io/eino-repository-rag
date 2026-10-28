@@ -139,6 +139,27 @@ class SourceCard extends StatelessWidget {
                 style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
               ),
             ],
+            if (source.source.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: source.source));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已复制文档来源链接')),
+                    );
+                  }
+                },
+                child: Text(
+                  '来源：${source.source}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.accent,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 6),
             Text(
               source.content,

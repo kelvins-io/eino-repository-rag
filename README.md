@@ -408,19 +408,24 @@ curl -X POST http://localhost:8080/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "title=合规红线" \
+  -F "source=https://intranet.example.com/docs/compliance.md" \
   -F "knowledge_base_id=1" \
   -F "directory_id=1"
 
-# 多文件
+# 多文件（title / source 与 file 按顺序一一对应）
 curl -X POST http://localhost:8080/api/v1/documents/import \
   -H "Authorization: Bearer <token>" \
   -F "file=@./examples/kb_securities_01_compliance.md" \
   -F "file=@./examples/kb_securities_02_suitability.md" \
+  -F "title=合规红线" \
+  -F "title=适当性管理" \
+  -F "source=https://intranet.example.com/docs/compliance.md" \
+  -F "source=https://intranet.example.com/docs/suitability.md" \
   -F "knowledge_base_id=1" \
   -F "directory_id=1"
 ```
 
-未传 `knowledge_base_id` 时，会自动归入该用户的「默认知识库」。新文件导入后状态：`pending` → `indexing` → `ready` / `failed`。`title` 仅在单文件导入时生效；多文件时默认使用各自文件名。
+未传 `knowledge_base_id` 时，会自动归入该用户的「默认知识库」。新文件导入后状态：`pending` → `indexing` → `ready` / `failed`。可选字段 `title`、`source` 均可重复提交，与 `file`/`files` **按顺序一一对应**；某项留空时标题回退为文件名。若只传 1 个 `source` 则应用到本次全部文件；只传 1 个 `title` 且多文件时仅作用于第一个文件。`source` 通常为原文 URL，对话引用片段中会展示并可点击打开。
 
 索引成功后会删除本地上传文件并清空 `file_path`；列表/详情返回 `source_available=false`。索引失败会保留源文件，便于重试。
 

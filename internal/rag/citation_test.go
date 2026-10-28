@@ -36,6 +36,7 @@ func TestBuildSourceDocument(t *testing.T) {
 			"chunk_index": 7,
 			"title":       "报告.pdf",
 			"format":      "pdf",
+			"source":      "https://example.com/report.pdf",
 		},
 	}
 	d.WithScore(0.91)
@@ -55,6 +56,9 @@ func TestBuildSourceDocument(t *testing.T) {
 	}
 	if src.Title != "报告.pdf" || src.Format != "pdf" {
 		t.Fatalf("title/format = %q/%q", src.Title, src.Format)
+	}
+	if src.Source != "https://example.com/report.pdf" {
+		t.Fatalf("Source=%q", src.Source)
 	}
 	if src.Score != 0.91 {
 		t.Fatalf("Score=%v", src.Score)

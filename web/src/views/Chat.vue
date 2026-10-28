@@ -178,6 +178,17 @@
                           <template v-if="s.score != null"> · score={{ Number(s.score).toFixed(3) }}</template>
                         </span>
                       </div>
+                      <div v-if="s.source" class="source-origin">
+                        <span class="source-origin-label">{{ t('chat.docSource') }}：</span>
+                        <a
+                          v-if="isHttpUrl(s.source)"
+                          :href="s.source"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="source-link"
+                        >{{ s.source }}</a>
+                        <span v-else>{{ s.source }}</span>
+                      </div>
                       <div class="source-body">{{ s.content }}</div>
                     </div>
                   </el-collapse-item>
@@ -277,7 +288,7 @@ import { api } from '@/api'
 import { isTenantAdmin } from '@/utils/auth'
 import { useSpeechInput } from '@/composables/useSpeechInput'
 import { useSpeechOutput } from '@/composables/useSpeechOutput'
-import { EMPTY_ANSWER, getSessionId, newSessionId, setSessionId } from '@/utils/helpers'
+import { EMPTY_ANSWER, getSessionId, isHttpUrl, newSessionId, setSessionId } from '@/utils/helpers'
 
 const { t, locale } = useI18n()
 
@@ -884,6 +895,59 @@ onMounted(async () => {
 
 .sources-title {
   font-weight: 500;
+}
+
+.source-item {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.source-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.source-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.source-meta {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.source-origin {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+
+.source-origin-label {
+  color: #64748b;
+}
+
+.source-link {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
+.source-body {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .agent-steps {

@@ -264,11 +264,61 @@ type ImportResult struct {
 }
 
 type ImportOptions struct {
-	UserID          string
-	TenantID        uint
-	Title           string
+	UserID   string
+	TenantID uint
+	// Titles 按上传文件顺序的可选标题。多个时与文件一一对应；空则用文件名。
+	// 仅 1 个且文件数>1 时不广播，只作用于第一个文件（避免多文件同名）。
+	Titles []string
+	// Sources 按上传文件顺序的可选来源（通常为原文 URL）。
+	// 仅 1 个时应用到全部文件；多个时与文件一一对应，缺省为空。
+	Sources         []string
 	KnowledgeBaseID uint
 	DirectoryID     *uint
+}
+
+const (
+	importTitleMaxLen  = 256
+	importSourceMaxLen = 1024
+)
+
+// normalizeImportFieldList 将表单字段列表对齐到文件数。
+// broadcastSingle 为 true 且仅 1 个非对齐值时，复制到全部文件（用于 source）。
+func normalizeImportFieldList(raw []string, nFiles, maxLen int, broadcastSingle bool) []string {
+	out := make([]string, nFiles)
+	if nFiles <= 0 {
+		return out
+	}
+	trimmed := make([]string, 0, len(raw))
+	for _, s := range raw {
+		s = strings.TrimSpace(s)
+		if maxLen > 0 && len(s) > maxLen {
+			s = s[:maxLen]
+		}
+		trimmed = append(trimmed, s)
+	}
+	switch {
+	case len(trimmed) == 0:
+		return out
+	case len(trimmed) == 1 && broadcastSingle:
+		for i := range out {
+			out[i] = trimmed[0]
+		}
+	default:
+		for i := range out {
+			if i < len(trimmed) {
+				out[i] = trimmed[i]
+			}
+		}
+	}
+	return out
+}
+
+func normalizeImportTitles(raw []string, nFiles int) []string {
+	return normalizeImportFieldList(raw, nFiles, importTitleMaxLen, false)
+}
+
+func normalizeImportSources(raw []string, nFiles int) []string {
+	return normalizeImportFieldList(raw, nFiles, importSourceMaxLen, true)
 }
 
 // CreateKnowledgeBase 创建知识库
@@ -570,13 +620,11 @@ func (s *KnowledgeService) ImportDocuments(
 		Total: len(fileHeaders),
 	}
 	seenMD5 := make(map[string]*model.Document, len(fileHeaders))
+	titles := normalizeImportTitles(opts.Titles, len(fileHeaders))
+	sources := normalizeImportSources(opts.Sources, len(fileHeaders))
 
-	for _, fh := range fileHeaders {
-		title := ""
-		if len(fileHeaders) == 1 {
-			title = opts.Title
-		}
-		item, err := s.importOneFile(actor, kb.TenantID, kbID, opts.DirectoryID, title, fh, seenMD5)
+	for i, fh := range fileHeaders {
+		item, err := s.importOneFile(actor, kb.TenantID, kbID, opts.DirectoryID, titles[i], sources[i], fh, seenMD5)
 		if err != nil {
 			return nil, fmt.Errorf("导入文件 %q 失败: %w", fh.Filename, err)
 		}
@@ -605,6 +653,7 @@ func (s *KnowledgeService) importOneFile(
 	kbID uint,
 	directoryID *uint,
 	title string,
+	source string,
 	fileHeader *multipart.FileHeader,
 	seenMD5 map[string]*model.Document,
 ) (*ImportFileResult, error) {
@@ -660,6 +709,7 @@ func (s *KnowledgeService) importOneFile(
 		Title:           title,
 		FileName:        fileHeader.Filename,
 		FilePath:        path,
+		Source:          source,
 		ContentMD5:      contentMD5,
 		ContentType:     fileHeader.Header.Get("Content-Type"),
 		FileSize:        int64(len(data)),

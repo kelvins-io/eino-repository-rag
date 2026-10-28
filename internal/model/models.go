@@ -61,6 +61,8 @@ type Document struct {
 	Title           string `gorm:"size:256;not null" json:"title"`
 	FileName        string `gorm:"size:256;not null" json:"file_name"`
 	FilePath        string `gorm:"size:512;not null" json:"file_path"`
+	// Source 可选的文档来源（通常为原文 URL），导入时填写；对话引用中可点击跳转查看源文件。
+	Source string `gorm:"size:1024;not null;default:''" json:"source,omitempty"`
 	// SourceAvailable 本地上传文件是否仍在；索引成功后会删除源文件。不入库。
 	SourceAvailable bool           `gorm:"-" json:"source_available"`
 	ContentMD5      string         `gorm:"size:32;index:idx_kb_content_md5,priority:2;not null;default:''" json:"content_md5"`
