@@ -72,18 +72,23 @@ services:
       timeout: 5s
       retries: 5
 
+  # minio/minio 已从 Docker Hub 下架；改用 Chainguard 社区构建
   minio:
     profiles: ["milvus"]
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    image: cgr.dev/chainguard/minio:latest
     container_name: eino-rag-minio
+    # 镜像默认 nonroot(65532)，命名卷属主为 root，本地需 root 才能写数据目录
+    user: "0:0"
     environment:
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    command: minio server /minio_data --console-address ":9001"
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    # 镜像 ENTRYPOINT 已是 /usr/bin/minio，勿再写 minio 前缀
+    command: ["server", "/minio_data", "--console-address", ":9001"]
     volumes:
       - miniodata:/minio_data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # 镜像无 curl；用 bash /dev/tcp 探活
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]
       interval: 10s
       timeout: 5s
       retries: 5
