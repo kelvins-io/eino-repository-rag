@@ -201,19 +201,31 @@ func (s *KnowledgeService) MaterializeRemoteDocument(ctx context.Context, doc *m
 	if sourceUploadExists(doc.FilePath) {
 		return nil
 	}
-	fileName, err := parseDocumentLink(doc.Source)
-	if err != nil {
-		return nil
-	}
-	fileName = fitFileName(fileName)
-
 	maxBytes, err := s.remoteFetchLimit(doc.TenantID)
 	if err != nil {
 		return err
 	}
-	data, err := downloadRemoteDocument(ctx, strings.TrimSpace(doc.Source), maxBytes)
-	if err != nil {
-		return err
+
+	var (
+		fileName string
+		data     []byte
+	)
+	source := strings.TrimSpace(doc.Source)
+	if _, isYoudao, _ := parseYoudaoNoteLink(source); isYoudao {
+		fileName, data, err = fetchYoudaoNoteDocument(ctx, source, doc.Title, maxBytes)
+		if err != nil {
+			return err
+		}
+	} else {
+		fileName, err = parseDocumentLink(source)
+		if err != nil {
+			return nil
+		}
+		fileName = fitFileName(fileName)
+		data, err = downloadRemoteDocument(ctx, source, maxBytes)
+		if err != nil {
+			return err
+		}
 	}
 
 	sum := md5.Sum(data)
@@ -294,7 +306,11 @@ func validateDocumentLinks(items []LinkDocumentItem, maxPerRequest int) ([]prepa
 			if errors.As(err, &typeErr) {
 				return nil, fmt.Errorf("第 %d 个文档类型无效（%s）", n, typeErr.ext)
 			}
-			return nil, fmt.Errorf("第 %d 个文档链接格式无效，路径需要以支持的文档扩展名结尾（可以带查询参数）", n)
+			msg := err.Error()
+			if strings.Contains(msg, "有道云笔记") {
+				return nil, fmt.Errorf("第 %d 个%s", n, msg)
+			}
+			return nil, fmt.Errorf("第 %d 个文档链接格式无效，路径需要以支持的文档扩展名结尾（可以带查询参数），或填写有道云笔记公开分享链接", n)
 		}
 		if prev, ok := seen[raw]; ok {
 			return nil, fmt.Errorf("第 %d 个文档链接与第 %d 个重复，不能重复提交", n, prev)
@@ -310,7 +326,11 @@ func validateDocumentLinks(items []LinkDocumentItem, maxPerRequest int) ([]prepa
 }
 
 // parseDocumentLink 校验 http(s) 文档链接。扩展名取自路径，查询参数和片段被保留但不参与判断。
+// 有道云笔记公开分享链接不要求扩展名，导入时会解析正文并保存为 Markdown。
 func parseDocumentLink(raw string) (string, error) {
+	if fileName, ok, err := parseYoudaoNoteLink(raw); ok {
+		return fileName, err
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" || strings.ContainsAny(raw, " \t\r\n") {
 		return "", fmt.Errorf("文档链接格式无效")

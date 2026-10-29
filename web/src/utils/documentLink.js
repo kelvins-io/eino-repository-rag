@@ -50,8 +50,65 @@ function pathExt(name) {
   return name.slice(index).toLowerCase()
 }
 
-/** 校验文档链接。扩展名只取路径，查询参数和片段不参与判断。 */
+function isYoudaoNoteHost(hostname) {
+  const host = String(hostname || '').toLowerCase()
+  return (
+    host === 'note.youdao.com' ||
+    host === 'share.note.youdao.com' ||
+    host === 'note.youdao.cn' ||
+    host === 'share.note.youdao.cn' ||
+    host.endsWith('.note.youdao.com') ||
+    host.endsWith('.note.youdao.cn')
+  )
+}
+
+/** 有道云笔记公开分享链接：短链 /s/{id}，或带 id 的 noteshare / share 页面。 */
+export function parseYoudaoNoteLink(raw) {
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  if (!value || /\s/.test(value)) return null
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    return null
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  if (!isYoudaoNoteHost(url.hostname)) return null
+
+  const queryID = (url.searchParams.get('id') || url.searchParams.get('shareKey') || url.searchParams.get('noteid') || '').trim()
+  const path = (url.pathname || '').replace(/\/+$/, '') || '/'
+  const short = path.match(/^\/s\/([A-Za-z0-9_-]{4,64})$/i)
+  const lowerPath = path.toLowerCase()
+  const sharePage =
+    lowerPath.includes('noteshare') ||
+    lowerPath.includes('ynoteshare') ||
+    lowerPath.endsWith('/share') ||
+    lowerPath.includes('/share/')
+
+  let key = ''
+  if (short) {
+    key = short[1]
+  } else if (/^[a-f0-9]{32}$/i.test(queryID) || /^[A-Za-z0-9_-]{4,64}$/.test(queryID)) {
+    key = queryID
+  }
+
+  if (short) {
+    return { fileName: `youdao-${key}.md`, youdao: true }
+  }
+  if (sharePage || queryID) {
+    if (!key) return { error: 'invalid' }
+    return { fileName: `youdao-${key}.md`, youdao: true }
+  }
+  return { error: 'invalid' }
+}
+
+/** 校验文档链接。扩展名只取路径，查询参数和片段不参与判断。有道云笔记分享链接除外。 */
 export function parseDocumentLink(raw, extensions) {
+  const youdao = parseYoudaoNoteLink(raw)
+  if (youdao) {
+    if (youdao.error) return { error: 'invalid' }
+    return { fileName: youdao.fileName }
+  }
   const allowed = normalizeExtensions(extensions)
   const value = typeof raw === 'string' ? raw.trim() : ''
   if (!value || /\s/.test(value)) return { error: 'invalid' }
