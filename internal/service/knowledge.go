@@ -984,14 +984,16 @@ func (s *KnowledgeService) ReindexDocuments(ids []uint, userID string, tenantID 
 			continue
 		}
 		if !sourceUploadExists(doc.FilePath) {
-			result.Items = append(result.Items, ReindexItemResult{
-				ID:       id,
-				Document: doc,
-				Skipped:  true,
-				Message:  "源文件已在索引完成后清理，无法重新索引",
-			})
-			result.Skipped++
-			continue
+			if _, linkErr := parseDocumentLink(doc.Source); linkErr != nil {
+				result.Items = append(result.Items, ReindexItemResult{
+					ID:       id,
+					Document: doc,
+					Skipped:  true,
+					Message:  "源文件已在索引完成后清理，无法重新索引",
+				})
+				result.Skipped++
+				continue
+			}
 		}
 
 		s.rag.IndexDocumentAsync(doc.ID)

@@ -91,9 +91,17 @@ func TestSanitizeAndGarbledPDF(t *testing.T) {
 	if !looksGarbledPDF(garbled, "AI网关优化方案.pdf") {
 		t.Fatal("expected garbled detection for CJK-named PDF")
 	}
+	symbols := strings.Repeat("HBUFXBZ 5PLFO ©ÖG>Â ", 30)
+	if !looksGarbledPDF(symbols, "AI网关优化方案.pdf") {
+		t.Fatal("expected symbol garbage on a CJK-named PDF to be garbled")
+	}
 	clean := strings.Repeat("网关首包延迟优化方案 TTFT 需要缩短 Prompt 处理时间。", 5)
 	if looksGarbledPDF(clean, "AI网关优化方案.pdf") {
 		t.Fatal("clean CJK text should not be garbled")
+	}
+	english := strings.Repeat("安装docker\nversion: '3.1'\nimage: quay.io/coreos/etcd:v3.2.32\ncontainer_name: etcd_cluster_node1\n", 40)
+	if looksGarbledPDF(english, "etcd环境部署-docker.pdf") {
+		t.Fatal("Chinese filename with English or code body should not be garbled")
 	}
 }
 

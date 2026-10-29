@@ -241,11 +241,12 @@ func looksGarbledPDF(text, path string) bool {
 		sample = string([]rune(sample)[:4000])
 	}
 	var (
-		total    int
-		han      int
-		letters  int
-		controls int
-		private  int
+		total          int
+		han            int
+		asciiLower     int
+		controls       int
+		private        int
+		nonASCIINonHan int
 	)
 	for _, r := range sample {
 		if unicode.IsSpace(r) {
@@ -255,12 +256,15 @@ func looksGarbledPDF(text, path string) bool {
 		switch {
 		case unicode.Is(unicode.Han, r):
 			han++
-		case unicode.IsLetter(r) || unicode.IsNumber(r):
-			letters++
+		case r <= 0x7F && unicode.IsLower(r):
+			asciiLower++
 		case r < 0x20:
 			controls++
 		case r >= 0xE000 && r <= 0xF8FF:
 			private++
+		}
+		if r > 0x7F && !unicode.Is(unicode.Han, r) {
+			nonASCIINonHan++
 		}
 	}
 	if total == 0 {
@@ -269,8 +273,9 @@ func looksGarbledPDF(text, path string) bool {
 	if controls*20 > total || private*5 > total {
 		return true
 	}
-	// 文件名含中文，正文几乎没有汉字：典型的 CJK 字体未映射
-	if pathHasHan(path) && han*50 < total && total > 80 {
+	// 中文文件名配英文或代码正文是正常文档。只有正文几乎没有汉字、
+	// 又缺少可读的小写英文，同时夹杂大量非 ASCII 符号时，才视为 CJK 字体未映射。
+	if pathHasHan(path) && han*50 < total && total > 80 && asciiLower*10 < total && nonASCIINonHan*8 > total {
 		return true
 	}
 	return false

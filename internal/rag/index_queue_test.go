@@ -121,4 +121,15 @@ func TestIsRetryableIndexErr(t *testing.T) {
 	if !isRetryableIndexErr(fmt.Errorf("milvus store vectors: context deadline exceeded")) {
 		t.Fatal("embed/milvus timeout should retry")
 	}
+	if isRetryableIndexErr(fmt.Errorf("fetch remote document: %w", permanentMarker("文件大小超过限制"))) {
+		t.Fatal("permanent remote fetch error should not retry")
+	}
+	if !isRetryableIndexErr(fmt.Errorf("读取在线文档失败：HTTP 502")) {
+		t.Fatal("remote 5xx should retry")
+	}
 }
+
+type permanentMarker string
+
+func (e permanentMarker) Error() string   { return string(e) }
+func (e permanentMarker) Permanent() bool { return true }

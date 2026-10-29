@@ -168,6 +168,20 @@ func (r *DocumentRepo) UpdateStatus(id uint, status model.DocumentStatus, chunkC
 	return r.db.Model(&model.Document{}).Where("id = ?", id).UpdateColumns(updates).Error
 }
 
+// UpdateFetchedFile 在线文档下载完成后写回本地路径、校验和与大小。
+func (r *DocumentRepo) UpdateFetchedFile(id uint, fileName, filePath, contentMD5, contentType string, fileSize int64) error {
+	if r == nil || id == 0 {
+		return fmt.Errorf("invalid document")
+	}
+	return r.db.Model(&model.Document{}).Where("id = ?", id).UpdateColumns(map[string]any{
+		"file_name":    fileName,
+		"file_path":    filePath,
+		"content_md5":  contentMD5,
+		"content_type": contentType,
+		"file_size":    fileSize,
+	}).Error
+}
+
 // ClearFilePath 索引成功并删除本地上传文件后清空路径。
 func (r *DocumentRepo) ClearFilePath(id uint) error {
 	if r == nil || id == 0 {

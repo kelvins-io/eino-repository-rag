@@ -440,6 +440,34 @@ func (h *KnowledgeHandler) ImportDocument(c *gin.Context) {
 	ok(c, result)
 }
 
+type importLinksReq struct {
+	KnowledgeBaseID uint                       `json:"knowledge_base_id"`
+	DirectoryID     *uint                      `json:"directory_id"`
+	Items           []service.LinkDocumentItem `json:"items"`
+}
+
+// ImportDocumentLinks POST /api/v1/documents/import-links
+func (h *KnowledgeHandler) ImportDocumentLinks(c *gin.Context) {
+	var req importLinksReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "请求参数错误: "+err.Error())
+		return
+	}
+	result, err := h.svc.ImportDocumentLinks(c.Request.Context(), service.ImportLinksOptions{
+		UserID:          currentUserID(c),
+		TenantID:        currentTenantID(c),
+		KnowledgeBaseID: req.KnowledgeBaseID,
+		DirectoryID:     req.DirectoryID,
+		Items:           req.Items,
+		MaxPerRequest:   h.maxUploadFiles,
+	})
+	if err != nil {
+		failErr(c, err)
+		return
+	}
+	ok(c, result)
+}
+
 // UploadLimits GET /api/v1/system/upload-limits
 func (h *KnowledgeHandler) UploadLimits(c *gin.Context) {
 	sizeMB := h.maxUploadFileSizeMB
@@ -464,6 +492,7 @@ func (h *KnowledgeHandler) UploadLimits(c *gin.Context) {
 		"max_upload_files":        h.maxUploadFiles,
 		"max_tenant_files":        maxFiles,
 		"tenant_file_count":       used,
+		"allowed_extensions":      service.AllowedImportExtensions(),
 	})
 }
 

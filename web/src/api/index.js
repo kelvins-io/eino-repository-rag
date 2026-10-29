@@ -212,6 +212,7 @@ export const api = {
     http.post('/api/v1/documents/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
+  importDocumentLinks: (data) => http.post('/api/v1/documents/import-links', data),
   uploadLimits: () => http.get('/api/v1/system/upload-limits'),
   chatQuota: () => http.get('/api/v1/chat/quota'),
   transcribeSpeech: (file, { prompt, language } = {}) => {

@@ -23,6 +23,15 @@
             <el-button :icon="Upload" type="primary" :disabled="importQuotaFull" @click="openImport">{{ t('kbDetail.import') }}</el-button>
           </span>
         </el-tooltip>
+        <el-tooltip
+          :disabled="!importQuotaFull"
+          :content="t('kbDetail.quotaFull')"
+          placement="top"
+        >
+          <span>
+            <el-button :icon="Link" :disabled="importQuotaFull" @click="openLinkImport">{{ t('kbDetail.link') }}</el-button>
+          </span>
+        </el-tooltip>
         <el-button :icon="Refresh" @click="refreshAll">{{ t('kbDetail.refresh') }}</el-button>
       </div>
     </div>
@@ -230,7 +239,7 @@
             ref="uploadRef"
             drag
             multiple
-            accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.md,.markdown,.txt,.csv,.json,.png,.jpg,.jpeg,.webp,.tif,.tiff,.bmp,.gif"
+            :accept="acceptTypes"
             :auto-upload="false"
             :limit="maxUploadFiles"
             :on-change="onFileChange"
@@ -269,6 +278,48 @@
       <template #footer>
         <el-button @click="importVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="importing" :disabled="importQuotaFull" @click="doImport">{{ t('kbDetail.startImport') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="linkVisible" :title="t('kbDetail.linkTitle')" width="720px">
+      <el-form label-width="140px">
+        <el-form-item :label="t('kbDetail.targetDir')">
+          <el-tree-select
+            v-model="linkForm.directory_id"
+            :data="treeData"
+            clearable
+            check-strictly
+            node-key="id"
+            :props="{ label: 'name', children: 'children', value: 'id' }"
+            :placeholder="t('kbDetail.targetDirPh')"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item :label="t('kbDetail.linkDocs')" required>
+          <div class="link-editor">
+            <div class="link-list">
+              <div v-for="(row, index) in linkRows" :key="row.uid" class="link-row">
+                <el-input v-model="row.title" :placeholder="t('kbDetail.linkTitlePh')" />
+                <el-input v-model="row.url" :placeholder="t('kbDetail.linkUrlPh')" />
+                <el-button link type="danger" :disabled="linkRows.length <= 1" @click="removeLinkRow(index)">
+                  {{ t('common.delete') }}
+                </el-button>
+              </div>
+            </div>
+            <el-button :disabled="linkRows.length >= maxUploadFiles" @click="addLinkRow">{{ t('kbDetail.addLink') }}</el-button>
+            <div class="el-upload__tip">
+              {{ t('kbDetail.formats') }}
+              <br />
+              {{ t('kbDetail.linkHint') }}
+              <br />
+              {{ t('kbDetail.limits', { size: maxUploadFileSizeMB, files: maxUploadFiles, max: maxTenantFiles, used: tenantFileCount }) }}
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="linkVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="linking" :disabled="importQuotaFull" @click="doLinkImport">{{ t('kbDetail.startLinkImport') }}</el-button>
       </template>
     </el-dialog>
 
@@ -366,8 +417,9 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
+import { Link, Plus, Refresh, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
+import { FALLBACK_IMPORT_EXTENSIONS, parseDocumentLink, validateDocumentLinks } from '@/utils/documentLink'
 import {
   formatSize,
   formatTime,
@@ -406,10 +458,17 @@ const fileList = ref([])
 const importForm = reactive({ directory_id: undefined })
 const fileTitles = reactive({})
 const fileSources = reactive({})
+const linkVisible = ref(false)
+const linking = ref(false)
+const linkForm = reactive({ directory_id: undefined })
+const linkRows = ref([])
+let linkSeed = 1
 const maxUploadFileSizeMB = ref(50)
 const maxUploadFiles = ref(20)
 const maxTenantFiles = ref(5)
 const tenantFileCount = ref(0)
+const allowedExtensions = ref([...FALLBACK_IMPORT_EXTENSIONS])
+const acceptTypes = computed(() => allowedExtensions.value.join(','))
 const maxUploadFileSize = computed(() => maxUploadFileSizeMB.value * 1024 * 1024)
 const importQuotaFull = computed(
   () => Number(tenantFileCount.value) >= Number(maxTenantFiles.value) && Number(maxTenantFiles.value) > 0,
@@ -648,6 +707,9 @@ async function loadUploadLimits() {
     if (data?.max_tenant_files > 0) {
       maxTenantFiles.value = data.max_tenant_files
     }
+    if (Array.isArray(data?.allowed_extensions) && data.allowed_extensions.length) {
+      allowedExtensions.value = data.allowed_extensions
+    }
     tenantFileCount.value = data?.tenant_file_count || 0
   } catch {
     // 使用默认值
@@ -671,6 +733,78 @@ async function openImport() {
   uploadRef.value?.clearFiles()
   await loadUploadLimits()
   importVisible.value = true
+}
+
+function newLinkRow() {
+  return { uid: linkSeed++, title: '', url: '' }
+}
+
+async function openLinkImport() {
+  if (importQuotaFull.value) return
+  linkForm.directory_id = currentDir.value?.id
+  linkRows.value = [newLinkRow()]
+  await loadUploadLimits()
+  linkVisible.value = true
+}
+
+function addLinkRow() {
+  if (linkRows.value.length >= maxUploadFiles.value) {
+    ElMessage.warning(t('kbDetail.tooManyLinks', { count: maxUploadFiles.value }))
+    return
+  }
+  linkRows.value.push(newLinkRow())
+}
+
+function removeLinkRow(index) {
+  if (linkRows.value.length <= 1) return
+  linkRows.value.splice(index, 1)
+}
+
+function linkValidationMessage(issue) {
+  if (!issue) return ''
+  if (issue.code === 'empty') return t('kbDetail.needLink')
+  if (issue.code === 'tooMany') return t('kbDetail.tooManyLinks', { count: issue.count })
+  if (issue.code === 'needTitle') return t('kbDetail.needLinkTitle', { index: issue.index })
+  if (issue.code === 'titleLong') return t('kbDetail.linkTitleLong', { index: issue.index })
+  if (issue.code === 'needUrl') return t('kbDetail.needLinkUrl', { index: issue.index })
+  if (issue.code === 'urlLong') return t('kbDetail.linkUrlLong', { index: issue.index })
+  if (issue.code === 'type') return t('kbDetail.linkType', { index: issue.index, ext: issue.ext })
+  if (issue.code === 'duplicate') return t('kbDetail.linkDuplicate', { index: issue.index, other: issue.other })
+  return t('kbDetail.linkInvalid', { index: issue.index })
+}
+
+async function doLinkImport() {
+  const issue = validateDocumentLinks(linkRows.value, {
+    extensions: allowedExtensions.value,
+    maxFiles: maxUploadFiles.value,
+  })
+  if (issue) {
+    ElMessage.warning(linkValidationMessage(issue))
+    return
+  }
+  const remain = Number(maxTenantFiles.value) - Number(tenantFileCount.value)
+  if (Number(maxTenantFiles.value) > 0 && linkRows.value.length > remain) {
+    ElMessage.warning(t('kbDetail.linkQuota', { max: maxTenantFiles.value, used: tenantFileCount.value }))
+    return
+  }
+  const payload = {
+    knowledge_base_id: kbId.value,
+    items: linkRows.value.map((row) => ({
+      title: row.title.trim(),
+      url: row.url.trim(),
+    })),
+  }
+  if (linkForm.directory_id) payload.directory_id = linkForm.directory_id
+  linking.value = true
+  try {
+    const result = await api.importDocumentLinks(payload)
+    ElMessage.success(result?.message || t('kbDetail.linkDone', { count: result?.imported || payload.items.length }))
+    linkVisible.value = false
+    linkRows.value = []
+    await Promise.all([loadDocs(), loadUploadLimits()])
+  } finally {
+    linking.value = false
+  }
 }
 
 async function doImport() {
@@ -725,14 +859,16 @@ function onSelectionChange(rows) {
 }
 
 function canReindex(row) {
-  return row?.status !== 'indexing' && row?.source_available !== false
+  if (row?.status === 'indexing') return false
+  if (row?.source_available !== false) return true
+  return !parseDocumentLink(row?.source, allowedExtensions.value).error
 }
 
 function reindexDisabledReason(row) {
   if (row?.status === 'indexing') {
     return t('kbDetail.reindexIndexing')
   }
-  if (row?.source_available === false) {
+  if (row?.source_available === false && parseDocumentLink(row?.source, allowedExtensions.value).error) {
     return t('kbDetail.reindexNoSource')
   }
   return ''
@@ -940,5 +1076,39 @@ onMounted(refreshAll)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.link-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.link-row .el-input:first-child {
+  width: 180px;
+  flex: none;
+}
+
+.link-row .el-input:nth-child(2) {
+  flex: 1;
+}
+
+.link-row .el-button {
+  flex: none;
 }
 </style>

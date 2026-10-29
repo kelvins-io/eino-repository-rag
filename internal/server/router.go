@@ -65,6 +65,7 @@ func NewRouter(mode string, kh *handler.KnowledgeHandler, ah *handler.AuthHandle
 			docs := protected.Group("/documents")
 			{
 				docs.POST("/import", kh.ImportDocument)
+				docs.POST("/import-links", kh.ImportDocumentLinks)
 				docs.POST("/reindex", kh.ReindexDocuments)
 				docs.POST("/delete", kh.DeleteDocuments)
 				docs.GET("", kh.ListDocuments)

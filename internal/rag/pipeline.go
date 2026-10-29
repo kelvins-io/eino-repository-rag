@@ -44,6 +44,7 @@ type Pipeline struct {
 	mem        *memory.Manager
 	retrieval  retrievalHitWriter
 	indexQueue *IndexQueue
+	remote     RemoteMaterializer
 }
 
 func NewPipeline(
@@ -175,6 +176,13 @@ func (p *Pipeline) ListDocumentChunks(ctx context.Context, docID uint) ([]Indexe
 func (p *Pipeline) IndexDocument(ctx context.Context, docID uint) error {
 	doc, err := p.docRepo.GetByID(docID)
 	if err != nil {
+		return err
+	}
+	doc, err = p.ensureLocalDocument(ctx, doc)
+	if err != nil {
+		if isPermanentErr(err) {
+			p.failDocument(ctx, docID, err.Error())
+		}
 		return err
 	}
 

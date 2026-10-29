@@ -94,9 +94,6 @@ func main() {
 
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 	defer queueCancel()
-	if err := pipeline.StartIndexQueue(queueCtx); err != nil {
-		logger.L().Fatal("start index queue failed", zap.Error(err))
-	}
 
 	svc := service.NewKnowledgeService(docRepo, kbRepo, dirRepo, msgRepo, userRepo, tenantRepo, memMgr, pipeline)
 	svc.SetSpeechUsage(repository.NewSpeechUsageRepo(db))
@@ -105,6 +102,10 @@ func main() {
 	svc.SetRetrievalRepo(retrievalRepo)
 	svc.SetRecallK(cfg.RAG.TopK)
 	svc.SetFeedbackRepo(repository.NewFeedbackRepo(db))
+	pipeline.SetRemoteMaterializer(svc)
+	if err := pipeline.StartIndexQueue(queueCtx); err != nil {
+		logger.L().Fatal("start index queue failed", zap.Error(err))
+	}
 	kh := handler.NewKnowledgeHandler(svc, cfg.RAG)
 	if cfg.ASR.Enabled {
 		kh.WithASR(asr.NewClient(cfg.ASR), cfg.ASR.MaxAudioBytes())

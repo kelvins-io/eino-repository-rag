@@ -414,11 +414,23 @@ func (q *IndexQueue) deadLetter(ctx context.Context, cancel context.CancelFunc, 
 	logger.S().Errorf("[rag] index queue dead-letter doc_id=%d attempt=%d err=%v", job.DocID, job.Attempt, err)
 }
 
+type permanentIndexError interface {
+	Permanent() bool
+}
+
+func isPermanentErr(err error) bool {
+	if parser.IsPermanent(err) {
+		return true
+	}
+	var marked permanentIndexError
+	return errors.As(err, &marked) && marked.Permanent()
+}
+
 func isRetryableIndexErr(err error) bool {
 	if err == nil || errors.Is(err, errDocGone) {
 		return false
 	}
-	if parser.IsPermanent(err) {
+	if isPermanentErr(err) {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
