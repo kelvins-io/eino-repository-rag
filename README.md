@@ -15,7 +15,7 @@
   - 各租户 `admin` 可开关本租户用户登录
   - 登录/注册页支持 `?tenant_id=` 预填租户 ID，缺省为 `guest`（平台管理员仍使用租户 `default`）
 - **租户配额**：文件总数 / 单文件大小 / 每日新建会话 / 单会话轮次 / 每日语音输入 / 每日 TTS（默认均为 5）
-- **文档导入**：`POST /api/v1/documents/import`，一次多个文件；可按文件填写 `title` / `source`；知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地上传文件**，此后不可重新索引（失败会保留源文件以便重试）
+- **文档导入**：本地上传 `POST /api/v1/documents/import`（可按文件填 `title` / `source`）；链接导入 `POST /api/v1/documents/import-links`（异步下载后建索引）。直链路径需以支持的扩展名结尾；另支持**有道云笔记公开分享链接**（富文本/Markdown/表格转 Markdown，PDF 等附件按原文件下载）。知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地文件**。纯上传且无有效 `source` 的文档此后不可重新索引；带 http(s) 来源的链接文档可重新拉取再索引（失败会保留源文件以便重试）
 - **文档解析 / OCR**：PDF、Office（DOCX/XLSX/PPTX）、Markdown/HTML/文本/CSV/JSON、图片；扫描 PDF / 图片 / 无文字 PPTX·DOCX 回退 Tesseract（compose `ocr` 服务，本机无需 brew）
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤（含子目录）；租户内知识库共享可读
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
@@ -46,7 +46,8 @@ HTTP API (Gin) + JWT
   ├─ 管理（需登录）
   │    ├─ 平台管理员：创建租户 / 租户列表 / 配额
   │    └─ 租户管理员：用户列表 / 开关登录
-  ├─ 文档导入 → 落盘 + PostgreSQL 记录 → Redis 索引队列 → Index Pipeline
+  ├─ 文档导入 → 落盘 / 链接异步下载 + PostgreSQL 记录 → Redis 索引队列 → Index Pipeline
+  │                                      ├─（链接）按 Source 拉取直链或有道分享正文/附件
   │                                      ├─ Parser（PDF/Office/文本/图片 OCR）
   │                                      ├─ Recursive / 结构切分
   │                                      ├─ Embedding
@@ -316,7 +317,7 @@ npm run dev
 
 Docker 前端镜像（`web/Dockerfile`）构建时默认 `VITE_API_BASE=`（同源），由 nginx 反代后端，无需改 `.env.production`。子路径用构建参数 `VITE_BASE`（默认 `/`）。
 
-前端能力：登录/注册（`?tenant_id=` 预填租户 ID，未提供时默认 `guest`）、中英文界面切换、知识库 CRUD、目录树、文档导入（可填标题与来源 URL）/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent，引用可点开来源）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理的文档会禁用重新索引。平台管理员登录时需把租户 ID 改为 `default`。
+前端能力：登录/注册（`?tenant_id=` 预填租户 ID，未提供时默认 `guest`）、中英文界面切换、知识库 CRUD、目录树、文档导入（本地上传可填标题与来源 URL；**链接文档**支持直链与有道云笔记公开分享）/列表/删除/重新索引/分块与召回、带会话记忆的知识问答（标准 RAG / Agent，引用可点开来源）、语音输入与朗读、回答反馈、用户管理；平台管理员另有租户管理与配额配置。索引成功后源文件已清理、且无有效文档链接 `source` 的条目会禁用重新索引。平台管理员登录时需把租户 ID 改为 `default`。
 
 ## API
 
@@ -431,6 +432,31 @@ curl -X POST http://localhost:8090/api/v1/documents/import \
 
 索引成功后会删除本地上传文件并清空 `file_path`；列表/详情返回 `source_available=false`。索引失败会保留源文件，便于重试。
 
+### 链接导入文档
+
+`POST /api/v1/documents/import-links`：提交标题 + URL，服务端立即落库，由索引队列在构建前异步下载。单次条数与单文件大小上限与本地上传相同（`rag.max_upload_*` ∩ 租户配额）。
+
+支持两类链接：
+
+1. **文档直链**：路径以支持的扩展名结尾，可带查询参数（如 `https://example.com/a.pdf?token=1`）
+2. **有道云笔记公开分享**：如 `https://share.note.youdao.com/s/xxxx`、带 `id` 的 noteshare 页面。富文本 / Markdown / 表格笔记会转为 Markdown；PDF、Office、图片等附件按原格式下载
+
+```bash
+curl -X POST http://localhost:8090/api/v1/documents/import-links \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "knowledge_base_id": 1,
+    "directory_id": 1,
+    "items": [
+      {"title": "合规红线", "url": "https://intranet.example.com/docs/compliance.md"},
+      {"title": "有道分享", "url": "https://share.note.youdao.com/s/xxxx"}
+    ]
+  }'
+```
+
+`source` 字段保存为提交的 URL。索引成功后本地副本同样会清理；重新索引时若本地文件已不在，会按 `source` 再次拉取。
+
 ### 查询文档
 
 ```bash
@@ -460,7 +486,7 @@ curl -X POST http://localhost:8090/api/v1/documents/delete \
 
 ### 重新索引
 
-对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后、源文件仍在时重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、源文件已清理（`source_available=false`）、或请求内重复的 ID 会跳过。
+对已导入文档重新触发异步索引构建（适用于索引失败重试，或配置变更后重建）。文档 ID 放在请求 body，支持一次多个；不存在、正在 `indexing`、源文件已清理且 `source` 不是可再次拉取的文档/有道链接、或请求内重复的 ID 会跳过。链接导入的文档可在无本地文件时按 `source` 重新下载。
 
 ```bash
 curl -X POST http://localhost:8090/api/v1/documents/reindex \

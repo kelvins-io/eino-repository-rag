@@ -15,7 +15,7 @@ Frontend details: [web/README.en.md](web/README.en.md). Mobile app: [mobile/READ
   - Each tenant `admin` can enable/disable login for users in that tenant
   - Login and register accept `?tenant_id=` to prefill the tenant ID, and default to `guest` when it is absent (platform admin still uses tenant `default`)
 - **Tenant quotas**: total files / max file size / new sessions per day / turns per session / voice inputs per day / TTS per day (defaults are all 5)
-- **Document import**: `POST /api/v1/documents/import`, multiple files per request; optional per-file `title` / `source`; MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery); **the local upload is deleted after a successful index**, so the document cannot be reindexed afterward (failed jobs keep the source file for retry)
+- **Document import**: local upload `POST /api/v1/documents/import` (optional per-file `title` / `source`); link import `POST /api/v1/documents/import-links` (async download then index). Direct links must end with a supported extension; **Youdao Cloud Note public share links** are also supported (rich text/Markdown/tables → Markdown; PDF and other attachments downloaded as-is). MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery); **local files are deleted after a successful index**. Pure uploads without a valid `source` cannot be reindexed afterward; http(s) link documents can be fetched again on reindex (failed jobs keep the source file for retry)
 - **Parsing / OCR**: PDF, Office (DOCX/XLSX/PPTX), Markdown/HTML/text/CSV/JSON, images; scanned PDFs / images / text-less PPTX·DOCX fall back to Tesseract (compose `ocr` service; no local brew required)
 - **Knowledge bases and directories**: multiple KBs + directory tree; import targeting, list filters, retrieval filters (including children); KBs are readable across the tenant
 - **Vector search**: `redis` or `milvus_lite` (Eino Indexer/Retriever + OpenAI-compatible embedding)
@@ -46,7 +46,8 @@ HTTP API (Gin) + JWT
   ├─ Admin (authenticated)
   │    ├─ Platform admin: create tenant / tenant list / quotas
   │    └─ Tenant admin: user list / toggle login
-  ├─ Document import → disk + PostgreSQL row → Redis index queue → Index Pipeline
+  ├─ Document import → disk / async link download + PostgreSQL row → Redis index queue → Index Pipeline
+  │                                      ├─ (links) fetch direct URL or Youdao share body/attachment
   │                                      ├─ Parser (PDF/Office/text/image OCR)
   │                                      ├─ Recursive / structure split
   │                                      ├─ Embedding
@@ -304,7 +305,7 @@ Open http://localhost:5173 . In development Vite proxies `{VITE_BASE}/api` and `
 
 The Docker frontend image (`web/Dockerfile`) builds with `VITE_API_BASE=` (same origin); nginx reverse-proxies the API, so you do not need to change `.env.production`. Pass `VITE_BASE` (default `/`) as a build arg for a subpath.
 
-UI: login/register (`?tenant_id=` prefills the tenant ID, otherwise `guest`), Chinese/English locale switch, knowledge-base CRUD, directory tree, document import (optional title and source URL)/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent, clickable citation sources), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. Documents whose source file was removed after a successful index cannot be reindexed. Platform admin login still requires tenant ID `default`.
+UI: login/register (`?tenant_id=` prefills the tenant ID, otherwise `guest`), Chinese/English locale switch, knowledge-base CRUD, directory tree, document import (local upload with optional title and source URL; **Link documents** for direct URLs and Youdao Cloud Note public shares)/list/delete/reindex/chunks/recall, Q&A with session memory (standard RAG / Agent, clickable citation sources), voice in/out, answer feedback, user management; platform admin also gets tenant management and quotas. After a successful index, rows with no local file and no re-fetchable document/Youdao `source` cannot be reindexed. Platform admin login still requires tenant ID `default`.
 
 See [web/README.en.md](web/README.en.md) for frontend-only docs.
 
@@ -421,6 +422,31 @@ If `knowledge_base_id` is omitted, files go to the user's default knowledge base
 
 After a successful index the local upload is deleted and `file_path` is cleared; list/detail responses set `source_available=false`. Failed jobs keep the source file so you can retry.
 
+### Import documents from links
+
+`POST /api/v1/documents/import-links`: submit title + URL; the server creates the row immediately and the index queue downloads before building. Per-request count and size limits match local upload (`rag.max_upload_*` ∩ tenant quota).
+
+Two link kinds are supported:
+
+1. **Direct document URLs**: path ends with a supported extension; query parameters are allowed (e.g. `https://example.com/a.pdf?token=1`)
+2. **Youdao Cloud Note public shares**: e.g. `https://share.note.youdao.com/s/xxxx` or noteshare pages with `id`. Rich text / Markdown / table notes become Markdown; PDF, Office, and image attachments are downloaded as-is
+
+```bash
+curl -X POST http://localhost:8090/api/v1/documents/import-links \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "knowledge_base_id": 1,
+    "directory_id": 1,
+    "items": [
+      {"title": "Compliance", "url": "https://intranet.example.com/docs/compliance.md"},
+      {"title": "Youdao share", "url": "https://share.note.youdao.com/s/xxxx"}
+    ]
+  }'
+```
+
+The submitted URL is stored as `source`. After a successful index the local copy is removed as usual; reindex re-fetches from `source` when the local file is gone.
+
 ### Query documents
 
 ```bash
@@ -450,7 +476,7 @@ curl -X POST http://localhost:8090/api/v1/documents/delete \
 
 ### Reindex
 
-Re-enqueue async index builds (retry failures, or rebuild after config changes while the source file still exists). IDs in the body; missing, currently `indexing`, source already cleaned (`source_available=false`), or duplicate IDs in the request are skipped.
+Re-enqueue async index builds (retry failures, or rebuild after config changes). IDs in the body; missing, currently `indexing`, source already cleaned with no re-fetchable document/Youdao `source`, or duplicate IDs in the request are skipped. Link-imported documents can be downloaded again from `source` when the local file is gone.
 
 ```bash
 curl -X POST http://localhost:8090/api/v1/documents/reindex \

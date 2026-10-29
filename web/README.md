@@ -56,13 +56,13 @@ Docker 前端：http://localhost:5173 。
 | `/login` | 租户 ID + 用户名登录；`?tenant_id=` 预填，缺省 `guest` |
 | `/register` | 在已有非 `default` 租户下注册并登录；`?tenant_id=` 预填，缺省 `guest` |
 | `/knowledge-bases` | 知识库列表与 CRUD |
-| `/knowledge-bases/:id` | 目录树、文档导入（可填标题与来源 URL）/列表/删除、重新索引、分块、索引记录、召回率与引用 |
+| `/knowledge-bases/:id` | 目录树、文档导入（本地上传可填标题与来源；链接文档支持直链与有道公开分享）/列表/删除、重新索引、分块、索引记录、召回率与引用 |
 | `/chat` | 知识问答：标准 RAG / Agent、会话记忆、目录过滤、引用可点开来源、语音输入与朗读、点赞评分、相关文档标注 |
 | `/users` | 本租户用户列表；租户 `admin` 可开关他人登录 |
 | `/tenant-manage` | 平台管理员：租户配额与当日用量 |
 | `/tenants` | 平台管理员：创建租户 |
 
-问答走 SSE（`/chat/query`、`/chat/agent`）。导入文件数、会话数、语音与 TTS 受租户配额限制，达上限时对应按钮会禁用。索引成功后源文件会被清理，文档列表里 `source_available=false` 的条目会禁用重新索引。
+问答走 SSE（`/chat/query`、`/chat/agent`）。导入文件数、会话数、语音与 TTS 受租户配额限制，达上限时对应按钮会禁用。索引成功后源文件会被清理；无本地文件且 `source` 也不是可再次拉取的文档/有道链接时，重新索引会禁用。
 
 ## 语言
 

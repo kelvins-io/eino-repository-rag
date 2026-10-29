@@ -56,13 +56,13 @@ Unauthenticated visits to protected routes redirect to `/login`. Accounts other 
 | `/login` | Login with tenant ID + username; `?tenant_id=` prefills, otherwise `guest` |
 | `/register` | Register under an existing non-`default` tenant and sign in; `?tenant_id=` prefills, otherwise `guest` |
 | `/knowledge-bases` | Knowledge-base list and CRUD |
-| `/knowledge-bases/:id` | Directory tree, import (optional title and source URL)/list/delete, reindex, chunks, index history, recall and citations |
+| `/knowledge-bases/:id` | Directory tree, import (local upload with optional title/source; link documents for direct URLs and Youdao public shares)/list/delete, reindex, chunks, index history, recall and citations |
 | `/chat` | Q&A: standard RAG / Agent, session memory, directory filter, clickable citation sources, voice in/out, votes/scores, relevant-doc labels |
 | `/users` | Users in this tenant; tenant `admin` can toggle others' login |
 | `/tenant-manage` | Platform admin: tenant quotas and today's usage |
 | `/tenants` | Platform admin: create a tenant |
 
-Q&A uses SSE (`/chat/query`, `/chat/agent`). Import count, sessions, voice, and TTS follow tenant quotas; buttons disable when a cap is reached. After a successful index the source file is removed, so rows with `source_available=false` cannot be reindexed.
+Q&A uses SSE (`/chat/query`, `/chat/agent`). Import count, sessions, voice, and TTS follow tenant quotas; buttons disable when a cap is reached. After a successful index the source file is removed; reindex is disabled only when there is no local file and `source` is not a re-fetchable document/Youdao link.
 
 ## Language
 
