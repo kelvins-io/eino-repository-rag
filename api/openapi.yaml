@@ -18,6 +18,9 @@ info:
 
     `POST /api/v1/chat/agent` 仅在配置 `agent.enabled: true` 时注册。
     语音识别与合成未配置时，对应接口返回 503。
+
+    OCR 独立进程（`cmd/ocr`，默认 `:8080`，本机映射 `18080`）的接口见 `api/openapi-ocr.yaml`。
+    它同样提供 `GET /health`，响应是纯文本 `ok`，与本文件的主服务健康检查不是同一个接口。
 servers:
   - url: http://localhost:8090
     description: 本地默认地址

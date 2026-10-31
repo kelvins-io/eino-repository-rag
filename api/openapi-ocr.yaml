@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: eino-repository-rag OCR API
+  version: "1.0.0"
+  description: |
+    `cmd/ocr` 暴露的 HTTP API。容器内监听 `:8080`，本机映射为 `http://192.168.0.100:18080`。
+
+    无认证。图片与 PDF 接口只接受 `POST`，请求体为 `multipart/form-data`，上传上限 512MB。
+    成功与失败都是 JSON，没有主服务的 `{code,message,data}` 包装。失败体为 `{ "error": "..." }`。
+    `GET /health` 返回纯文本 `ok`。
+
+    网关导入后，同一路由的请求方法会附带 `OPTIONS`，供浏览器跨域预检。OCR 进程本身对非 POST 返回 405。
+servers:
+  - url: http://192.168.0.100:18080
+    description: 本机局域网 OCR 服务
+tags:
+  - name: OCR
+    description: 图片与 PDF 的 Tesseract 识别
+paths:
+  /health:
+    get:
+      tags: [OCR]
+      operationId: ocrHealth
+      summary: OCR 服务健康检查
+      description: |
+        返回纯文本 `ok`。与主服务 `GET /health` 路径相同、进程不同。
+        网关访问路径会带上空间前缀，因此不要与主服务健康检查共用同一条网关路由。
+      responses:
+        "200":
+          description: 服务可用
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /v1/ocr/image:
+    post:
+      tags: [OCR]
+      operationId: ocrImage
+      summary: 识别图片中的文字
+      description: 表单字段 `file` 为图片文件。`languages` 默认 `chi_sim+eng`，`psm` 默认 `6`。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/OcrImageRequest"
+      responses:
+        "200":
+          description: 识别结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrImageResponse"
+        "400":
+          $ref: "#/components/responses/OcrError"
+        "405":
+          description: 方法不是 POST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrError"
+              example:
+                error: method not allowed
+        "500":
+          $ref: "#/components/responses/OcrError"
+
+  /v1/ocr/pdf:
+    post:
+      tags: [OCR]
+      operationId: ocrPdf
+      summary: 识别 PDF 指定页
+      description: |
+        `pages` 必填，为逗号分隔的正整数页码（从 1 起）。
+        `languages` 默认 `chi_sim+eng`，`psm` 默认 `6`，`dpi` 默认 `200`。
+        部分页失败时仍返回 200，对应页的 `error` 有值、`text` 为空。全部失败时返回 500。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/OcrPdfRequest"
+      responses:
+        "200":
+          description: 按请求页码返回的识别结果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrPdfResponse"
+        "400":
+          $ref: "#/components/responses/OcrError"
+        "405":
+          description: 方法不是 POST
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrError"
+              example:
+                error: method not allowed
+        "500":
+          $ref: "#/components/responses/OcrError"
+
+components:
+  schemas:
+    OcrError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    OcrImageRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: 图片文件
+        languages:
+          type: string
+          default: chi_sim+eng
+          description: Tesseract 语言，例如 `chi_sim+eng`
+        psm:
+          type: integer
+          default: 6
+          description: Tesseract 页面分割模式
+    OcrImageResponse:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+    OcrPdfRequest:
+      type: object
+      required: [file, pages]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: PDF 文件
+        pages:
+          type: string
+          description: 逗号分隔的正整数页码，例如 `1,2,5`
+          example: "1,2"
+        languages:
+          type: string
+          default: chi_sim+eng
+        psm:
+          type: integer
+          default: 6
+        dpi:
+          type: integer
+          default: 200
+          description: 光栅化分辨率
+    OcrPdfPage:
+      type: object
+      required: [page, text]
+      properties:
+        page:
+          type: integer
+        text:
+          type: string
+        error:
+          type: string
+          description: 该页识别失败时的原因
+    OcrPdfResponse:
+      type: object
+      required: [pages]
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OcrPdfPage"
+  responses:
+    OcrError:
+      description: 请求无效或识别失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OcrError"
