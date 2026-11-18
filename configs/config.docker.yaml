@@ -97,12 +97,12 @@ rag:
   citation_filter_sources: false
   ocr:
     enabled: true
-    endpoint: "http://ocr:8080"
-    languages: "chi_sim+eng"
-    dpi: 200
-    concurrency: 1
-    timeout_seconds: 60
-    page_seg_mode: 6
+    api_key: ""
+    base_url: "https://api.siliconflow.cn/v1"
+    model: "deepseek-ai/DeepSeek-OCR"
+    prompt: "Free OCR."
+    timeout_seconds: 120
+    max_tokens: 4096
 
 rerank:
   enabled: true

@@ -16,7 +16,7 @@
   - 登录/注册页支持 `?tenant_id=` 预填租户 ID，缺省为 `guest`（平台管理员仍使用租户 `default`）
 - **租户配额**：文件总数 / 单文件大小 / 每日新建会话 / 单会话轮次 / 每日语音输入 / 每日 TTS（默认均为 5）
 - **文档导入**：本地上传 `POST /api/v1/documents/import`（可按文件填 `title` / `source`）；链接导入 `POST /api/v1/documents/import-links`（异步下载后建索引）。直链路径需以支持的扩展名结尾；另支持**有道云笔记公开分享链接**（富文本/Markdown/表格转 Markdown，PDF 等附件按原文件下载）。知识库内按内容 MD5 去重；经 **Redis 索引队列**异步构建向量索引（限流、重试、崩溃回灌）；**索引成功后删除本地文件**。纯上传且无有效 `source` 的文档此后不可重新索引；带 http(s) 来源的链接文档可重新拉取再索引（失败会保留源文件以便重试）
-- **文档解析 / OCR**：PDF、Office（DOCX/XLSX/PPTX）、Markdown/HTML/文本/CSV/JSON、图片；扫描 PDF / 图片 / 无文字 PPTX·DOCX 回退 Tesseract（compose `ocr` 服务，本机无需 brew）
+- **文档解析 / OCR**：PDF、Office（DOCX/XLSX/PPTX）、Markdown/HTML/文本/CSV/JSON、图片；扫描 PDF / 图片 / 无文字 PPTX·DOCX 调用外部 Vision OCR（如 SiliconFlow `deepseek-ai/DeepSeek-OCR`）
 - **知识库分类目录**：多知识库 + 树形目录；导入归属、列表筛选、检索过滤（含子目录）；租户内知识库共享可读
 - **向量检索**：可配置 `redis` 或 `milvus_lite`（Eino Indexer/Retriever + OpenAI 兼容 Embedding）
 - **Hybrid 检索**：稠密向量 + Redis BM25（RRF 融合）；`milvus` 模式自动维护 BM25 sidecar
@@ -70,14 +70,14 @@ HTTP API (Gin) + JWT
 ### 1. 启动依赖
 
 ```bash
-# 默认：PostgreSQL + Redis Stack + OCR sidecar
+# 默认：PostgreSQL + Redis Stack
 docker compose up -d
 
 # 若使用 milvus_lite 向量索引，额外启动本地 Milvus Standalone
 docker compose --profile milvus up -d
 ```
 
-PostgreSQL 映射 `15433`，Redis 映射 `16379`，OCR 映射 `18080`。本地 `configs/config.yaml` 默认 `vector_index.provider: milvus_lite`，Docker 应用镜像默认 `redis`。
+PostgreSQL 映射 `15433`，Redis 映射 `16379`。本地 `configs/config.yaml` 默认 `vector_index.provider: milvus_lite`，Docker 应用镜像默认 `redis`。
 
 ### 2. 配置环境变量
 
@@ -181,29 +181,22 @@ agent:
 
 ### 3.6 扫描件 / 图片 OCR
 
-解析器先抽 PDF 内嵌文本；**图片页、扫描件、乱码 CJK PDF** 以及 **PNG/JPG 等图片** 回退 Tesseract。无文字的 PPTX 幻灯片 / DOCX 会识别 `media` 里的图片。
-
-OCR 跑在 compose 的 `ocr` 服务里（镜像内含 tesseract + 中文语言包 + poppler），本机 **不必** `brew install`。
+解析器先抽 PDF 内嵌文本；**图片页、扫描件、乱码 CJK PDF** 以及 **PNG/JPG 等图片** 调用外部 Vision OCR。无文字的 PPTX 幻灯片 / DOCX 会识别 `media` 里的图片。扫描 PDF 将**整份文件**一次提交给模型（不在本机渲染分页）。
 
 ```yaml
 rag:
   ocr:
     enabled: true
-    endpoint: "http://localhost:18080"  # 容器内为 http://ocr:8080
-    languages: "chi_sim+eng"
-    dpi: 200
-    concurrency: 1
-    timeout_seconds: 60
-    page_seg_mode: 6
+    api_key: ""   # 留空则复用 embedding.api_key
+    base_url: "https://api.siliconflow.cn/v1"
+    model: "deepseek-ai/DeepSeek-OCR"
+    prompt: "Free OCR."
+    timeout_seconds: 120
+    max_tokens: 4096
   index_job_timeout_minutes: 60
 ```
 
-```bash
-docker compose up -d ocr
-# 或随依赖一起：docker compose up -d
-```
-
-环境变量 `OCR_ENDPOINT` 可覆盖 endpoint。留空 endpoint 时回退本机 `tesseract`/`pdftoppm`。关闭：`rag.ocr.enabled: false`。
+环境变量 `OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` / `OCR_TIMEOUT_SECONDS` 可覆盖。关闭：`rag.ocr.enabled: false`。
 
 ### 3.7 语音输入 / 回答朗读（可选，默认开启）
 
@@ -598,7 +591,6 @@ curl -X PUT http://localhost:8090/api/v1/chat/relevance \
 ```
 cmd/server/          # HTTP 服务入口
 cmd/eval/            # Golden 检索评测
-cmd/ocr/             # OCR sidecar 入口
 configs/             # 本地 / Docker 配置
 internal/
   asr/               # 语音转写客户端
@@ -609,7 +601,7 @@ internal/
   logger/            # zap + Gin 中间件
   memory/            # 短期(Redis) + 长期(PG) 记忆
   model/             # PostgreSQL 模型
-  ocr/               # OCR HTTP 服务与引擎
+  ocr/               # 外部 Vision OCR 客户端（DeepSeek-OCR）
   rag/               # Eino RAG 流水线、解析、索引队列
   repository/        # 数据访问
   server/            # 路由（含 CORS）
@@ -618,7 +610,7 @@ web/                 # Vue 3 + Element Plus 前端
 mobile/              # Flutter 手机端（iOS / Android）
 storage/uploads/     # 上传文件落盘
 examples/            # 示例知识库文档与 golden.jsonl
-docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
+docker-compose.yml   # Postgres / Redis / Milvus / app / web
 ```
 
 ## 技术栈
@@ -628,6 +620,6 @@ docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
 - PostgreSQL + GORM
 - Redis Stack（短期记忆、索引队列；可选向量检索 + BM25）
 - Milvus Standalone（可选，对应 `milvus_lite` 配置）
-- Tesseract + poppler（OCR sidecar）
+- SiliconFlow 兼容 Vision OCR（DeepSeek-OCR）
 - Vue 3 + Vite + Element Plus + Vue Router + Vue I18n + Axios
 - Flutter（mobile：iOS / Android）

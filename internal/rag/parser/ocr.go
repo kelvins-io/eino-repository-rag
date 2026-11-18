@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/ocr"
 )
 
@@ -25,21 +26,26 @@ func (f ImageRecognizerFunc) Recognize(ctx context.Context, imagePath string) (s
 	return f(ctx, imagePath)
 }
 
+// PDFRecognizer 整份 PDF OCR（测试可注入）。
+type PDFRecognizer interface {
+	RecognizePDF(ctx context.Context, pdfPath string, pages []int) (map[int]string, error)
+}
+
 // OCR 扫描件 / 图片 OCR 配置。
 type OCR struct {
-	Enabled      bool
-	Endpoint     string // 非空则调用 compose OCR 服务，如 http://localhost:18080
-	Languages    string
-	DPI          int
-	Concurrency  int
-	Timeout      time.Duration
-	PageSegMode  int
-	TesseractBin string
-	PDFToPPMBin  string
+	Enabled bool
+	Config  config.OCRConfig
 
-	// Recognizer / RenderPDFPage 仅测试注入。
+	// Client 非空时优先使用；否则按 Config 构造。
+	Client *ocr.Client
+
+	// Recognizer / PDF / RenderPDFPage 仅测试注入。
 	Recognizer    ImageRecognizer
+	PDF           PDFRecognizer
 	RenderPDFPage func(ctx context.Context, pdfPath string, page, dpi int, dir string) (string, error)
+	// Concurrency 仅注入 RenderPDFPage 路径使用。
+	Concurrency int
+	DPI         int
 }
 
 type extractSettings struct {
@@ -87,24 +93,22 @@ func (s *extractSettings) ocrEnabled() bool {
 	return s != nil && s.ocr.Enabled
 }
 
-func (s *extractSettings) ocrConfig() ocr.Config {
-	return ocr.Config{
-		Languages:    s.ocr.Languages,
-		DPI:          s.ocr.DPI,
-		Concurrency:  s.ocr.Concurrency,
-		Timeout:      s.ocr.Timeout,
-		PageSegMode:  s.ocr.PageSegMode,
-		TesseractBin: s.ocr.TesseractBin,
-		PDFToPPMBin:  s.ocr.PDFToPPMBin,
-	}
-}
-
-func (s *extractSettings) httpOCR() *ocr.Client {
-	ep := strings.TrimSpace(s.ocr.Endpoint)
-	if ep == "" {
+func (s *extractSettings) modelOCR() *ocr.Client {
+	if s == nil {
 		return nil
 	}
-	return ocr.NewClient(ep, s.ocr.Timeout, s.ocr.Languages, s.ocr.PageSegMode)
+	if s.ocr.Client != nil {
+		return s.ocr.Client
+	}
+	if !s.ocr.Enabled {
+		return nil
+	}
+	c := ocr.NewClient(s.ocr.Config)
+	if !c.Configured() {
+		return nil
+	}
+	s.ocr.Client = c
+	return c
 }
 
 func (s *extractSettings) recognizer() (ImageRecognizer, error) {
@@ -114,25 +118,11 @@ func (s *extractSettings) recognizer() (ImageRecognizer, error) {
 	if s.ocr.Recognizer != nil {
 		return s.ocr.Recognizer, nil
 	}
-	if c := s.httpOCR(); c != nil {
+	if c := s.modelOCR(); c != nil {
 		s.ocr.Recognizer = c
 		return c, nil
 	}
-	eng := &localRecognizer{cfg: s.ocrConfig()}
-	s.ocr.Recognizer = eng
-	return eng, nil
-}
-
-type localRecognizer struct {
-	cfg ocr.Config
-}
-
-func (l *localRecognizer) Recognize(ctx context.Context, imagePath string) (string, error) {
-	text, err := ocr.RecognizeImage(ctx, l.cfg, imagePath)
-	if err != nil {
-		return "", err
-	}
-	return sanitizeExtractedText(text), nil
+	return nil, fmt.Errorf("%w", ocr.ErrNotConfigured)
 }
 
 func ocrImageFile(ctx context.Context, s *extractSettings, path string) (string, error) {
@@ -194,21 +184,55 @@ func ocrPDFPages(ctx context.Context, pdfPath string, pages []pdfPageWork, s *ex
 		out map[int]string
 		err error
 	)
-	if s.ocr.RenderPDFPage != nil {
+	switch {
+	case s.ocr.RenderPDFPage != nil:
 		out, err = ocrPDFPagesInjected(ctx, pdfPath, need, s, dpi)
-	} else if c := s.httpOCR(); c != nil {
-		out, err = c.RecognizePDF(ctx, pdfPath, need, dpi)
-	} else {
-		out, err = ocr.RecognizePDFPages(ctx, s.ocrConfig(), pdfPath, need)
+	case s.ocr.PDF != nil:
+		out, err = s.ocr.PDF.RecognizePDF(ctx, pdfPath, need)
+	default:
+		c := s.modelOCR()
+		if c == nil {
+			return fmt.Errorf("%w", ocr.ErrNotConfigured)
+		}
+		out, err = c.RecognizePDF(ctx, pdfPath, need)
 	}
 	if out == nil {
 		out = map[int]string{}
 	}
 
+	// 整份 PDF OCR：结果只挂在第一个 need 页；其余 need 页标记已处理避免重复拼接。
+	firstNeed := need[0]
+	full := strings.TrimSpace(sanitizeExtractedText(out[firstNeed]))
+	if full == "" {
+		// 兼容注入路径按页返回
+		for _, p := range need {
+			if t := strings.TrimSpace(sanitizeExtractedText(out[p])); t != "" {
+				full = t
+				break
+			}
+		}
+	}
+
+	assigned := false
 	for i := range pages {
-		if text := strings.TrimSpace(sanitizeExtractedText(out[pages[i].num])); text != "" {
+		if !pages[i].needOCR {
+			continue
+		}
+		if !assigned && full != "" {
+			pages[i].text = full
+			pages[i].ocrOK = true
+			assigned = true
+			continue
+		}
+		if text := strings.TrimSpace(sanitizeExtractedText(out[pages[i].num])); text != "" && s.ocr.RenderPDFPage != nil {
 			pages[i].text = text
 			pages[i].ocrOK = true
+			continue
+		}
+		// 整份识别已写入首个 need 页；其余页不再重复写入
+		if assigned && s.ocr.RenderPDFPage == nil {
+			pages[i].ocrOK = true
+			pages[i].text = ""
 		}
 	}
 	return err

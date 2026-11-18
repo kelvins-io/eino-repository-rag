@@ -123,11 +123,11 @@ func NewPipeline(
 		expander = newLLMQueryExpander(chat, cfg.RAG.QueryExpandTimeoutSeconds)
 	}
 
-	logger.S().Infof("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v endpoint=%s chat_timeout=%s embed_timeout=%s rerank_timeout=%ds ocr_timeout=%ds expand_timeout=%ds summary_timeout=%ds embed_batch=%d embed_retries=%d embed_concurrency=%d",
+	logger.S().Infof("[rag] vector_index.provider=%s hybrid=%v rerank=%v query_expand=%v(n=%d) structure_split=%v citation_validate=%v agent=%v ocr=%v model=%s chat_timeout=%s embed_timeout=%s rerank_timeout=%ds ocr_timeout=%ds expand_timeout=%ds summary_timeout=%ds embed_batch=%d embed_retries=%d embed_concurrency=%d",
 		cfg.VectorIndex.Provider, cfg.RAG.HybridEnabled, cfg.Rerank.Enabled,
 		cfg.RAG.QueryExpandEnabled, cfg.RAG.QueryExpandN,
 		cfg.RAG.StructureSplitEnabled, cfg.RAG.CitationValidateEnabled, cfg.Agent.Enabled,
-		cfg.RAG.OCR.Enabled, cfg.RAG.OCR.Endpoint,
+		cfg.RAG.OCR.Enabled, cfg.RAG.OCR.Model,
 		chatTimeout, embTimeout, cfg.Rerank.TimeoutSeconds, cfg.RAG.OCR.TimeoutSeconds,
 		cfg.RAG.QueryExpandTimeoutSeconds, cfg.Memory.SummaryTimeoutSeconds,
 		cfg.Embedding.BatchSize, cfg.Embedding.MaxRetries, cfg.Embedding.MaxConcurrency)
@@ -884,19 +884,8 @@ func truncate(s string, n int) string {
 }
 
 func ocrFromConfig(cfg config.OCRConfig) parser.OCR {
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
 	return parser.OCR{
-		Enabled:      cfg.Enabled,
-		Endpoint:     cfg.Endpoint,
-		Languages:    cfg.Languages,
-		DPI:          cfg.DPI,
-		Concurrency:  cfg.Concurrency,
-		Timeout:      timeout,
-		PageSegMode:  cfg.PageSegMode,
-		TesseractBin: cfg.TesseractBin,
-		PDFToPPMBin:  cfg.PDFToPPMBin,
+		Enabled: cfg.Enabled,
+		Config:  cfg,
 	}
 }

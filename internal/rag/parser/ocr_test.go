@@ -2,13 +2,17 @@ package parser
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/kelvins-io/eino-repository-rag/internal/config"
 	"github.com/kelvins-io/eino-repository-rag/internal/ocr"
 )
 
@@ -43,12 +47,21 @@ func TestExtractImageRequiresOCR(t *testing.T) {
 	}
 }
 
-func TestExtractImageWithHTTPEndpoint(t *testing.T) {
-	srv := ocr.NewServer()
-	srv.Image = func(ctx context.Context, path, langs string, psm int) (string, error) {
-		return "HTTP扫描正文", nil
-	}
-	ts := httptest.NewServer(srv.Handler())
+func TestExtractImageWithModelOCR(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		_ = json.Unmarshal(body, &req)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]string{"content": "HTTP扫描正文"},
+			}},
+		})
+	}))
 	t.Cleanup(ts.Close)
 
 	dir := t.TempDir()
@@ -57,8 +70,21 @@ func TestExtractImageWithHTTPEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := ExtractFile(path, "", WithOCR(OCR{
-		Enabled:  true,
-		Endpoint: ts.URL,
+		Enabled: true,
+		Config: config.OCRConfig{
+			APIKey:  "test-key",
+			BaseURL: ts.URL,
+			Model:   "deepseek-ai/DeepSeek-OCR",
+			Prompt:  "Free OCR.",
+		},
+		Client: ocr.NewClient(config.OCRConfig{
+			APIKey:         "test-key",
+			BaseURL:        ts.URL,
+			Model:          "deepseek-ai/DeepSeek-OCR",
+			Prompt:         "Free OCR.",
+			TimeoutSeconds: 5,
+			MaxTokens:      256,
+		}),
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -128,6 +154,35 @@ func TestExtractImageOnlyPDFWithStubOCR(t *testing.T) {
 	if !strings.Contains(res.Text, "第 1 页") {
 		t.Fatalf("missing page marker: %q", res.Text)
 	}
+}
+
+func TestExtractPDFWithWholeFileOCR(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "scan.pdf")
+	if err := os.WriteFile(path, imageOnlyPDF(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := ExtractFile(path, "application/pdf", WithOCR(OCR{
+		Enabled: true,
+		PDF: pdfRecognizerFunc(func(ctx context.Context, pdfPath string, pages []int) (map[int]string, error) {
+			if len(pages) == 0 {
+				return nil, fmt.Errorf("no pages")
+			}
+			return map[int]string{pages[0]: "整份PDF识别结果"}, nil
+		}),
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Text, "整份PDF识别结果") {
+		t.Fatalf("text=%q", res.Text)
+	}
+}
+
+type pdfRecognizerFunc func(ctx context.Context, pdfPath string, pages []int) (map[int]string, error)
+
+func (f pdfRecognizerFunc) RecognizePDF(ctx context.Context, pdfPath string, pages []int) (map[int]string, error) {
+	return f(ctx, pdfPath, pages)
 }
 
 func imageOnlyPDF() []byte {

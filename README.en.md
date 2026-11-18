@@ -16,7 +16,7 @@ Frontend details: [web/README.en.md](web/README.en.md). Mobile app: [mobile/READ
   - Login and register accept `?tenant_id=` to prefill the tenant ID, and default to `guest` when it is absent (platform admin still uses tenant `default`)
 - **Tenant quotas**: total files / max file size / new sessions per day / turns per session / voice inputs per day / TTS per day (defaults are all 5)
 - **Document import**: local upload `POST /api/v1/documents/import` (optional per-file `title` / `source`); link import `POST /api/v1/documents/import-links` (async download then index). Direct links must end with a supported extension; **Youdao Cloud Note public share links** are also supported (rich text/Markdown/tables → Markdown; PDF and other attachments downloaded as-is). MD5 dedup within a knowledge base; async vector indexing via a **Redis index queue** (rate limit, retries, crash recovery); **local files are deleted after a successful index**. Pure uploads without a valid `source` cannot be reindexed afterward; http(s) link documents can be fetched again on reindex (failed jobs keep the source file for retry)
-- **Parsing / OCR**: PDF, Office (DOCX/XLSX/PPTX), Markdown/HTML/text/CSV/JSON, images; scanned PDFs / images / text-less PPTX·DOCX fall back to Tesseract (compose `ocr` service; no local brew required)
+- **Parsing / OCR**: PDF, Office (DOCX/XLSX/PPTX), Markdown/HTML/text/CSV/JSON, images; scanned PDFs / images / text-less PPTX·DOCX call an external Vision OCR (e.g. SiliconFlow `deepseek-ai/DeepSeek-OCR`)
 - **Knowledge bases and directories**: multiple KBs + directory tree; import targeting, list filters, retrieval filters (including children); KBs are readable across the tenant
 - **Vector search**: `redis` or `milvus_lite` (Eino Indexer/Retriever + OpenAI-compatible embedding)
 - **Hybrid retrieval**: dense vectors + Redis BM25 (RRF fusion); `milvus` mode maintains a BM25 sidecar
@@ -70,14 +70,14 @@ Index queue keys: `kb:index:queue` (pending) / `kb:index:active` (in-flight, req
 ### 1. Start dependencies
 
 ```bash
-# Default: PostgreSQL + Redis Stack + OCR sidecar
+# Default: PostgreSQL + Redis Stack
 docker compose up -d
 
 # For milvus_lite vector index, also start local Milvus Standalone
 docker compose --profile milvus up -d
 ```
 
-PostgreSQL is mapped to `15433`, Redis to `16379`, OCR to `18080`. Local `configs/config.yaml` defaults to `vector_index.provider: milvus_lite`; the Docker app image defaults to `redis`.
+PostgreSQL is mapped to `15433`, Redis to `16379`. Local `configs/config.yaml` defaults to `vector_index.provider: milvus_lite`; the Docker app image defaults to `redis`.
 
 ### 2. Environment variables
 
@@ -181,29 +181,22 @@ Unlike linear RAG (`/chat/query`, one retrieve), Agent uses Eino ReAct and may c
 
 ### 3.6 Scanned docs / image OCR
 
-The parser first extracts embedded PDF text. **Image pages, scans, garbled CJK PDFs**, and **PNG/JPG images** fall back to Tesseract. Text-less PPTX slides / DOCX files OCR images under `media`.
-
-OCR runs in the compose `ocr` service (tesseract + Chinese lang pack + poppler). You do **not** need `brew install` locally.
+The parser first extracts embedded PDF text. **Image pages, scans, garbled CJK PDFs**, and **PNG/JPG images** call an external Vision OCR. Text-less PPTX slides / DOCX files OCR images under `media`. Scanned PDFs are submitted as the **whole file** in one request (no local page rasterization).
 
 ```yaml
 rag:
   ocr:
     enabled: true
-    endpoint: "http://localhost:18080"  # inside compose: http://ocr:8080
-    languages: "chi_sim+eng"
-    dpi: 200
-    concurrency: 1
-    timeout_seconds: 60
-    page_seg_mode: 6
+    api_key: ""   # empty → reuse embedding.api_key
+    base_url: "https://api.siliconflow.cn/v1"
+    model: "deepseek-ai/DeepSeek-OCR"
+    prompt: "Free OCR."
+    timeout_seconds: 120
+    max_tokens: 4096
   index_job_timeout_minutes: 60
 ```
 
-```bash
-docker compose up -d ocr
-# or with other deps: docker compose up -d
-```
-
-`OCR_ENDPOINT` overrides the endpoint. Empty endpoint falls back to local `tesseract`/`pdftoppm`. Disable with `rag.ocr.enabled: false`.
+`OCR_API_KEY` / `OCR_BASE_URL` / `OCR_MODEL` / `OCR_TIMEOUT_SECONDS` override the yaml. Disable with `rag.ocr.enabled: false`.
 
 ### 3.7 Voice input / answer speech (optional, on by default)
 
@@ -588,7 +581,6 @@ See `configs/config.yaml`:
 ```
 cmd/server/          # HTTP server
 cmd/eval/            # Golden retrieval eval
-cmd/ocr/             # OCR sidecar
 configs/             # Local / Docker config
 internal/
   asr/               # Speech-to-text client
@@ -599,7 +591,7 @@ internal/
   logger/            # zap + Gin middleware
   memory/            # Short-term (Redis) + long-term (PG)
   model/             # PostgreSQL models
-  ocr/               # OCR HTTP service and engine
+  ocr/               # External Vision OCR client (DeepSeek-OCR)
   rag/               # Eino RAG pipeline, parsers, index queue
   repository/        # Data access
   server/            # Routes (incl. CORS)
@@ -608,7 +600,7 @@ web/                 # Vue 3 + Element Plus UI
 mobile/              # Flutter mobile app (iOS / Android)
 storage/uploads/     # Uploaded files
 examples/            # Sample KB docs and golden.jsonl
-docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
+docker-compose.yml   # Postgres / Redis / Milvus / app / web
 ```
 
 ## Stack
@@ -618,6 +610,6 @@ docker-compose.yml   # Postgres / Redis / OCR / Milvus / app / web
 - PostgreSQL + GORM
 - Redis Stack (short-term memory, index queue; optional vector search + BM25)
 - Milvus Standalone (optional, `milvus_lite` config)
-- Tesseract + poppler (OCR sidecar)
+- SiliconFlow-compatible Vision OCR (DeepSeek-OCR)
 - Vue 3 + Vite + Element Plus + Vue Router + Vue I18n + Axios
 - Flutter (mobile: iOS / Android)

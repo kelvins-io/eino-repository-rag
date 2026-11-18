@@ -35,8 +35,14 @@ func TestSetDefaultsTimeouts(t *testing.T) {
 	if c.TTS.MaxChars != 4000 {
 		t.Fatalf("tts max chars=%d", c.TTS.MaxChars)
 	}
-	if c.RAG.OCR.TimeoutSeconds != 60 {
+	if c.RAG.OCR.TimeoutSeconds != 120 {
 		t.Fatalf("ocr timeout=%d", c.RAG.OCR.TimeoutSeconds)
+	}
+	if c.RAG.OCR.Model != "deepseek-ai/DeepSeek-OCR" {
+		t.Fatalf("ocr model=%s", c.RAG.OCR.Model)
+	}
+	if c.RAG.OCR.MaxTokens != 4096 {
+		t.Fatalf("ocr max_tokens=%d", c.RAG.OCR.MaxTokens)
 	}
 	if c.RAG.MaxUploadFileSizeMB != 50 {
 		t.Fatalf("max upload file size mb=%d", c.RAG.MaxUploadFileSizeMB)
@@ -254,5 +260,17 @@ func TestASRFallbackToEmbedding(t *testing.T) {
 	}
 	if c.TTS.MaxChars != 4000 {
 		t.Fatalf("tts max=%d", c.TTS.MaxChars)
+	}
+	if c.RAG.OCR.APIKey != "emb-key" {
+		t.Fatalf("ocr key=%s", c.RAG.OCR.APIKey)
+	}
+	if c.RAG.OCR.BaseURL != "https://api.siliconflow.cn/v1" {
+		t.Fatalf("ocr url=%s", c.RAG.OCR.BaseURL)
+	}
+	if c.RAG.OCR.Model != "deepseek-ai/DeepSeek-OCR" {
+		t.Fatalf("ocr model=%s", c.RAG.OCR.Model)
+	}
+	if c.RAG.OCR.Prompt != "Free OCR." {
+		t.Fatalf("ocr prompt=%s", c.RAG.OCR.Prompt)
 	}
 }

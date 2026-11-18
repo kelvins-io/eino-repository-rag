@@ -119,7 +119,7 @@ func extractPDF(path string, s *extractSettings) (*Result, error) {
 			return nil, fmt.Errorf("pdf OCR 失败：共 %d 页: %w", totalPage, ocrErr)
 		}
 		if !s.ocrEnabled() && imageOnly > 0 && extractedPages == 0 {
-			return nil, permanentf("pdf 未提取到文本：共 %d 页，其中扫描/图片页 %d 页，请开启 rag.ocr.enabled 并启动 OCR 服务（docker compose up -d ocr）", totalPage, imageOnly)
+			return nil, permanentf("pdf 未提取到文本：共 %d 页，其中扫描/图片页 %d 页，请开启 rag.ocr.enabled 并配置 rag.ocr.api_key（或 embedding.api_key）", totalPage, imageOnly)
 		}
 		if s.ocrEnabled() && imageOnly > 0 && extractedPages == 0 {
 			return nil, permanentf("pdf OCR 未识别到文本：共 %d 页，其中扫描/图片页 %d 页", totalPage, imageOnly)
